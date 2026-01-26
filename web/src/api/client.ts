@@ -162,8 +162,7 @@ export const printersApi = {
   discover: async () => {
     console.log('Starting printer discovery...')
     try {
-      // Using test endpoint while fixing real discovery
-      const result = await fetchApi<DiscoveredPrinter[]>('/printers/discover-test', { method: 'POST' })
+      const result = await fetchApi<DiscoveredPrinter[]>('/printers/discover', { method: 'POST' })
       console.log('Discovery result:', result)
       return result
     } catch (err) {

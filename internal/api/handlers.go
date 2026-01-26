@@ -497,11 +497,9 @@ func (h *PrinterHandler) GetAllStates(w http.ResponseWriter, r *http.Request) {
 
 // Discover scans the network for printers.
 func (h *PrinterHandler) Discover(w http.ResponseWriter, r *http.Request) {
-	slog.Info("starting printer discovery request")
+	slog.Info("starting printer discovery")
 	
-	// Use a background context so the scan completes even if client disconnects
 	ctx := context.Background()
-	
 	printers, err := h.service.DiscoverPrinters(ctx)
 	if err != nil {
 		slog.Error("discovery failed", "error", err)
@@ -509,9 +507,8 @@ func (h *PrinterHandler) Discover(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	
-	slog.Info("discovery succeeded", "count", len(printers))
+	slog.Info("discovery complete", "found", len(printers))
 	
-	// Ensure we return empty array instead of null
 	if printers == nil {
 		printers = []printer.DiscoveredPrinter{}
 	}

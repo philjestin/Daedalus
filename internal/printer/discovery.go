@@ -41,13 +41,9 @@ func NewDiscovery() *Discovery {
 }
 
 // ScanNetwork discovers printers on the local network.
-// It combines multiple discovery methods: mDNS, port scanning, and SSDP.
+// Uses sequential scanning to avoid file descriptor exhaustion.
 func (d *Discovery) ScanNetwork(ctx context.Context) ([]DiscoveredPrinter, error) {
-	var (
-		mu       sync.Mutex
-		printers []DiscoveredPrinter
-		wg       sync.WaitGroup
-	)
+	var printers []DiscoveredPrinter
 
 	// Get local network range
 	localIP, network, err := getLocalNetwork()
@@ -60,26 +56,35 @@ func (d *Discovery) ScanNetwork(ctx context.Context) ([]DiscoveredPrinter, error
 	ips := generateIPRange(network)
 	slog.Info("scanning IPs", "count", len(ips))
 
-	// Scan each IP for known printer ports
-	semaphore := make(chan struct{}, 50) // Limit concurrent connections
-
-	for _, ip := range ips {
-		wg.Add(1)
-		go func(ip string) {
-			defer wg.Done()
-			semaphore <- struct{}{}
-			defer func() { <-semaphore }()
-
-			found := d.probeHost(ctx, ip)
-			if len(found) > 0 {
-				mu.Lock()
-				printers = append(printers, found...)
-				mu.Unlock()
-			}
-		}(ip)
+	// Scan sequentially with batches to avoid FD exhaustion
+	batchSize := 20
+	for i := 0; i < len(ips); i += batchSize {
+		end := i + batchSize
+		if end > len(ips) {
+			end = len(ips)
+		}
+		batch := ips[i:end]
+		
+		var wg sync.WaitGroup
+		var mu sync.Mutex
+		
+		for _, ip := range batch {
+			wg.Add(1)
+			go func(ip string) {
+				defer wg.Done()
+				found := d.probeHost(ctx, ip)
+				if len(found) > 0 {
+					mu.Lock()
+					printers = append(printers, found...)
+					mu.Unlock()
+				}
+			}(ip)
+		}
+		wg.Wait()
+		
+		// Small delay between batches
+		time.Sleep(50 * time.Millisecond)
 	}
-
-	wg.Wait()
 
 	slog.Info("discovery complete", "found", len(printers))
 	return printers, nil
@@ -131,10 +136,12 @@ func (d *Discovery) probeHost(ctx context.Context, host string) []DiscoveredPrin
 // isPortOpen does a quick TCP port check.
 func (d *Discovery) isPortOpen(host string, port int) bool {
 	address := fmt.Sprintf("%s:%d", host, port)
-	conn, err := net.DialTimeout("tcp", address, 500*time.Millisecond)
+	conn, err := net.DialTimeout("tcp", address, 300*time.Millisecond)
 	if err != nil {
 		return false
 	}
+	// Ensure connection is fully closed
+	conn.SetDeadline(time.Now())
 	conn.Close()
 	return true
 }
@@ -143,7 +150,11 @@ func (d *Discovery) isPortOpen(host string, port int) bool {
 func (d *Discovery) checkOctoPrint(ctx context.Context, host string, port int) *DiscoveredPrinter {
 	url := fmt.Sprintf("http://%s:%d/api/version", host, port)
 	
-	client := &http.Client{Timeout: d.timeout}
+	// Use a transport that closes idle connections
+	transport := &http.Transport{
+		DisableKeepAlives: true,
+	}
+	client := &http.Client{Timeout: d.timeout, Transport: transport}
 	req, _ := http.NewRequestWithContext(ctx, "GET", url, nil)
 	
 	resp, err := client.Do(req)
@@ -196,7 +207,8 @@ func (d *Discovery) checkOctoPrint(ctx context.Context, host string, port int) *
 func (d *Discovery) checkMoonraker(ctx context.Context, host string, port int) *DiscoveredPrinter {
 	url := fmt.Sprintf("http://%s:%d/server/info", host, port)
 	
-	client := &http.Client{Timeout: d.timeout}
+	transport := &http.Transport{DisableKeepAlives: true}
+	client := &http.Client{Timeout: d.timeout, Transport: transport}
 	req, _ := http.NewRequestWithContext(ctx, "GET", url, nil)
 	
 	resp, err := client.Do(req)
@@ -245,7 +257,8 @@ func (d *Discovery) checkChiTu(ctx context.Context, host string, port int) *Disc
 		fmt.Sprintf("http://%s:%d/system/info", host, port),
 	}
 
-	client := &http.Client{Timeout: d.timeout}
+	transport := &http.Transport{DisableKeepAlives: true}
+	client := &http.Client{Timeout: d.timeout, Transport: transport}
 
 	for _, url := range endpoints {
 		req, _ := http.NewRequestWithContext(ctx, "GET", url, nil)
@@ -253,14 +266,16 @@ func (d *Discovery) checkChiTu(ctx context.Context, host string, port int) *Disc
 		if err != nil {
 			continue
 		}
-		defer resp.Body.Close()
 
 		if resp.StatusCode != 200 {
+			resp.Body.Close()
 			continue
 		}
 
 		body := make([]byte, 2048)
 		n, _ := resp.Body.Read(body)
+		resp.Body.Close()
+		
 		bodyStr := string(body[:n])
 		bodyLower := strings.ToLower(bodyStr)
 
@@ -611,46 +626,13 @@ func (d *Discovery) ScanBambuUDP(ctx context.Context) ([]DiscoveredPrinter, erro
 }
 
 // QuickScan does a fast scan of only the most common ports.
+// Note: UDP-based discovery (SSDP, Bambu UDP) is disabled as it interferes with HTTP responses.
 func (d *Discovery) QuickScan(ctx context.Context) ([]DiscoveredPrinter, error) {
-	var (
-		mu       sync.Mutex
-		printers []DiscoveredPrinter
-		wg       sync.WaitGroup
-	)
-
-	// Run Bambu SSDP discovery
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		bambuPrinters, err := d.ScanSSDPBambu(ctx)
-		if err == nil && len(bambuPrinters) > 0 {
-			mu.Lock()
-			printers = append(printers, bambuPrinters...)
-			mu.Unlock()
-		}
-	}()
-
-	// Run Bambu UDP discovery
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		bambuPrinters, err := d.ScanBambuUDP(ctx)
-		if err == nil && len(bambuPrinters) > 0 {
-			mu.Lock()
-			printers = append(printers, bambuPrinters...)
-			mu.Unlock()
-		}
-	}()
-
-	// Run network scan
-	networkPrinters, err := d.ScanNetwork(ctx)
-	if err == nil {
-		mu.Lock()
-		printers = append(printers, networkPrinters...)
-		mu.Unlock()
+	// Only run TCP port scan - UDP discovery causes issues with HTTP response
+	printers, err := d.ScanNetwork(ctx)
+	if err != nil {
+		return nil, err
 	}
-
-	wg.Wait()
 
 	// Deduplicate by host
 	seen := make(map[string]bool)

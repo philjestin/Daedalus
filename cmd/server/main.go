@@ -73,8 +73,8 @@ func main() {
 	server := &http.Server{
 		Addr:         ":" + port,
 		Handler:      router,
-		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 15 * time.Second,
+		ReadTimeout:  30 * time.Second,
+		WriteTimeout: 120 * time.Second, // Long timeout for network scanning
 		IdleTimeout:  60 * time.Second,
 	}
 
