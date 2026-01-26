@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -15,7 +16,7 @@ func NewRouter(services *service.Services, hub *realtime.Hub) http.Handler {
 	r := chi.NewRouter()
 
 	// Middleware
-	r.Use(middleware.Logger)
+	// r.Use(middleware.Logger) // Disabled for debugging
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
@@ -32,6 +33,22 @@ func NewRouter(services *service.Services, hub *realtime.Hub) http.Handler {
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("ok"))
+	})
+	
+	// Test endpoint for debugging long requests
+	r.Get("/test-slow", func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(5 * time.Second)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`[{"test": "data"}]`))
+	})
+	
+	// Fake discovery for testing
+	r.Post("/api/printers/discover-test", func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(2 * time.Second) // Simulate scan time
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`[{"id":"test-1","name":"Bambu P1S @ 10.0.0.113","host":"10.0.0.113","port":8883,"type":"bambu_lan","manufacturer":"Bambu Lab","already_added":false},{"id":"test-2","name":"Bambu A1 @ 10.0.0.121","host":"10.0.0.121","port":8883,"type":"bambu_lan","manufacturer":"Bambu Lab","already_added":false}]`))
 	})
 
 	// WebSocket endpoint

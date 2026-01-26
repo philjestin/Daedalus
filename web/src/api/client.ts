@@ -7,6 +7,8 @@ async function fetchApi<T>(
 ): Promise<T> {
   const url = `${API_URL}/api${path}`
   
+  console.log(`[API] ${options.method || 'GET'} ${url}`)
+  
   const response = await fetch(url, {
     ...options,
     headers: {
@@ -14,6 +16,8 @@ async function fetchApi<T>(
       ...options.headers,
     },
   })
+
+  console.log(`[API] Response status: ${response.status}`)
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({ error: 'Unknown error' }))
@@ -24,7 +28,15 @@ async function fetchApi<T>(
     return undefined as T
   }
 
-  return response.json()
+  const text = await response.text()
+  console.log(`[API] Response body:`, text.substring(0, 500))
+  
+  try {
+    return JSON.parse(text) as T
+  } catch (e) {
+    console.error('[API] JSON parse error:', e, 'Body was:', text)
+    throw e
+  }
 }
 
 // Projects API
@@ -147,8 +159,18 @@ export const printersApi = {
     fetchApi<Record<string, import('../types').PrinterState>>('/printers/states'),
   
   // Discover printers on local network
-  discover: () => 
-    fetchApi<DiscoveredPrinter[]>('/printers/discover', { method: 'POST' }),
+  discover: async () => {
+    console.log('Starting printer discovery...')
+    try {
+      // Using test endpoint while fixing real discovery
+      const result = await fetchApi<DiscoveredPrinter[]>('/printers/discover-test', { method: 'POST' })
+      console.log('Discovery result:', result)
+      return result
+    } catch (err) {
+      console.error('Discovery error:', err)
+      throw err
+    }
+  },
 }
 
 // Materials API

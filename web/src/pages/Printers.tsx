@@ -32,11 +32,14 @@ export default function Printers() {
     setDiscovered([])
     
     try {
+      console.log('[Printers] Starting discovery...')
       const found = await printersApi.discover()
-      setDiscovered(found)
+      console.log('[Printers] Discovery complete, found:', found)
+      setDiscovered(found || [])
     } catch (err) {
-      console.error('Discovery failed:', err)
+      console.error('[Printers] Discovery failed:', err)
     } finally {
+      console.log('[Printers] Discovery finished')
       setDiscovering(false)
     }
   }
@@ -276,6 +279,9 @@ export default function Printers() {
                 <p className="text-surface-300">Scanning your network...</p>
                 <p className="text-surface-500 text-sm mt-1">
                   Looking for OctoPrint, Moonraker, and Bambu printers
+                </p>
+                <p className="text-surface-600 text-xs mt-3">
+                  This can take 15-20 seconds. Please wait...
                 </p>
               </div>
             ) : discovered.length === 0 ? (

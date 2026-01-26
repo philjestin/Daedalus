@@ -1,13 +1,16 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"io"
+	"log/slog"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/hyperion/printfarm/internal/model"
+	"github.com/hyperion/printfarm/internal/printer"
 	"github.com/hyperion/printfarm/internal/service"
 )
 
@@ -16,7 +19,13 @@ func respondJSON(w http.ResponseWriter, status int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	if data != nil {
-		json.NewEncoder(w).Encode(data)
+		if err := json.NewEncoder(w).Encode(data); err != nil {
+			slog.Error("failed to encode JSON response", "error", err)
+		}
+	}
+	// Flush if the ResponseWriter supports it
+	if flusher, ok := w.(http.Flusher); ok {
+		flusher.Flush()
 	}
 }
 
@@ -488,11 +497,25 @@ func (h *PrinterHandler) GetAllStates(w http.ResponseWriter, r *http.Request) {
 
 // Discover scans the network for printers.
 func (h *PrinterHandler) Discover(w http.ResponseWriter, r *http.Request) {
-	printers, err := h.service.DiscoverPrinters(r.Context())
+	slog.Info("starting printer discovery request")
+	
+	// Use a background context so the scan completes even if client disconnects
+	ctx := context.Background()
+	
+	printers, err := h.service.DiscoverPrinters(ctx)
 	if err != nil {
+		slog.Error("discovery failed", "error", err)
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	
+	slog.Info("discovery succeeded", "count", len(printers))
+	
+	// Ensure we return empty array instead of null
+	if printers == nil {
+		printers = []printer.DiscoveredPrinter{}
+	}
+	
 	respondJSON(w, http.StatusOK, printers)
 }
 
