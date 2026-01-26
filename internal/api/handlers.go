@@ -663,6 +663,27 @@ func (h *PrintJobHandler) List(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, jobs)
 }
 
+// ListByDesign returns all print jobs for a design.
+func (h *PrintJobHandler) ListByDesign(w http.ResponseWriter, r *http.Request) {
+	designID, err := parseUUID(r, "id")
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid design ID")
+		return
+	}
+
+	jobs, err := h.service.ListByDesign(r.Context(), designID)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	if jobs == nil {
+		jobs = []model.PrintJob{}
+	}
+
+	respondJSON(w, http.StatusOK, jobs)
+}
+
 // Create creates a new print job.
 func (h *PrintJobHandler) Create(w http.ResponseWriter, r *http.Request) {
 	var job model.PrintJob
@@ -796,6 +817,30 @@ func (h *PrintJobHandler) Cancel(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
+// RecordOutcome records the outcome of a completed print job.
+func (h *PrintJobHandler) RecordOutcome(w http.ResponseWriter, r *http.Request) {
+	id, err := parseUUID(r, "id")
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid job ID")
+		return
+	}
+
+	var outcome model.PrintOutcome
+	if err := json.NewDecoder(r.Body).Decode(&outcome); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if err := h.service.RecordOutcome(r.Context(), id, &outcome); err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	// Get updated job to return
+	job, _ := h.service.GetByID(r.Context(), id)
+	respondJSON(w, http.StatusOK, job)
+}
+
 // FileHandler handles file endpoints.
 type FileHandler struct {
 	service *service.FileService
@@ -819,5 +864,668 @@ func (h *FileHandler) Get(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Disposition", "attachment; filename="+file.OriginalName)
 	w.Header().Set("Content-Type", file.ContentType)
 	io.Copy(w, reader)
+}
+
+// ExpenseHandler handles expense endpoints.
+type ExpenseHandler struct {
+	service *service.ExpenseService
+}
+
+// List returns all expenses.
+func (h *ExpenseHandler) List(w http.ResponseWriter, r *http.Request) {
+	var status *model.ExpenseStatus
+	if s := r.URL.Query().Get("status"); s != "" {
+		es := model.ExpenseStatus(s)
+		status = &es
+	}
+
+	expenses, err := h.service.List(r.Context(), status)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	if expenses == nil {
+		expenses = []model.Expense{}
+	}
+
+	respondJSON(w, http.StatusOK, expenses)
+}
+
+// Get returns an expense by ID with its items.
+func (h *ExpenseHandler) Get(w http.ResponseWriter, r *http.Request) {
+	id, err := parseUUID(r, "id")
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid expense ID")
+		return
+	}
+
+	expense, err := h.service.GetByID(r.Context(), id)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if expense == nil {
+		respondError(w, http.StatusNotFound, "expense not found")
+		return
+	}
+
+	respondJSON(w, http.StatusOK, expense)
+}
+
+// UploadReceipt handles receipt file upload.
+func (h *ExpenseHandler) UploadReceipt(w http.ResponseWriter, r *http.Request) {
+	// Parse multipart form (max 32MB)
+	if err := r.ParseMultipartForm(32 << 20); err != nil {
+		respondError(w, http.StatusBadRequest, "failed to parse form")
+		return
+	}
+
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "file is required")
+		return
+	}
+	defer file.Close()
+
+	// Read file data
+	data, err := io.ReadAll(file)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to read file")
+		return
+	}
+
+	expense, err := h.service.UploadReceipt(r.Context(), header.Filename, data)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusCreated, expense)
+}
+
+// Confirm confirms an expense and applies inventory changes.
+func (h *ExpenseHandler) Confirm(w http.ResponseWriter, r *http.Request) {
+	id, err := parseUUID(r, "id")
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid expense ID")
+		return
+	}
+
+	var req service.ConfirmExpenseRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if err := h.service.ConfirmExpense(r.Context(), id, &req); err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	// Return updated expense
+	expense, _ := h.service.GetByID(r.Context(), id)
+	respondJSON(w, http.StatusOK, expense)
+}
+
+// Delete deletes an expense.
+func (h *ExpenseHandler) Delete(w http.ResponseWriter, r *http.Request) {
+	id, err := parseUUID(r, "id")
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid expense ID")
+		return
+	}
+
+	if err := h.service.Delete(r.Context(), id); err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// SaleHandler handles sale endpoints.
+type SaleHandler struct {
+	service *service.SaleService
+}
+
+// List returns all sales.
+func (h *SaleHandler) List(w http.ResponseWriter, r *http.Request) {
+	var projectID *uuid.UUID
+	if pidStr := r.URL.Query().Get("project_id"); pidStr != "" {
+		if pid, err := uuid.Parse(pidStr); err == nil {
+			projectID = &pid
+		}
+	}
+
+	sales, err := h.service.List(r.Context(), projectID)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	if sales == nil {
+		sales = []model.Sale{}
+	}
+
+	respondJSON(w, http.StatusOK, sales)
+}
+
+// Create creates a new sale.
+func (h *SaleHandler) Create(w http.ResponseWriter, r *http.Request) {
+	var sale model.Sale
+	if err := json.NewDecoder(r.Body).Decode(&sale); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if err := h.service.Create(r.Context(), &sale); err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusCreated, sale)
+}
+
+// Get returns a sale by ID.
+func (h *SaleHandler) Get(w http.ResponseWriter, r *http.Request) {
+	id, err := parseUUID(r, "id")
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid sale ID")
+		return
+	}
+
+	sale, err := h.service.GetByID(r.Context(), id)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if sale == nil {
+		respondError(w, http.StatusNotFound, "sale not found")
+		return
+	}
+
+	respondJSON(w, http.StatusOK, sale)
+}
+
+// Update updates a sale.
+func (h *SaleHandler) Update(w http.ResponseWriter, r *http.Request) {
+	id, err := parseUUID(r, "id")
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid sale ID")
+		return
+	}
+
+	sale, err := h.service.GetByID(r.Context(), id)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if sale == nil {
+		respondError(w, http.StatusNotFound, "sale not found")
+		return
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(sale); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	sale.ID = id
+
+	if err := h.service.Update(r.Context(), sale); err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusOK, sale)
+}
+
+// Delete deletes a sale.
+func (h *SaleHandler) Delete(w http.ResponseWriter, r *http.Request) {
+	id, err := parseUUID(r, "id")
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid sale ID")
+		return
+	}
+
+	if err := h.service.Delete(r.Context(), id); err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// StatsHandler handles statistics endpoints.
+type StatsHandler struct {
+	service *service.StatsService
+}
+
+// GetFinancialSummary returns aggregated financial statistics.
+func (h *StatsHandler) GetFinancialSummary(w http.ResponseWriter, r *http.Request) {
+	summary, err := h.service.GetFinancialSummary(r.Context())
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusOK, summary)
+}
+
+// TemplateHandler handles template endpoints.
+type TemplateHandler struct {
+	service *service.TemplateService
+}
+
+// List returns all templates.
+func (h *TemplateHandler) List(w http.ResponseWriter, r *http.Request) {
+	activeOnly := r.URL.Query().Get("active") == "true"
+
+	templates, err := h.service.List(r.Context(), activeOnly)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	if templates == nil {
+		templates = []model.Template{}
+	}
+
+	respondJSON(w, http.StatusOK, templates)
+}
+
+// Create creates a new template.
+func (h *TemplateHandler) Create(w http.ResponseWriter, r *http.Request) {
+	var template model.Template
+	if err := json.NewDecoder(r.Body).Decode(&template); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if err := h.service.Create(r.Context(), &template); err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusCreated, template)
+}
+
+// Get returns a template by ID with its designs.
+func (h *TemplateHandler) Get(w http.ResponseWriter, r *http.Request) {
+	id, err := parseUUID(r, "id")
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid template ID")
+		return
+	}
+
+	template, err := h.service.GetByID(r.Context(), id)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if template == nil {
+		respondError(w, http.StatusNotFound, "template not found")
+		return
+	}
+
+	respondJSON(w, http.StatusOK, template)
+}
+
+// Update updates a template.
+func (h *TemplateHandler) Update(w http.ResponseWriter, r *http.Request) {
+	id, err := parseUUID(r, "id")
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid template ID")
+		return
+	}
+
+	template, err := h.service.GetByID(r.Context(), id)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if template == nil {
+		respondError(w, http.StatusNotFound, "template not found")
+		return
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(template); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	template.ID = id
+
+	if err := h.service.Update(r.Context(), template); err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusOK, template)
+}
+
+// Delete removes a template.
+func (h *TemplateHandler) Delete(w http.ResponseWriter, r *http.Request) {
+	id, err := parseUUID(r, "id")
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid template ID")
+		return
+	}
+
+	if err := h.service.Delete(r.Context(), id); err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// AddDesignRequest represents the request body for adding a design to a template.
+type AddDesignRequest struct {
+	DesignID  string `json:"design_id"`
+	Quantity  int    `json:"quantity"`
+	IsPrimary bool   `json:"is_primary"`
+	Notes     string `json:"notes"`
+}
+
+// AddDesign adds a design to a template.
+func (h *TemplateHandler) AddDesign(w http.ResponseWriter, r *http.Request) {
+	templateID, err := parseUUID(r, "id")
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid template ID")
+		return
+	}
+
+	var req AddDesignRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	designID, err := uuid.Parse(req.DesignID)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid design ID")
+		return
+	}
+
+	td := &model.TemplateDesign{
+		TemplateID: templateID,
+		DesignID:   designID,
+		Quantity:   req.Quantity,
+		IsPrimary:  req.IsPrimary,
+		Notes:      req.Notes,
+	}
+
+	if err := h.service.AddDesign(r.Context(), td); err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusCreated, td)
+}
+
+// RemoveDesign removes a design from a template.
+func (h *TemplateHandler) RemoveDesign(w http.ResponseWriter, r *http.Request) {
+	templateID, err := parseUUID(r, "id")
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid template ID")
+		return
+	}
+
+	designID, err := parseUUID(r, "designId")
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid design ID")
+		return
+	}
+
+	if err := h.service.RemoveDesign(r.Context(), templateID, designID); err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// InstantiateRequest represents the request body for instantiating a template.
+type InstantiateRequest struct {
+	OrderQuantity   int    `json:"order_quantity"`
+	CustomerNotes   string `json:"customer_notes"`
+	ExternalOrderID string `json:"external_order_id"`
+	Source          string `json:"source"`
+	MaterialSpoolID string `json:"material_spool_id"`
+}
+
+// Instantiate creates a project from a template.
+func (h *TemplateHandler) Instantiate(w http.ResponseWriter, r *http.Request) {
+	templateID, err := parseUUID(r, "id")
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid template ID")
+		return
+	}
+
+	var req InstantiateRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	opts := service.CreateFromTemplateOptions{
+		OrderQuantity:   req.OrderQuantity,
+		CustomerNotes:   req.CustomerNotes,
+		ExternalOrderID: req.ExternalOrderID,
+		Source:          req.Source,
+	}
+
+	if req.MaterialSpoolID != "" {
+		spoolID, err := uuid.Parse(req.MaterialSpoolID)
+		if err != nil {
+			respondError(w, http.StatusBadRequest, "invalid material spool ID")
+			return
+		}
+		opts.MaterialSpoolID = &spoolID
+	}
+
+	project, jobs, err := h.service.CreateProjectFromTemplate(r.Context(), templateID, opts)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusCreated, map[string]interface{}{
+		"project": project,
+		"jobs":    jobs,
+	})
+}
+
+// ListMaterials returns all materials for a template/recipe.
+func (h *TemplateHandler) ListMaterials(w http.ResponseWriter, r *http.Request) {
+	templateID, err := parseUUID(r, "id")
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid template ID")
+		return
+	}
+
+	materials, err := h.service.ListMaterials(r.Context(), templateID)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	if materials == nil {
+		materials = []model.RecipeMaterial{}
+	}
+
+	respondJSON(w, http.StatusOK, materials)
+}
+
+// AddMaterialRequest represents the request body for adding a material.
+type AddMaterialRequest struct {
+	MaterialType  string           `json:"material_type"`
+	ColorSpec     *model.ColorSpec `json:"color_spec,omitempty"`
+	WeightGrams   float64          `json:"weight_grams"`
+	AMSPosition   *int             `json:"ams_position,omitempty"`
+	SequenceOrder int              `json:"sequence_order"`
+	Notes         string           `json:"notes"`
+}
+
+// AddMaterial adds a material to a template/recipe.
+func (h *TemplateHandler) AddMaterial(w http.ResponseWriter, r *http.Request) {
+	templateID, err := parseUUID(r, "id")
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid template ID")
+		return
+	}
+
+	var req AddMaterialRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	material := &model.RecipeMaterial{
+		RecipeID:      templateID,
+		MaterialType:  model.MaterialType(req.MaterialType),
+		ColorSpec:     req.ColorSpec,
+		WeightGrams:   req.WeightGrams,
+		AMSPosition:   req.AMSPosition,
+		SequenceOrder: req.SequenceOrder,
+		Notes:         req.Notes,
+	}
+
+	if err := h.service.AddMaterial(r.Context(), material); err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusCreated, material)
+}
+
+// UpdateMaterial updates a material in a template/recipe.
+func (h *TemplateHandler) UpdateMaterial(w http.ResponseWriter, r *http.Request) {
+	materialID, err := parseUUID(r, "materialId")
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid material ID")
+		return
+	}
+
+	material, err := h.service.GetMaterial(r.Context(), materialID)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if material == nil {
+		respondError(w, http.StatusNotFound, "material not found")
+		return
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(material); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	material.ID = materialID
+
+	if err := h.service.UpdateMaterial(r.Context(), material); err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusOK, material)
+}
+
+// RemoveMaterial removes a material from a template/recipe.
+func (h *TemplateHandler) RemoveMaterial(w http.ResponseWriter, r *http.Request) {
+	materialID, err := parseUUID(r, "materialId")
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid material ID")
+		return
+	}
+
+	if err := h.service.RemoveMaterial(r.Context(), materialID); err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// GetCompatiblePrinters returns printers that match recipe constraints.
+func (h *TemplateHandler) GetCompatiblePrinters(w http.ResponseWriter, r *http.Request) {
+	templateID, err := parseUUID(r, "id")
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid template ID")
+		return
+	}
+
+	printers, err := h.service.FindCompatiblePrinters(r.Context(), templateID)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	if printers == nil {
+		printers = []model.Printer{}
+	}
+
+	respondJSON(w, http.StatusOK, printers)
+}
+
+// GetCompatibleSpools returns spools that match recipe material requirements.
+func (h *TemplateHandler) GetCompatibleSpools(w http.ResponseWriter, r *http.Request) {
+	templateID, err := parseUUID(r, "id")
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid template ID")
+		return
+	}
+
+	spools, err := h.service.FindCompatibleSpools(r.Context(), templateID)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	if spools == nil {
+		spools = []service.CompatibleSpool{}
+	}
+
+	respondJSON(w, http.StatusOK, spools)
+}
+
+// GetCostEstimate returns the cost breakdown for a recipe.
+func (h *TemplateHandler) GetCostEstimate(w http.ResponseWriter, r *http.Request) {
+	templateID, err := parseUUID(r, "id")
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid template ID")
+		return
+	}
+
+	estimate, err := h.service.CalculateRecipeCost(r.Context(), templateID)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusOK, estimate)
+}
+
+// ValidatePrinter checks if a printer meets recipe constraints.
+func (h *TemplateHandler) ValidatePrinter(w http.ResponseWriter, r *http.Request) {
+	templateID, err := parseUUID(r, "id")
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid template ID")
+		return
+	}
+
+	printerID, err := parseUUID(r, "printerId")
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid printer ID")
+		return
+	}
+
+	result, err := h.service.ValidatePrinterForRecipe(r.Context(), templateID, printerID)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusOK, result)
 }
 

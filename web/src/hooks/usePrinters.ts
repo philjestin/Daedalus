@@ -57,22 +57,26 @@ export function useDeletePrinter() {
   })
 }
 
-// Fetch real-time state for all printers (poll every 5 seconds).
+// Fetch real-time state for all printers.
+// WebSocket pushes updates; polling is a fallback for reconnection scenarios.
 export function usePrinterStates() {
   return useQuery({
     queryKey: ['printer-states'],
     queryFn: () => printersApi.getAllStates(),
-    refetchInterval: 5000, // Poll every 5 seconds
+    refetchInterval: 30000, // Reduced polling - WebSocket handles real-time updates
+    staleTime: 10000, // Consider data fresh for 10 seconds
   })
 }
 
 // Fetch real-time state for a single printer.
+// WebSocket pushes updates; polling is a fallback.
 export function usePrinterState(id: string) {
   return useQuery({
     queryKey: ['printer-states', id],
     queryFn: () => printersApi.getState(id),
     enabled: !!id,
-    refetchInterval: 3000, // Poll every 3 seconds when viewing single printer
+    refetchInterval: 15000, // Reduced polling - WebSocket handles real-time updates
+    staleTime: 5000,
   })
 }
 

@@ -1,105 +1,196 @@
 package printer
 
 import (
+	"crypto/tls"
+	"encoding/json"
 	"fmt"
+	"io"
+	"log/slog"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"sync"
 	"time"
 
+	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/google/uuid"
 	"github.com/hyperion/printfarm/internal/model"
+	"github.com/jlaffaye/ftp"
 )
 
-// BambuClient implements Client for Bambu Lab printers via LAN.
-// Note: Bambu printers use MQTT over LAN for communication.
-// This is a placeholder implementation - full implementation requires
-// reverse-engineering or using community MQTT libraries.
+// BambuClient implements Client for Bambu Lab printers via LAN MQTT.
+// Bambu printers use MQTT over TLS on port 8883 for status and control.
+// File uploads are done via FTPS on port 990.
 type BambuClient struct {
 	printerID      uuid.UUID
 	host           string
 	accessCode     string
+	serialNumber   string
 	statusCallback func(*model.PrinterState)
-	stopPolling    chan struct{}
+
+	mu         sync.RWMutex
+	mqttClient mqtt.Client
+	connected  bool
+	lastState  *model.PrinterState
+	stopChan   chan struct{}
 }
 
+// BambuMQTTPort is the default MQTT port for Bambu printers.
+const BambuMQTTPort = 8883
+
+// BambuFTPSPort is the default FTPS port for Bambu printers.
+const BambuFTPSPort = 990
+
 // NewBambuClient creates a new Bambu LAN client.
+// The host should be the IP address or hostname of the printer.
+// The accessCode is the LAN access code from the printer's settings.
 func NewBambuClient(printerID uuid.UUID, host string, accessCode string) *BambuClient {
-	return &BambuClient{
-		printerID:   printerID,
-		host:        host,
-		accessCode:  accessCode,
-		stopPolling: make(chan struct{}),
+	// Extract serial number from host if it contains it, or use a placeholder
+	// In practice, serial is discovered via SSDP or provided by user
+	serial := "unknown"
+	if strings.Contains(host, "_") {
+		parts := strings.Split(host, "_")
+		if len(parts) > 0 {
+			serial = parts[0]
+		}
 	}
+
+	return &BambuClient{
+		printerID:    printerID,
+		host:         host,
+		accessCode:   accessCode,
+		serialNumber: serial,
+		stopChan:     make(chan struct{}),
+		lastState: &model.PrinterState{
+			PrinterID: printerID,
+			Status:    model.PrinterStatusOffline,
+			UpdatedAt: time.Now(),
+		},
+	}
+}
+
+// SetSerialNumber sets the printer's serial number for MQTT topics.
+func (c *BambuClient) SetSerialNumber(serial string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.serialNumber = serial
 }
 
 // Connect establishes MQTT connection to Bambu printer.
 func (c *BambuClient) Connect() error {
-	// TODO: Implement MQTT connection to Bambu printer
-	// The Bambu printers use MQTT on port 8883 with TLS
-	// Topics: device/{serial}/report for status, device/{serial}/request for commands
-	
-	// For now, simulate connection
-	go c.pollStatus()
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.connected && c.mqttClient != nil && c.mqttClient.IsConnected() {
+		return nil
+	}
+
+	// Configure MQTT client options
+	broker := fmt.Sprintf("ssl://%s:%d", c.host, BambuMQTTPort)
+	clientID := fmt.Sprintf("printfarm_%s_%d", c.printerID.String()[:8], time.Now().Unix())
+
+	opts := mqtt.NewClientOptions()
+	opts.AddBroker(broker)
+	opts.SetClientID(clientID)
+
+	// Bambu uses "bblp" as username and access code as password
+	opts.SetUsername("bblp")
+	opts.SetPassword(c.accessCode)
+
+	// TLS configuration - Bambu uses self-signed certificates
+	tlsConfig := &tls.Config{
+		InsecureSkipVerify: true, // Bambu printers use self-signed certs
+		MinVersion:         tls.VersionTLS12,
+	}
+	opts.SetTLSConfig(tlsConfig)
+
+	// Connection settings
+	opts.SetAutoReconnect(true)
+	opts.SetConnectRetry(true)
+	opts.SetConnectRetryInterval(5 * time.Second)
+	opts.SetKeepAlive(30 * time.Second)
+	opts.SetPingTimeout(10 * time.Second)
+	opts.SetWriteTimeout(5 * time.Second)
+
+	// Connection handlers
+	opts.SetOnConnectHandler(c.onConnect)
+	opts.SetConnectionLostHandler(c.onConnectionLost)
+	opts.SetReconnectingHandler(c.onReconnecting)
+
+	// Create client
+	c.mqttClient = mqtt.NewClient(opts)
+
+	// Connect
+	slog.Info("connecting to Bambu printer", "host", c.host, "printer_id", c.printerID)
+	token := c.mqttClient.Connect()
+	if !token.WaitTimeout(10 * time.Second) {
+		return fmt.Errorf("MQTT connection timeout")
+	}
+	if token.Error() != nil {
+		return fmt.Errorf("MQTT connection failed: %w", token.Error())
+	}
+
+	c.connected = true
+	slog.Info("connected to Bambu printer", "host", c.host, "printer_id", c.printerID)
+
 	return nil
 }
 
-// Disconnect closes the MQTT connection.
-func (c *BambuClient) Disconnect() error {
-	close(c.stopPolling)
-	return nil
+// onConnect is called when MQTT connection is established.
+func (c *BambuClient) onConnect(client mqtt.Client) {
+	slog.Info("Bambu MQTT connected", "printer_id", c.printerID)
+
+	// Subscribe to report topic for status updates
+	reportTopic := fmt.Sprintf("device/%s/report", c.serialNumber)
+	token := client.Subscribe(reportTopic, 1, c.handleMessage)
+	if token.Wait() && token.Error() != nil {
+		slog.Error("failed to subscribe to Bambu report topic", "error", token.Error())
+		return
+	}
+	slog.Info("subscribed to Bambu report topic", "topic", reportTopic)
+
+	// Request initial status
+	c.requestPushAll()
 }
 
-// GetStatus retrieves current printer status via MQTT.
-func (c *BambuClient) GetStatus() (*model.PrinterState, error) {
-	// TODO: Parse MQTT status messages
-	// Bambu reports: print_state, gcode_state, temperatures, progress
-	
-	return &model.PrinterState{
-		PrinterID: c.printerID,
-		Status:    model.PrinterStatusOffline,
-		UpdatedAt: time.Now(),
-	}, nil
+// onConnectionLost is called when MQTT connection is lost.
+func (c *BambuClient) onConnectionLost(client mqtt.Client, err error) {
+	slog.Warn("Bambu MQTT connection lost", "printer_id", c.printerID, "error", err)
+
+	c.mu.Lock()
+	c.connected = false
+	c.lastState.Status = model.PrinterStatusOffline
+	c.lastState.UpdatedAt = time.Now()
+	state := *c.lastState
+	c.mu.Unlock()
+
+	if c.statusCallback != nil {
+		c.statusCallback(&state)
+	}
 }
 
-// StartJob sends a print job to the Bambu printer.
-func (c *BambuClient) StartJob(filename string, filepath string) error {
-	// TODO: Implement file upload via FTP (port 990) and start via MQTT
-	// Bambu uses FTP for file transfer, then MQTT command to start
-	return fmt.Errorf("bambu print start not yet implemented")
+// onReconnecting is called when MQTT client is attempting to reconnect.
+func (c *BambuClient) onReconnecting(client mqtt.Client, opts *mqtt.ClientOptions) {
+	slog.Info("Bambu MQTT reconnecting", "printer_id", c.printerID)
 }
 
-// PauseJob pauses the current print via MQTT command.
-func (c *BambuClient) PauseJob() error {
-	// TODO: Send MQTT command: {"print": {"command": "pause"}}
-	return fmt.Errorf("bambu pause not yet implemented")
-}
+// handleMessage processes incoming MQTT messages from the printer.
+func (c *BambuClient) handleMessage(client mqtt.Client, msg mqtt.Message) {
+	var payload BambuMessage
+	if err := json.Unmarshal(msg.Payload(), &payload); err != nil {
+		slog.Debug("failed to parse Bambu message", "error", err, "payload", string(msg.Payload()))
+		return
+	}
 
-// ResumeJob resumes a paused print via MQTT command.
-func (c *BambuClient) ResumeJob() error {
-	// TODO: Send MQTT command: {"print": {"command": "resume"}}
-	return fmt.Errorf("bambu resume not yet implemented")
-}
+	// Check for print status in the message
+	if payload.Print != nil {
+		state := c.parsePrintStatus(payload.Print)
+		if state != nil {
+			c.mu.Lock()
+			c.lastState = state
+			c.mu.Unlock()
 
-// CancelJob cancels the current print via MQTT command.
-func (c *BambuClient) CancelJob() error {
-	// TODO: Send MQTT command: {"print": {"command": "stop"}}
-	return fmt.Errorf("bambu cancel not yet implemented")
-}
-
-// SetStatusCallback sets the callback for status updates.
-func (c *BambuClient) SetStatusCallback(cb func(*model.PrinterState)) {
-	c.statusCallback = cb
-}
-
-// pollStatus simulates status polling (placeholder).
-func (c *BambuClient) pollStatus() {
-	ticker := time.NewTicker(10 * time.Second)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-c.stopPolling:
-			return
-		case <-ticker.C:
-			state, _ := c.GetStatus()
 			if c.statusCallback != nil {
 				c.statusCallback(state)
 			}
@@ -107,3 +198,561 @@ func (c *BambuClient) pollStatus() {
 	}
 }
 
+// requestPushAll requests the printer to send all current status.
+func (c *BambuClient) requestPushAll() {
+	cmd := BambuCommand{
+		Pushing: &BambuPushingCmd{
+			Sequence: strconv.FormatInt(time.Now().UnixMilli(), 10),
+			Command:  "pushall",
+		},
+	}
+	c.sendCommand(cmd)
+}
+
+// sendCommand sends a command to the printer via MQTT.
+func (c *BambuClient) sendCommand(cmd BambuCommand) error {
+	c.mu.RLock()
+	if !c.connected || c.mqttClient == nil {
+		c.mu.RUnlock()
+		return fmt.Errorf("not connected")
+	}
+	client := c.mqttClient
+	serial := c.serialNumber
+	c.mu.RUnlock()
+
+	data, err := json.Marshal(cmd)
+	if err != nil {
+		return fmt.Errorf("failed to marshal command: %w", err)
+	}
+
+	topic := fmt.Sprintf("device/%s/request", serial)
+	token := client.Publish(topic, 1, false, data)
+	if !token.WaitTimeout(5 * time.Second) {
+		return fmt.Errorf("command publish timeout")
+	}
+	if token.Error() != nil {
+		return fmt.Errorf("command publish failed: %w", token.Error())
+	}
+
+	slog.Debug("sent Bambu command", "topic", topic, "command", string(data))
+	return nil
+}
+
+// Disconnect closes the MQTT connection.
+func (c *BambuClient) Disconnect() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.stopChan != nil {
+		close(c.stopChan)
+		c.stopChan = nil
+	}
+
+	if c.mqttClient != nil && c.mqttClient.IsConnected() {
+		c.mqttClient.Disconnect(1000)
+	}
+	c.connected = false
+
+	slog.Info("disconnected from Bambu printer", "printer_id", c.printerID)
+	return nil
+}
+
+// GetStatus retrieves current printer status.
+func (c *BambuClient) GetStatus() (*model.PrinterState, error) {
+	c.mu.RLock()
+	state := c.lastState
+	c.mu.RUnlock()
+
+	if state == nil {
+		return &model.PrinterState{
+			PrinterID: c.printerID,
+			Status:    model.PrinterStatusOffline,
+			UpdatedAt: time.Now(),
+		}, nil
+	}
+
+	return state, nil
+}
+
+// StartJob sends a print job to the Bambu printer.
+// The file is uploaded via FTPS, then a print command is sent via MQTT.
+func (c *BambuClient) StartJob(filename string, filepath string) error {
+	// First upload the file via FTPS
+	remotePath, err := c.uploadFile(filepath, filename)
+	if err != nil {
+		return fmt.Errorf("failed to upload file: %w", err)
+	}
+
+	// Send print command via MQTT
+	cmd := BambuCommand{
+		Print: &BambuPrintCmd{
+			Sequence:    strconv.FormatInt(time.Now().UnixMilli(), 10),
+			Command:     "project_file",
+			ProjectID:   "0",
+			ProfileID:   "0",
+			TaskID:      "0",
+			Subtask:     "0",
+			SubtaskName: filename,
+			URL:         fmt.Sprintf("ftp://%s", remotePath),
+			Filename:    filename,
+			Timelapse:   false,
+			BedLeveling: true,
+			FlowCali:    false,
+			Vibration:   false,
+			AMS: &BambuAMSCmd{
+				UseAMS:        true,
+				PrintSpeed:    "standard",
+				LayerInspect:  false,
+				LabelVersion:  "",
+				AMSMappingInfo: []int{},
+			},
+		},
+	}
+
+	if err := c.sendCommand(cmd); err != nil {
+		return fmt.Errorf("failed to send print command: %w", err)
+	}
+
+	slog.Info("started print job on Bambu printer", "printer_id", c.printerID, "file", filename)
+	return nil
+}
+
+// uploadFile uploads a file to the Bambu printer via FTPS.
+func (c *BambuClient) uploadFile(localPath string, remoteName string) (string, error) {
+	// Open local file
+	file, err := os.Open(localPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to open file: %w", err)
+	}
+	defer file.Close()
+
+	// Connect to FTP with TLS
+	ftpAddr := fmt.Sprintf("%s:%d", c.host, BambuFTPSPort)
+	tlsConfig := &tls.Config{
+		InsecureSkipVerify: true,
+		MinVersion:         tls.VersionTLS12,
+	}
+
+	conn, err := ftp.Dial(ftpAddr,
+		ftp.DialWithTimeout(30*time.Second),
+		ftp.DialWithExplicitTLS(tlsConfig),
+	)
+	if err != nil {
+		// Try implicit TLS
+		conn, err = ftp.Dial(ftpAddr,
+			ftp.DialWithTimeout(30*time.Second),
+			ftp.DialWithTLS(tlsConfig),
+		)
+		if err != nil {
+			return "", fmt.Errorf("failed to connect to FTP: %w", err)
+		}
+	}
+	defer conn.Quit()
+
+	// Login - Bambu uses "bblp" as username and access code as password
+	if err := conn.Login("bblp", c.accessCode); err != nil {
+		return "", fmt.Errorf("FTP login failed: %w", err)
+	}
+
+	// Determine remote directory
+	// Bambu printers typically store files in /cache or root
+	remoteDir := "/cache"
+	if err := conn.ChangeDir(remoteDir); err != nil {
+		remoteDir = "/"
+		conn.ChangeDir(remoteDir)
+	}
+
+	// Upload file
+	remotePath := filepath.Join(remoteDir, remoteName)
+	if err := conn.Stor(remoteName, file); err != nil {
+		return "", fmt.Errorf("failed to upload file: %w", err)
+	}
+
+	slog.Info("uploaded file to Bambu printer", "remote_path", remotePath)
+	return remotePath, nil
+}
+
+// PauseJob pauses the current print via MQTT command.
+func (c *BambuClient) PauseJob() error {
+	cmd := BambuCommand{
+		Print: &BambuPrintCmd{
+			Sequence: strconv.FormatInt(time.Now().UnixMilli(), 10),
+			Command:  "pause",
+		},
+	}
+
+	if err := c.sendCommand(cmd); err != nil {
+		return fmt.Errorf("failed to pause: %w", err)
+	}
+
+	slog.Info("paused print on Bambu printer", "printer_id", c.printerID)
+	return nil
+}
+
+// ResumeJob resumes a paused print via MQTT command.
+func (c *BambuClient) ResumeJob() error {
+	cmd := BambuCommand{
+		Print: &BambuPrintCmd{
+			Sequence: strconv.FormatInt(time.Now().UnixMilli(), 10),
+			Command:  "resume",
+		},
+	}
+
+	if err := c.sendCommand(cmd); err != nil {
+		return fmt.Errorf("failed to resume: %w", err)
+	}
+
+	slog.Info("resumed print on Bambu printer", "printer_id", c.printerID)
+	return nil
+}
+
+// CancelJob cancels the current print via MQTT command.
+func (c *BambuClient) CancelJob() error {
+	cmd := BambuCommand{
+		Print: &BambuPrintCmd{
+			Sequence: strconv.FormatInt(time.Now().UnixMilli(), 10),
+			Command:  "stop",
+		},
+	}
+
+	if err := c.sendCommand(cmd); err != nil {
+		return fmt.Errorf("failed to cancel: %w", err)
+	}
+
+	slog.Info("cancelled print on Bambu printer", "printer_id", c.printerID)
+	return nil
+}
+
+// SetStatusCallback sets the callback for status updates.
+func (c *BambuClient) SetStatusCallback(cb func(*model.PrinterState)) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.statusCallback = cb
+}
+
+// GetLiveView returns a reader for the printer's live camera feed.
+// Bambu cameras stream on port 6000 (RTSP) or via snapshot URL.
+func (c *BambuClient) GetLiveView() (io.ReadCloser, error) {
+	// Bambu cameras are typically accessed via RTSP or HTTP snapshot
+	// This would require additional implementation
+	return nil, fmt.Errorf("live view not yet implemented")
+}
+
+// parsePrintStatus converts Bambu print status to PrinterState.
+func (c *BambuClient) parsePrintStatus(print *BambuPrintStatus) *model.PrinterState {
+	state := &model.PrinterState{
+		PrinterID: c.printerID,
+		UpdatedAt: time.Now(),
+	}
+
+	// Map Bambu gcode_state to our status
+	switch print.GcodeState {
+	case "IDLE":
+		state.Status = model.PrinterStatusIdle
+	case "RUNNING", "PREPARE":
+		state.Status = model.PrinterStatusPrinting
+	case "PAUSE":
+		state.Status = model.PrinterStatusPaused
+	case "FINISH":
+		state.Status = model.PrinterStatusIdle
+	case "FAILED":
+		state.Status = model.PrinterStatusError
+	default:
+		// Check stg_cur for more specific states
+		if print.StgCur > 0 && print.StgCur < 255 {
+			state.Status = model.PrinterStatusPrinting
+		} else {
+			state.Status = model.PrinterStatusIdle
+		}
+	}
+
+	// Progress
+	if print.MCPercent > 0 {
+		state.Progress = float64(print.MCPercent)
+	}
+
+	// Current file
+	if print.SubtaskName != "" {
+		state.CurrentFile = print.SubtaskName
+	} else if print.GcodeFile != "" {
+		state.CurrentFile = print.GcodeFile
+	}
+
+	// Time remaining (in minutes from Bambu)
+	if print.MCRemainingTime > 0 {
+		state.TimeLeft = print.MCRemainingTime * 60 // Convert to seconds
+	}
+
+	// Temperatures
+	if print.BedTargetTemper > 0 || print.BedTemper > 0 {
+		state.BedTemp = print.BedTemper
+	}
+	if print.NozzleTargetTemper > 0 || print.NozzleTemper > 0 {
+		state.NozzleTemp = print.NozzleTemper
+	}
+
+	return state
+}
+
+// BambuMessage represents the top-level structure of Bambu MQTT messages.
+type BambuMessage struct {
+	Print   *BambuPrintStatus `json:"print,omitempty"`
+	Info    *BambuInfo        `json:"info,omitempty"`
+	System  *BambuSystem      `json:"system,omitempty"`
+	Pushing *BambuPushing     `json:"pushing,omitempty"`
+}
+
+// BambuPrintStatus contains print job status information.
+type BambuPrintStatus struct {
+	// Print state
+	GcodeState    string `json:"gcode_state"`
+	StgCur        int    `json:"stg_cur"`
+	PrintError    int    `json:"print_error"`
+	PrintType     string `json:"print_type"`
+	SubtaskName   string `json:"subtask_name"`
+	GcodeFile     string `json:"gcode_file"`
+	SubtaskID     string `json:"subtask_id"`
+	TaskID        string `json:"task_id"`
+
+	// Progress
+	MCPercent       int `json:"mc_percent"`
+	MCRemainingTime int `json:"mc_remaining_time"`
+	LayerNum        int `json:"layer_num"`
+	TotalLayerNum   int `json:"total_layer_num"`
+
+	// Temperatures
+	BedTemper         float64 `json:"bed_temper"`
+	BedTargetTemper   float64 `json:"bed_target_temper"`
+	NozzleTemper      float64 `json:"nozzle_temper"`
+	NozzleTargetTemper float64 `json:"nozzle_target_temper"`
+	ChamberTemper     float64 `json:"chamber_temper"`
+	NozzleDiameter    string  `json:"nozzle_diameter"`
+	NozzleType        string  `json:"nozzle_type"`
+
+	// Fan speeds (0-15 scale typically)
+	CoolingFanSpeed    int `json:"cooling_fan_speed"`
+	BigFan1Speed       int `json:"big_fan1_speed"`
+	BigFan2Speed       int `json:"big_fan2_speed"`
+	HeatbreakFanSpeed  int `json:"heatbreak_fan_speed"`
+
+	// Speeds and flow
+	SpeedMag       int     `json:"spd_mag"`
+	SpeedLevel     int     `json:"spd_lvl"`
+	PrintRealSpeed int     `json:"print_real_speed"`
+	FeedRateMag    int     `json:"feed_rate_mag"`
+
+	// AMS (Automatic Material System)
+	AMSStatus int            `json:"ams_status"`
+	AMS       *BambuAMS      `json:"ams,omitempty"`
+	VTTray    *BambuVTTray   `json:"vt_tray,omitempty"`
+
+	// Lights and misc
+	LightsReport []BambuLight `json:"lights_report,omitempty"`
+	WiFiSignal   string       `json:"wifi_signal"`
+	Online       *BambuOnline `json:"online,omitempty"`
+
+	// HMS (Health Management System) errors
+	HMS []BambuHMS `json:"hms,omitempty"`
+
+	// Lifecycle
+	LifecycleRelayID    string `json:"lifecycle"`
+	PrintStartTime      string `json:"gcode_start_time"`
+	PrintFinishAction   string `json:"print_finish_action"`
+	HomeFlag            int    `json:"home_flag"`
+	HWSwitch            int    `json:"hw_switch_state"`
+}
+
+// BambuAMS represents AMS (Automatic Material System) status.
+type BambuAMS struct {
+	AMSExistBits  string      `json:"ams_exist_bits"`
+	TrayExistBits string      `json:"tray_exist_bits"`
+	TrayNow       string      `json:"tray_now"`
+	TrayPre       string      `json:"tray_pre"`
+	TrayTar       string      `json:"tray_tar"`
+	Version       int         `json:"version"`
+	Units         []BambuUnit `json:"ams,omitempty"`
+}
+
+// BambuUnit represents a single AMS unit.
+type BambuUnit struct {
+	ID       string       `json:"id"`
+	Humidity string       `json:"humidity"`
+	Temp     string       `json:"temp"`
+	Trays    []BambuTray  `json:"tray"`
+}
+
+// BambuTray represents a tray/slot in an AMS unit.
+type BambuTray struct {
+	ID            string  `json:"id"`
+	TrayIDName    string  `json:"tray_id_name"`
+	TrayType      string  `json:"tray_type"`
+	TraySubBrands string  `json:"tray_sub_brands"`
+	TrayColor     string  `json:"tray_color"`
+	TrayWeight    string  `json:"tray_weight"`
+	TrayDiameter  string  `json:"tray_diameter"`
+	TrayTemp      string  `json:"tray_temp"`
+	TrayTime      string  `json:"tray_time"`
+	BedTempType   string  `json:"bed_temp_type"`
+	BedTemp       string  `json:"bed_temp"`
+	NozzleTempMax string  `json:"nozzle_temp_max"`
+	NozzleTempMin string  `json:"nozzle_temp_min"`
+	Remain        int     `json:"remain"`
+	TagUID        string  `json:"tag_uid"`
+	TrayUUID      string  `json:"tray_uuid"`
+	TrayInfoIdx   string  `json:"tray_info_idx"`
+	Cols          []string `json:"cols,omitempty"`
+}
+
+// BambuVTTray represents the external spool holder (virtual tray).
+type BambuVTTray struct {
+	ID            string `json:"id"`
+	TrayIDName    string `json:"tray_id_name"`
+	TrayType      string `json:"tray_type"`
+	TraySubBrands string `json:"tray_sub_brands"`
+	TrayColor     string `json:"tray_color"`
+	TrayWeight    string `json:"tray_weight"`
+	TrayDiameter  string `json:"tray_diameter"`
+	TrayTemp      string `json:"tray_temp"`
+	TrayTime      string `json:"tray_time"`
+	BedTempType   string `json:"bed_temp_type"`
+	BedTemp       string `json:"bed_temp"`
+	NozzleTempMax string `json:"nozzle_temp_max"`
+	NozzleTempMin string `json:"nozzle_temp_min"`
+	Remain        int    `json:"remain"`
+}
+
+// BambuLight represents a light status report.
+type BambuLight struct {
+	Node string `json:"node"`
+	Mode string `json:"mode"`
+}
+
+// BambuOnline represents online status information.
+type BambuOnline struct {
+	Ahb       bool `json:"ahb"`
+	Rfid      bool `json:"rfid"`
+	Version   int  `json:"version"`
+}
+
+// BambuHMS represents a Health Management System error.
+type BambuHMS struct {
+	Attr     int    `json:"attr"`
+	Code     int    `json:"code"`
+	Module   int    `json:"module"`
+	Severity int    `json:"severity"`
+}
+
+// BambuInfo contains printer information.
+type BambuInfo struct {
+	Sequence string `json:"sequence_id"`
+	Command  string `json:"command"`
+	Module   []struct {
+		Name    string `json:"name"`
+		Project string `json:"project_name"`
+		SWVer   string `json:"sw_ver"`
+		HWVer   string `json:"hw_ver"`
+		SerNo   string `json:"sn"`
+	} `json:"module,omitempty"`
+}
+
+// BambuSystem contains system information.
+type BambuSystem struct {
+	Sequence  string `json:"sequence_id"`
+	Command   string `json:"command"`
+	Result    string `json:"result"`
+	Reason    string `json:"reason,omitempty"`
+	LedMode   string `json:"led_mode,omitempty"`
+	LedOnTime string `json:"led_on_time,omitempty"`
+}
+
+// BambuPushing contains push notification info.
+type BambuPushing struct {
+	Sequence   string `json:"sequence_id"`
+	Command    string `json:"command"`
+	PushTarget int    `json:"push_target,omitempty"`
+	Version    int    `json:"version,omitempty"`
+}
+
+// BambuCommand represents a command to send to the printer.
+type BambuCommand struct {
+	Print   *BambuPrintCmd   `json:"print,omitempty"`
+	System  *BambuSystemCmd  `json:"system,omitempty"`
+	Pushing *BambuPushingCmd `json:"pushing,omitempty"`
+}
+
+// BambuPrintCmd represents a print control command.
+type BambuPrintCmd struct {
+	Sequence    string       `json:"sequence_id"`
+	Command     string       `json:"command"`
+	Param       string       `json:"param,omitempty"`
+	ProjectID   string       `json:"project_id,omitempty"`
+	ProfileID   string       `json:"profile_id,omitempty"`
+	TaskID      string       `json:"task_id,omitempty"`
+	Subtask     string       `json:"subtask_id,omitempty"`
+	SubtaskName string       `json:"subtask_name,omitempty"`
+	URL         string       `json:"url,omitempty"`
+	Filename    string       `json:"filename,omitempty"`
+	Timelapse   bool         `json:"timelapse,omitempty"`
+	BedLeveling bool         `json:"bed_leveling,omitempty"`
+	FlowCali    bool         `json:"flow_cali,omitempty"`
+	Vibration   bool         `json:"vibration_cali,omitempty"`
+	AMS         *BambuAMSCmd `json:"ams,omitempty"`
+}
+
+// BambuAMSCmd represents AMS settings in a print command.
+type BambuAMSCmd struct {
+	UseAMS         bool   `json:"use_ams"`
+	PrintSpeed     string `json:"print_speed,omitempty"`
+	LayerInspect   bool   `json:"layer_inspect,omitempty"`
+	LabelVersion   string `json:"label_version,omitempty"`
+	AMSMappingInfo []int  `json:"ams_mapping,omitempty"`
+}
+
+// BambuSystemCmd represents a system command.
+type BambuSystemCmd struct {
+	Sequence  string `json:"sequence_id"`
+	Command   string `json:"command"`
+	LedMode   string `json:"led_mode,omitempty"`
+	LedOnTime string `json:"led_on_time,omitempty"`
+}
+
+// BambuPushingCmd represents a push command.
+type BambuPushingCmd struct {
+	Sequence   string `json:"sequence_id"`
+	Command    string `json:"command"`
+	Version    int    `json:"version,omitempty"`
+	PushTarget int    `json:"push_target,omitempty"`
+}
+
+// SetLEDMode sets the LED light mode on the printer.
+func (c *BambuClient) SetLEDMode(mode string) error {
+	cmd := BambuCommand{
+		System: &BambuSystemCmd{
+			Sequence: strconv.FormatInt(time.Now().UnixMilli(), 10),
+			Command:  "ledctrl",
+			LedMode:  mode, // "on", "off", "flashing"
+		},
+	}
+	return c.sendCommand(cmd)
+}
+
+// SetPrintSpeed sets the print speed profile.
+// Levels: 1=silent, 2=standard, 3=sport, 4=ludicrous
+func (c *BambuClient) SetPrintSpeed(level int) error {
+	cmd := BambuCommand{
+		Print: &BambuPrintCmd{
+			Sequence: strconv.FormatInt(time.Now().UnixMilli(), 10),
+			Command:  "print_speed",
+			Param:    strconv.Itoa(level),
+		},
+	}
+	return c.sendCommand(cmd)
+}
+
+// GetAMSStatus returns the current AMS filament information.
+func (c *BambuClient) GetAMSStatus() (*BambuAMS, error) {
+	// This would parse from the last received status
+	// For now, request a status update
+	c.requestPushAll()
+	return nil, fmt.Errorf("not implemented - use status callback")
+}

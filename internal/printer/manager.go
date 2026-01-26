@@ -32,9 +32,10 @@ type Client interface {
 
 // Manager manages connections to multiple printers.
 type Manager struct {
-	mu      sync.RWMutex
-	clients map[uuid.UUID]Client
-	states  map[uuid.UUID]*model.PrinterState
+	mu          sync.RWMutex
+	clients     map[uuid.UUID]Client
+	states      map[uuid.UUID]*model.PrinterState
+	broadcaster model.Broadcaster
 }
 
 // NewManager creates a new printer manager.
@@ -42,6 +43,21 @@ func NewManager() *Manager {
 	return &Manager{
 		clients: make(map[uuid.UUID]Client),
 		states:  make(map[uuid.UUID]*model.PrinterState),
+	}
+}
+
+// SetBroadcaster sets the broadcaster for real-time updates.
+func (m *Manager) SetBroadcaster(b model.Broadcaster) {
+	m.broadcaster = b
+}
+
+// broadcast sends an event to all connected WebSocket clients.
+func (m *Manager) broadcast(eventType string, data interface{}) {
+	if m.broadcaster != nil {
+		m.broadcaster.Broadcast(model.BroadcastEvent{
+			Type: eventType,
+			Data: data,
+		})
 	}
 }
 
@@ -77,6 +93,9 @@ func (m *Manager) Connect(p *model.Printer) error {
 		m.states[p.ID] = state
 		m.mu.Unlock()
 		slog.Info("printer status update", "printer_id", p.ID, "status", state.Status, "progress", state.Progress)
+
+		// Broadcast state change to WebSocket clients
+		m.broadcast(model.EventPrinterStateUpdated, state)
 	})
 
 	// Connect
@@ -95,9 +114,17 @@ func (m *Manager) Connect(p *model.Printer) error {
 	// Get initial status
 	if state, err := client.GetStatus(); err == nil {
 		m.states[p.ID] = state
+		// Broadcast initial state
+		m.broadcast(model.EventPrinterStateUpdated, state)
 	}
 
 	slog.Info("connected to printer", "printer_id", p.ID, "type", p.ConnectionType)
+
+	// Broadcast printer connected event
+	m.broadcast(model.EventPrinterConnected, map[string]interface{}{
+		"printer_id": p.ID,
+	})
+
 	return nil
 }
 
@@ -111,6 +138,11 @@ func (m *Manager) Disconnect(id uuid.UUID) {
 		delete(m.clients, id)
 	}
 	delete(m.states, id)
+
+	// Broadcast printer disconnected event
+	m.broadcast(model.EventPrinterDisconnected, map[string]interface{}{
+		"printer_id": id,
+	})
 }
 
 // GetState retrieves current state for a printer.

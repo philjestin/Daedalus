@@ -1,28 +1,41 @@
 import { Link } from 'react-router-dom'
-import { 
-  FolderKanban, 
-  Printer, 
+import { useQuery } from '@tanstack/react-query'
+import {
+  FolderKanban,
+  Printer,
   Play,
   AlertCircle,
-  Clock
+  Clock,
+  TrendingUp,
+  TrendingDown,
+  DollarSign,
+  Receipt
 } from 'lucide-react'
 import { useProjects } from '../hooks/useProjects'
 import { usePrinters, usePrinterStates } from '../hooks/usePrinters'
+import { statsApi } from '../api/client'
 import { cn, getStatusBadge } from '../lib/utils'
 
 export default function Dashboard() {
   const { data: projects = [], isLoading: projectsLoading } = useProjects()
   const { data: printers = [], isLoading: printersLoading } = usePrinters()
   const { data: printerStates = {} } = usePrinterStates()
+  const { data: financials } = useQuery({
+    queryKey: ['stats', 'financial'],
+    queryFn: () => statsApi.getFinancialSummary(),
+    refetchInterval: 30000,
+  })
 
   const activeProjects = projects.filter(p => p.status === 'active')
   const printingPrinters = printers.filter(p => printerStates[p.id]?.status === 'printing')
-  const idlePrinters = printers.filter(p => 
+  const idlePrinters = printers.filter(p =>
     printerStates[p.id]?.status === 'idle' || !printerStates[p.id]
   )
-  const errorPrinters = printers.filter(p => 
+  const errorPrinters = printers.filter(p =>
     printerStates[p.id]?.status === 'error'
   )
+
+  const formatCents = (cents: number) => `$${(cents / 100).toFixed(2)}`
 
   return (
     <div className="p-8">
@@ -63,6 +76,93 @@ export default function Dashboard() {
           color="text-red-400"
         />
       </div>
+
+      {/* Financial Summary */}
+      {financials && (
+        <div className="card p-6 mb-8">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-surface-100">
+              Financial Overview
+            </h2>
+            <Link
+              to="/expenses"
+              className="text-sm text-accent-400 hover:text-accent-300"
+            >
+              Manage expenses →
+            </Link>
+          </div>
+
+          <div className="grid grid-cols-4 gap-6">
+            <div>
+              <div className="flex items-center gap-2 text-sm text-surface-500 mb-1">
+                <DollarSign className="h-4 w-4" />
+                Total Revenue
+              </div>
+              <div className="text-2xl font-bold text-emerald-400">
+                {formatCents(financials.total_sales_gross_cents)}
+              </div>
+              <div className="text-xs text-surface-500 mt-1">
+                {financials.sales_count} sales
+              </div>
+            </div>
+
+            <div>
+              <div className="flex items-center gap-2 text-sm text-surface-500 mb-1">
+                <Receipt className="h-4 w-4" />
+                Total Expenses
+              </div>
+              <div className="text-2xl font-bold text-red-400">
+                {formatCents(financials.total_expenses_cents)}
+              </div>
+              <div className="text-xs text-surface-500 mt-1">
+                {financials.confirmed_expense_count} confirmed
+                {financials.pending_expense_count > 0 && (
+                  <span className="text-amber-400 ml-1">
+                    ({financials.pending_expense_count} pending)
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <div>
+              <div className="flex items-center gap-2 text-sm text-surface-500 mb-1">
+                <Play className="h-4 w-4" />
+                Material Used
+              </div>
+              <div className="text-2xl font-bold text-blue-400">
+                {(financials.total_material_used_grams / 1000).toFixed(2)} kg
+              </div>
+              <div className="text-xs text-surface-500 mt-1">
+                {formatCents(Math.round(financials.total_material_cost * 100))} cost
+              </div>
+            </div>
+
+            <div>
+              <div className="flex items-center gap-2 text-sm text-surface-500 mb-1">
+                {financials.net_profit_cents >= 0 ? (
+                  <TrendingUp className="h-4 w-4 text-emerald-400" />
+                ) : (
+                  <TrendingDown className="h-4 w-4 text-red-400" />
+                )}
+                Net Profit
+              </div>
+              <div
+                className={cn(
+                  'text-2xl font-bold',
+                  financials.net_profit_cents >= 0
+                    ? 'text-emerald-400'
+                    : 'text-red-400'
+                )}
+              >
+                {formatCents(financials.net_profit_cents)}
+              </div>
+              <div className="text-xs text-surface-500 mt-1">
+                {financials.successful_print_count}/{financials.completed_print_count} prints successful
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-2 gap-6">
         {/* Printer Status */}

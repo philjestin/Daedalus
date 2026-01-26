@@ -34,6 +34,10 @@ func main() {
 	port := getEnv("PORT", "8080")
 	uploadDir := getEnv("UPLOAD_DIR", "./uploads")
 
+	// Etsy OAuth configuration (optional)
+	etsyClientID := os.Getenv("ETSY_CLIENT_ID")
+	etsyRedirectURI := getEnv("ETSY_REDIRECT_URI", "http://localhost:8080/api/integrations/etsy/callback")
+
 	// Connect to database
 	ctx := context.Background()
 	pool, err := pgxpool.New(ctx, dbURL)
@@ -56,15 +60,24 @@ func main() {
 	// Initialize repositories
 	repos := repository.NewRepositories(pool)
 
-	// Initialize printer manager
-	printerManager := printer.NewManager()
-
 	// Initialize WebSocket hub for real-time updates
 	hub := realtime.NewHub()
 	go hub.Run()
 
-	// Initialize services
-	services := service.NewServices(repos, fileStorage, printerManager, hub)
+	// Initialize printer manager with hub for broadcasting state changes
+	printerManager := printer.NewManager()
+	printerManager.SetBroadcaster(hub)
+
+	// Initialize services with Etsy configuration
+	etsyConfig := service.EtsyConfig{
+		ClientID:    etsyClientID,
+		RedirectURI: etsyRedirectURI,
+	}
+	services := service.NewServicesWithEtsy(repos, fileStorage, printerManager, hub, etsyConfig)
+
+	if etsyClientID != "" {
+		slog.Info("Etsy integration enabled", "redirect_uri", etsyRedirectURI)
+	}
 
 	// Initialize HTTP router
 	router := api.NewRouter(services, hub)

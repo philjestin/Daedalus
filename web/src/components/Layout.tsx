@@ -1,19 +1,27 @@
 import { Outlet, NavLink } from 'react-router-dom'
-import { 
-  LayoutDashboard, 
-  FolderKanban, 
-  Printer, 
+import {
+  LayoutDashboard,
+  FolderKanban,
+  Printer,
   Package,
   Settings,
-  Layers
+  Layers,
+  Receipt,
+  FileStack,
+  ShoppingCart,
+  Store
 } from 'lucide-react'
 import { cn } from '../lib/utils'
 
 const navigation = [
   { name: 'Dashboard', href: '/', icon: LayoutDashboard },
   { name: 'Projects', href: '/projects', icon: FolderKanban },
+  { name: 'Templates', href: '/templates', icon: FileStack },
   { name: 'Printers', href: '/printers', icon: Printer },
   { name: 'Materials', href: '/materials', icon: Package },
+  { name: 'Expenses', href: '/expenses', icon: Receipt },
+  { name: 'Etsy Orders', href: '/etsy/orders', icon: ShoppingCart },
+  { name: 'Etsy Listings', href: '/etsy/listings', icon: Store },
 ]
 
 export default function Layout() {

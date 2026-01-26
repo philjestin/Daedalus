@@ -8,15 +8,14 @@ import (
 	"sync"
 	"time"
 
+	"github.com/hyperion/printfarm/internal/model"
 	"nhooyr.io/websocket"
 	"nhooyr.io/websocket/wsjson"
 )
 
 // Event represents a real-time event to broadcast.
-type Event struct {
-	Type string      `json:"type"`
-	Data interface{} `json:"data"`
-}
+// This is an alias for model.BroadcastEvent for backwards compatibility.
+type Event = model.BroadcastEvent
 
 // Client represents a connected WebSocket client.
 type Client struct {

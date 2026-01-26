@@ -8,6 +8,10 @@ export interface Project {
   status: ProjectStatus
   target_date?: string
   tags: string[]
+  template_id?: string
+  source: string
+  external_order_id?: string
+  customer_notes?: string
   created_at: string
   updated_at: string
 }
@@ -150,8 +154,304 @@ export interface PrintJob {
   created_at: string
 }
 
+// Print Profile type
+export type PrintProfile = 'standard' | 'detailed' | 'fast' | 'strong' | 'custom'
+
+// Printer constraints for recipes
+export interface PrinterConstraints {
+  min_bed_size?: BuildVolume
+  nozzle_diameters?: number[]
+  requires_enclosure: boolean
+  requires_ams: boolean
+  printer_tags?: string[]
+}
+
+// Color specification for material matching
+export interface ColorSpec {
+  mode: 'exact' | 'category' | 'any'
+  hex?: string
+  name?: string
+}
+
+// Recipe material requirement
+export interface RecipeMaterial {
+  id: string
+  recipe_id: string
+  material_type: MaterialType
+  color_spec?: ColorSpec
+  weight_grams: number
+  ams_position?: number
+  sequence_order: number
+  notes?: string
+  created_at: string
+}
+
+// Cost estimate breakdown
+export interface RecipeCostEstimate {
+  material_cost_cents: number
+  time_cost_cents: number
+  total_cost_cents: number
+  estimated_print_time_seconds: number
+  material_breakdown: RecipeMaterialCostBreakdown[]
+  hourly_rate_cents: number
+}
+
+export interface RecipeMaterialCostBreakdown {
+  material_type: string
+  weight_grams: number
+  cost_cents: number
+  color_name?: string
+}
+
+// Compatible spool result
+export interface CompatibleSpool {
+  spool: MaterialSpool
+  material: Material
+  match_reason: string
+}
+
+// Printer validation result
+export interface PrinterValidationResult {
+  valid: boolean
+  errors?: string[]
+  warnings?: string[]
+}
+
+// Template types (enhanced as Recipe)
+export interface Template {
+  id: string
+  name: string
+  description: string
+  sku: string
+  tags: string[]
+  material_type: MaterialType
+  estimated_material_grams: number
+  preferred_printer_id?: string
+  allow_any_printer: boolean
+  quantity_per_order: number
+  post_process_checklist: string[]
+  is_active: boolean
+  printer_constraints?: PrinterConstraints
+  print_profile: PrintProfile
+  estimated_print_seconds: number
+  version: number
+  archived_at?: string
+  created_at: string
+  updated_at: string
+  designs?: TemplateDesign[]
+  materials?: RecipeMaterial[]
+}
+
+export interface TemplateDesign {
+  id: string
+  template_id: string
+  design_id: string
+  is_primary: boolean
+  quantity: number
+  sequence_order: number
+  notes: string
+  created_at: string
+  design?: Design
+}
+
 // API response types
 export interface ApiError {
   error: string
+}
+
+// Expense types
+export type ExpenseStatus = 'pending' | 'confirmed' | 'rejected'
+export type ExpenseCategory = 'filament' | 'parts' | 'tools' | 'shipping' | 'marketplace_fees' | 'subscription' | 'other'
+
+export interface FilamentMetadata {
+  brand?: string
+  material_type?: string
+  color?: string
+  color_hex?: string
+  weight_grams?: number
+  diameter_mm?: number
+}
+
+export interface ExpenseItem {
+  id: string
+  expense_id: string
+  description: string
+  quantity: number
+  unit_price_cents: number
+  total_price_cents: number
+  sku?: string
+  vendor_item_id?: string
+  category: ExpenseCategory
+  metadata?: FilamentMetadata
+  matched_spool_id?: string
+  matched_material_id?: string
+  confidence: number
+  action_taken: 'none' | 'created_spool' | 'matched_spool' | 'skipped'
+  created_at: string
+}
+
+export interface Expense {
+  id: string
+  occurred_at: string
+  vendor: string
+  subtotal_cents: number
+  tax_cents: number
+  shipping_cents: number
+  total_cents: number
+  currency: string
+  category: ExpenseCategory
+  notes: string
+  receipt_file_id?: string
+  receipt_file_path?: string
+  status: ExpenseStatus
+  confidence: number
+  created_at: string
+  updated_at: string
+  items?: ExpenseItem[]
+}
+
+// Sale types
+export type SalesChannel = 'marketplace' | 'etsy' | 'website' | 'direct' | 'other'
+
+export interface Sale {
+  id: string
+  occurred_at: string
+  channel: SalesChannel
+  platform: string
+  gross_cents: number
+  fees_cents: number
+  shipping_charged_cents: number
+  shipping_cost_cents: number
+  tax_collected_cents: number
+  net_cents: number
+  currency: string
+  project_id?: string
+  order_reference?: string
+  customer_name?: string
+  item_description: string
+  quantity: number
+  notes: string
+  created_at: string
+  updated_at: string
+}
+
+// Etsy Integration types
+export interface EtsyIntegration {
+  connected: boolean
+  configured: boolean
+  shop_id?: number
+  shop_name?: string
+  token_expires_at?: string
+  scopes?: string[]
+  is_active?: boolean
+  last_sync_at?: string
+  created_at?: string
+  updated_at?: string
+}
+
+// Etsy Receipt (Order) types
+export interface EtsyReceipt {
+  id: string
+  etsy_receipt_id: number
+  etsy_shop_id: number
+  buyer_user_id?: number
+  buyer_email?: string
+  name: string
+  status: string
+  message_from_buyer?: string
+  is_shipped: boolean
+  is_paid: boolean
+  is_gift: boolean
+  gift_message?: string
+  grandtotal_cents: number
+  subtotal_cents: number
+  total_price_cents: number
+  total_shipping_cost_cents: number
+  total_tax_cost_cents: number
+  discount_cents: number
+  currency: string
+  shipping_name?: string
+  shipping_address_first_line?: string
+  shipping_address_second_line?: string
+  shipping_city?: string
+  shipping_state?: string
+  shipping_zip?: string
+  shipping_country_code?: string
+  create_timestamp?: string
+  update_timestamp?: string
+  is_processed: boolean
+  project_id?: string
+  synced_at: string
+  created_at: string
+  updated_at: string
+  items?: EtsyReceiptItem[]
+}
+
+export interface EtsyReceiptItem {
+  id: string
+  etsy_receipt_item_id: number
+  receipt_id: string
+  etsy_listing_id: number
+  etsy_transaction_id: number
+  title: string
+  description?: string
+  quantity: number
+  price_cents: number
+  shipping_cost_cents: number
+  sku?: string
+  variations?: unknown[]
+  is_digital: boolean
+  template_id?: string
+  created_at: string
+}
+
+// Etsy Listing types
+export interface EtsyListing {
+  id: string
+  etsy_listing_id: number
+  etsy_shop_id: number
+  title: string
+  description?: string
+  state: string
+  quantity: number
+  url?: string
+  views: number
+  num_favorers: number
+  is_customizable: boolean
+  is_personalizable: boolean
+  tags?: string[]
+  has_variations: boolean
+  price_cents?: number
+  currency: string
+  skus?: string[]
+  synced_at: string
+  created_at: string
+  updated_at: string
+  linked_template?: Template
+}
+
+// Etsy Webhook Event types
+export interface EtsyWebhookEvent {
+  id: string
+  event_type: string
+  resource_type: string
+  resource_id?: number
+  shop_id?: number
+  payload: unknown
+  signature?: string
+  processed: boolean
+  processed_at?: string
+  error?: string
+  received_at: string
+  created_at: string
+}
+
+// Sync Result type
+export interface SyncResult {
+  total_fetched: number
+  created: number
+  updated: number
+  skipped: number
+  errors: number
 }
 

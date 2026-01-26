@@ -1,20 +1,27 @@
 import { useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { 
-  ArrowLeft, 
-  Plus, 
+import {
+  ArrowLeft,
+  Plus,
   Upload,
   Printer,
   Play,
   FileCode,
-  Box
+  Box,
+  AlertTriangle,
+  CheckCircle,
+  XCircle,
+  Star,
+  History,
+  Clock
 } from 'lucide-react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useProject, useParts, useCreatePart, useUpdateProject } from '../hooks/useProjects'
 import { usePrinters, usePrinterStates } from '../hooks/usePrinters'
+import { useSpoolsWithMaterials } from '../hooks/useMaterials'
 import { designsApi, printJobsApi } from '../api/client'
 import { cn, getStatusBadge, formatBytes, formatRelativeTime } from '../lib/utils'
-import type { Design, Part, ProjectStatus } from '../types'
+import type { Design, Part, ProjectStatus, Material, PrintJob } from '../types'
 
 export default function ProjectDetail() {
   const { id } = useParams<{ id: string }>()
@@ -32,6 +39,8 @@ export default function ProjectDetail() {
   const [selectedPart, setSelectedPart] = useState<Part | null>(null)
   const [showUpload, setShowUpload] = useState(false)
   const [showSendToPrinter, setShowSendToPrinter] = useState<Design | null>(null)
+  const [showOutcomeCapture, setShowOutcomeCapture] = useState<PrintJob | null>(null)
+  const [activeTab, setActiveTab] = useState<'parts' | 'history'>('parts')
 
   const handleAddPart = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
@@ -170,47 +179,92 @@ export default function ProjectDetail() {
         </div>
       </div>
 
-      {/* Parts */}
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-xl font-semibold text-surface-100">Parts</h2>
-        <button 
-          onClick={() => setShowAddPart(true)}
-          className="btn btn-secondary"
+      {/* Tab Navigation */}
+      <div className="flex items-center gap-4 border-b border-surface-800 mb-4">
+        <button
+          onClick={() => setActiveTab('parts')}
+          className={cn(
+            'flex items-center gap-2 px-4 py-2 border-b-2 -mb-px transition-colors',
+            activeTab === 'parts'
+              ? 'border-accent-500 text-accent-400'
+              : 'border-transparent text-surface-400 hover:text-surface-200'
+          )}
         >
-          <Plus className="h-4 w-4 mr-2" />
-          Add Part
+          <Box className="h-4 w-4" />
+          Parts
+        </button>
+        <button
+          onClick={() => setActiveTab('history')}
+          className={cn(
+            'flex items-center gap-2 px-4 py-2 border-b-2 -mb-px transition-colors',
+            activeTab === 'history'
+              ? 'border-accent-500 text-accent-400'
+              : 'border-transparent text-surface-400 hover:text-surface-200'
+          )}
+        >
+          <History className="h-4 w-4" />
+          Print History
         </button>
       </div>
 
-      {partsLoading ? (
-        <div className="text-surface-500">Loading parts...</div>
-      ) : parts.length === 0 ? (
-        <div className="card p-8 text-center">
-          <Box className="h-12 w-12 mx-auto mb-3 text-surface-600" />
-          <h3 className="text-lg font-medium text-surface-300 mb-2">No parts yet</h3>
-          <p className="text-surface-500 mb-4">Add parts to start organizing your project</p>
-          <button 
-            onClick={() => setShowAddPart(true)}
-            className="btn btn-primary"
-          >
-            <Plus className="h-4 w-4 mr-2" />
-            Add First Part
-          </button>
-        </div>
-      ) : (
-        <div className="space-y-4">
-          {parts.map((part) => (
-            <PartCard
-              key={part.id}
-              part={part}
-              onUpload={() => {
-                setSelectedPart(part)
-                setShowUpload(true)
-              }}
-              onSendToPrinter={(design) => setShowSendToPrinter(design)}
-            />
-          ))}
-        </div>
+      {/* Parts Tab */}
+      {activeTab === 'parts' && (
+        <>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-semibold text-surface-100">Parts</h2>
+            <button
+              onClick={() => setShowAddPart(true)}
+              className="btn btn-secondary"
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              Add Part
+            </button>
+          </div>
+
+          {partsLoading ? (
+            <div className="text-surface-500">Loading parts...</div>
+          ) : parts.length === 0 ? (
+            <div className="card p-8 text-center">
+              <Box className="h-12 w-12 mx-auto mb-3 text-surface-600" />
+              <h3 className="text-lg font-medium text-surface-300 mb-2">
+                No parts yet
+              </h3>
+              <p className="text-surface-500 mb-4">
+                Add parts to start organizing your project
+              </p>
+              <button
+                onClick={() => setShowAddPart(true)}
+                className="btn btn-primary"
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Add First Part
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {parts.map((part) => (
+                <PartCard
+                  key={part.id}
+                  part={part}
+                  onUpload={() => {
+                    setSelectedPart(part)
+                    setShowUpload(true)
+                  }}
+                  onSendToPrinter={(design) => setShowSendToPrinter(design)}
+                />
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* History Tab */}
+      {activeTab === 'history' && (
+        <PrintHistoryTab
+          parts={parts}
+          printers={printers}
+          onRecordOutcome={(job) => setShowOutcomeCapture(job)}
+        />
       )}
 
       {/* Add Part Modal */}
@@ -300,6 +354,19 @@ export default function ProjectDetail() {
           onClose={() => setShowSendToPrinter(null)}
         />
       )}
+
+      {/* Outcome Capture Modal */}
+      {showOutcomeCapture && (
+        <OutcomeCaptureModal
+          job={showOutcomeCapture}
+          onClose={() => setShowOutcomeCapture(null)}
+          onSuccess={() => {
+            queryClient.invalidateQueries({ queryKey: ['print-jobs'] })
+            queryClient.invalidateQueries({ queryKey: ['spools'] })
+            setShowOutcomeCapture(null)
+          }}
+        />
+      )}
     </div>
   )
 }
@@ -384,6 +451,245 @@ function PartCard({
             ))}
           </div>
         )}
+      </div>
+    </div>
+  )
+}
+
+// Print History Tab Component
+function PrintHistoryTab({
+  parts,
+  printers,
+  onRecordOutcome,
+}: {
+  parts: Part[]
+  printers: { id: string; name: string }[]
+  onRecordOutcome: (job: PrintJob) => void
+}) {
+  // Get all designs from all parts
+  const designQueries = parts.map((part) =>
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    useQuery({
+      queryKey: ['designs', part.id],
+      queryFn: () => designsApi.listByPart(part.id),
+    })
+  )
+
+  const allDesigns = designQueries.flatMap((q) => q.data || [])
+  const isLoadingDesigns = designQueries.some((q) => q.isLoading)
+
+  // Get print jobs for all designs
+  const jobQueries = allDesigns.map((design) =>
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    useQuery({
+      queryKey: ['design-jobs', design.id],
+      queryFn: () => designsApi.listPrintJobs(design.id),
+      enabled: !!design.id,
+    })
+  )
+
+  const allJobs = jobQueries.flatMap((q) => q.data || [])
+  const isLoadingJobs = jobQueries.some((q) => q.isLoading)
+
+  // Create lookup maps
+  const designMap = Object.fromEntries(allDesigns.map((d) => [d.id, d]))
+  const printerMap = Object.fromEntries(printers.map((p) => [p.id, p]))
+
+  // Sort jobs by created_at descending
+  const sortedJobs = [...allJobs].sort(
+    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+  )
+
+  const formatDuration = (startedAt?: string, completedAt?: string) => {
+    if (!startedAt) return '-'
+    const start = new Date(startedAt)
+    const end = completedAt ? new Date(completedAt) : new Date()
+    const diffMs = end.getTime() - start.getTime()
+    const hours = Math.floor(diffMs / (1000 * 60 * 60))
+    const mins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60))
+    if (hours > 0) return `${hours}h ${mins}m`
+    return `${mins}m`
+  }
+
+  if (isLoadingDesigns || isLoadingJobs) {
+    return <div className="text-surface-500">Loading print history...</div>
+  }
+
+  if (allJobs.length === 0) {
+    return (
+      <div className="card p-8 text-center">
+        <History className="h-12 w-12 mx-auto mb-3 text-surface-600" />
+        <h3 className="text-lg font-medium text-surface-300 mb-2">
+          No print history yet
+        </h3>
+        <p className="text-surface-500">
+          Print jobs will appear here once you start printing
+        </p>
+      </div>
+    )
+  }
+
+  // Calculate totals
+  const totalMaterialUsed = allJobs.reduce(
+    (sum, job) => sum + (job.outcome?.material_used || 0),
+    0
+  )
+  const totalCost = allJobs.reduce(
+    (sum, job) => sum + (job.outcome?.material_cost || 0),
+    0
+  )
+  const successfulJobs = allJobs.filter(
+    (job) => job.outcome?.success === true
+  ).length
+  const failedJobs = allJobs.filter(
+    (job) => job.outcome?.success === false || job.status === 'failed'
+  ).length
+
+  return (
+    <div className="space-y-4">
+      {/* Cost Summary */}
+      <div className="grid grid-cols-4 gap-4">
+        <div className="card p-4">
+          <div className="text-sm text-surface-500 mb-1">Total Prints</div>
+          <div className="text-2xl font-semibold text-surface-100">
+            {allJobs.length}
+          </div>
+        </div>
+        <div className="card p-4">
+          <div className="text-sm text-surface-500 mb-1">Success Rate</div>
+          <div className="text-2xl font-semibold text-emerald-400">
+            {allJobs.length > 0
+              ? Math.round((successfulJobs / (successfulJobs + failedJobs || 1)) * 100)
+              : 0}
+            %
+          </div>
+        </div>
+        <div className="card p-4">
+          <div className="text-sm text-surface-500 mb-1">Material Used</div>
+          <div className="text-2xl font-semibold text-surface-100">
+            {totalMaterialUsed.toFixed(0)}g
+          </div>
+        </div>
+        <div className="card p-4">
+          <div className="text-sm text-surface-500 mb-1">Total Cost</div>
+          <div className="text-2xl font-semibold text-emerald-400">
+            ${totalCost.toFixed(2)}
+          </div>
+        </div>
+      </div>
+
+      {/* Job List */}
+      <div className="space-y-3">
+      {sortedJobs.map((job) => {
+        const design = designMap[job.design_id]
+        const printer = printerMap[job.printer_id]
+        const needsOutcome =
+          (job.status === 'completed' || job.status === 'failed') && !job.outcome
+
+        return (
+          <div
+            key={job.id}
+            className="card p-4 flex items-center justify-between"
+          >
+            <div className="flex items-center gap-4">
+              <div
+                className={cn(
+                  'w-10 h-10 rounded-lg flex items-center justify-center',
+                  job.status === 'completed' && job.outcome?.success
+                    ? 'bg-emerald-500/20 text-emerald-400'
+                    : job.status === 'failed' || (job.outcome && !job.outcome.success)
+                    ? 'bg-red-500/20 text-red-400'
+                    : job.status === 'printing'
+                    ? 'bg-blue-500/20 text-blue-400'
+                    : 'bg-surface-700 text-surface-400'
+                )}
+              >
+                {job.status === 'completed' && job.outcome?.success ? (
+                  <CheckCircle className="h-5 w-5" />
+                ) : job.status === 'failed' ||
+                  (job.outcome && !job.outcome.success) ? (
+                  <XCircle className="h-5 w-5" />
+                ) : job.status === 'printing' ? (
+                  <Printer className="h-5 w-5" />
+                ) : (
+                  <Clock className="h-5 w-5" />
+                )}
+              </div>
+
+              <div>
+                <div className="font-medium text-surface-100">
+                  {design?.file_name || 'Unknown design'}
+                </div>
+                <div className="text-sm text-surface-500 flex items-center gap-2">
+                  <span>{printer?.name || 'Unknown printer'}</span>
+                  <span>•</span>
+                  <span>{formatRelativeTime(job.created_at)}</span>
+                  {job.started_at && (
+                    <>
+                      <span>•</span>
+                      <span>{formatDuration(job.started_at, job.completed_at)}</span>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3">
+              {job.outcome && (
+                <div className="text-right text-sm">
+                  <div className="text-surface-300">
+                    {job.outcome.material_used.toFixed(1)}g used
+                    {job.outcome.material_cost > 0 && (
+                      <span className="text-emerald-400 ml-2">
+                        ${job.outcome.material_cost.toFixed(2)}
+                      </span>
+                    )}
+                  </div>
+                  {job.outcome.quality_rating && (
+                    <div className="flex items-center gap-0.5 justify-end">
+                      {[1, 2, 3, 4, 5].map((star) => (
+                        <Star
+                          key={star}
+                          className={cn(
+                            'h-3 w-3',
+                            star <= job.outcome!.quality_rating!
+                              ? 'fill-amber-400 text-amber-400'
+                              : 'text-surface-600'
+                          )}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <span
+                className={cn(
+                  'badge',
+                  getStatusBadge(
+                    job.outcome?.success === false ? 'failed' : job.status
+                  )
+                )}
+              >
+                {job.outcome?.success === false
+                  ? 'failed'
+                  : job.status === 'completed' && job.outcome?.success
+                  ? 'success'
+                  : job.status}
+              </span>
+
+              {needsOutcome && (
+                <button
+                  onClick={() => onRecordOutcome(job)}
+                  className="btn btn-secondary text-xs py-1 px-2"
+                >
+                  Record Outcome
+                </button>
+              )}
+            </div>
+          </div>
+        )
+      })}
       </div>
     </div>
   )
@@ -483,6 +789,16 @@ function UploadDesignModal({
   )
 }
 
+// Spool with material info type
+interface SpoolWithMaterial {
+  id: string
+  material_id: string
+  initial_weight: number
+  remaining_weight: number
+  status: string
+  material?: Material
+}
+
 // Send to Printer Modal
 function SendToPrinterModal({
   design,
@@ -496,24 +812,36 @@ function SendToPrinterModal({
   onClose: () => void
 }) {
   const [selectedPrinter, setSelectedPrinter] = useState('')
+  const [selectedSpool, setSelectedSpool] = useState('')
   const [sending, setSending] = useState(false)
   const queryClient = useQueryClient()
 
+  const { data: spoolsWithMaterials = [] } = useSpoolsWithMaterials()
+
+  // Filter spools to show only available ones (not empty or archived)
+  const availableSpools = spoolsWithMaterials.filter(
+    (spool: SpoolWithMaterial) =>
+      spool.status !== 'empty' && spool.status !== 'archived'
+  )
+
+  // Show warning if spool has low remaining weight
+  const LOW_WEIGHT_THRESHOLD = 100 // grams
+
   const handleSend = async () => {
-    if (!selectedPrinter) return
-    
+    if (!selectedPrinter || !selectedSpool) return
+
     setSending(true)
     try {
       // Create print job
       const job = await printJobsApi.create({
         design_id: design.id,
         printer_id: selectedPrinter,
-        material_spool_id: '00000000-0000-0000-0000-000000000000', // TODO: Add spool selection
+        material_spool_id: selectedSpool,
       })
-      
+
       // Start the job
       await printJobsApi.start(job.id)
-      
+
       queryClient.invalidateQueries({ queryKey: ['print-jobs'] })
       onClose()
     } catch (err) {
@@ -523,8 +851,8 @@ function SendToPrinterModal({
     }
   }
 
-  const availablePrinters = printers.filter(p => 
-    printerStates[p.id]?.status === 'idle' || !printerStates[p.id]
+  const availablePrinters = printers.filter(
+    (p) => printerStates[p.id]?.status === 'idle' || !printerStates[p.id]
   )
 
   return (
@@ -543,7 +871,7 @@ function SendToPrinterModal({
             </div>
           </div>
         </div>
-        
+
         <div>
           <label className="block text-sm font-medium text-surface-300 mb-2">
             Select Printer
@@ -578,23 +906,96 @@ function SendToPrinterModal({
                     )}
                   </div>
                   <div>
-                    <div className="font-medium text-surface-100">{printer.name}</div>
-                    <div className="text-xs text-surface-500">{printer.model || 'Unknown model'}</div>
+                    <div className="font-medium text-surface-100">
+                      {printer.name}
+                    </div>
+                    <div className="text-xs text-surface-500">
+                      {printer.model || 'Unknown model'}
+                    </div>
                   </div>
                 </label>
               ))}
             </div>
           )}
         </div>
+
+        <div>
+          <label className="block text-sm font-medium text-surface-300 mb-2">
+            Select Material Spool
+          </label>
+          {availableSpools.length === 0 ? (
+            <div className="text-surface-500 text-sm p-4 text-center bg-surface-800/50 rounded-lg">
+              No spools available. Add material spools in the Materials page.
+            </div>
+          ) : (
+            <div className="space-y-2 max-h-48 overflow-y-auto">
+              {availableSpools.map((spool: SpoolWithMaterial) => {
+                const isLow = spool.remaining_weight < LOW_WEIGHT_THRESHOLD
+                return (
+                  <label
+                    key={spool.id}
+                    className={cn(
+                      'flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-colors',
+                      selectedSpool === spool.id
+                        ? 'bg-accent-500/10 border border-accent-500'
+                        : 'bg-surface-800/50 border border-transparent hover:bg-surface-800'
+                    )}
+                  >
+                    <input
+                      type="radio"
+                      name="spool"
+                      value={spool.id}
+                      checked={selectedSpool === spool.id}
+                      onChange={(e) => setSelectedSpool(e.target.value)}
+                      className="sr-only"
+                    />
+                    <div className="w-3 h-3 rounded-full border-2 border-current flex items-center justify-center">
+                      {selectedSpool === spool.id && (
+                        <div className="w-1.5 h-1.5 rounded-full bg-current" />
+                      )}
+                    </div>
+                    {spool.material?.color_hex && (
+                      <div
+                        className="w-4 h-4 rounded-full border border-surface-600"
+                        style={{ backgroundColor: spool.material.color_hex }}
+                      />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium text-surface-100 truncate">
+                        {spool.material?.name || 'Unknown material'}
+                      </div>
+                      <div className="text-xs text-surface-500 flex items-center gap-2">
+                        <span className="uppercase">
+                          {spool.material?.type || '?'}
+                        </span>
+                        <span>•</span>
+                        <span
+                          className={cn(
+                            isLow && 'text-amber-400 font-medium'
+                          )}
+                        >
+                          {spool.remaining_weight.toFixed(0)}g remaining
+                        </span>
+                        {isLow && (
+                          <AlertTriangle className="h-3 w-3 text-amber-400" />
+                        )}
+                      </div>
+                    </div>
+                  </label>
+                )
+              })}
+            </div>
+          )}
+        </div>
       </div>
-      
+
       <div className="flex justify-end gap-3 mt-6">
         <button onClick={onClose} className="btn btn-ghost">
           Cancel
         </button>
         <button
           onClick={handleSend}
-          disabled={!selectedPrinter || sending}
+          disabled={!selectedPrinter || !selectedSpool || sending}
           className="btn btn-primary"
         >
           <Play className="h-4 w-4 mr-2" />
@@ -606,17 +1007,17 @@ function SendToPrinterModal({
 }
 
 // Generic Modal Component
-function Modal({ 
-  title, 
-  children, 
-  onClose 
-}: { 
+function Modal({
+  title,
+  children,
+  onClose,
+}: {
   title: string
   children: React.ReactNode
-  onClose: () => void 
+  onClose: () => void
 }) {
   return (
-    <div 
+    <div
       className="fixed inset-0 bg-black/60 flex items-center justify-center z-50"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
@@ -625,6 +1026,176 @@ function Modal({
         {children}
       </div>
     </div>
+  )
+}
+
+// Outcome Capture Modal
+function OutcomeCaptureModal({
+  job,
+  onClose,
+  onSuccess,
+}: {
+  job: PrintJob
+  onClose: () => void
+  onSuccess: () => void
+}) {
+  const [success, setSuccess] = useState(true)
+  const [qualityRating, setQualityRating] = useState(4)
+  const [materialUsed, setMaterialUsed] = useState('')
+  const [notes, setNotes] = useState('')
+  const [failureReason, setFailureReason] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+
+  const handleSubmit = async () => {
+    setSubmitting(true)
+    try {
+      const materialGrams = parseFloat(materialUsed) || 0
+
+      await printJobsApi.recordOutcome(job.id, {
+        success,
+        quality_rating: success ? qualityRating : undefined,
+        failure_reason: !success ? failureReason : undefined,
+        notes: notes || undefined,
+        material_used: materialGrams,
+        material_cost: 0, // Will be calculated by backend
+      })
+      onSuccess()
+    } catch (err) {
+      console.error('Failed to record outcome:', err)
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <Modal title="Record Print Outcome" onClose={onClose}>
+      <div className="space-y-4">
+        {/* Success/Failure Toggle */}
+        <div>
+          <label className="block text-sm font-medium text-surface-300 mb-2">
+            Print Result
+          </label>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => setSuccess(true)}
+              className={cn(
+                'flex items-center justify-center gap-2 p-3 rounded-lg border transition-colors',
+                success
+                  ? 'bg-emerald-500/20 border-emerald-500 text-emerald-400'
+                  : 'bg-surface-800/50 border-surface-700 text-surface-400 hover:bg-surface-800'
+              )}
+            >
+              <CheckCircle className="h-5 w-5" />
+              Success
+            </button>
+            <button
+              type="button"
+              onClick={() => setSuccess(false)}
+              className={cn(
+                'flex items-center justify-center gap-2 p-3 rounded-lg border transition-colors',
+                !success
+                  ? 'bg-red-500/20 border-red-500 text-red-400'
+                  : 'bg-surface-800/50 border-surface-700 text-surface-400 hover:bg-surface-800'
+              )}
+            >
+              <XCircle className="h-5 w-5" />
+              Failed
+            </button>
+          </div>
+        </div>
+
+        {/* Quality Rating (only for success) */}
+        {success && (
+          <div>
+            <label className="block text-sm font-medium text-surface-300 mb-2">
+              Quality Rating
+            </label>
+            <div className="flex gap-1">
+              {[1, 2, 3, 4, 5].map((rating) => (
+                <button
+                  key={rating}
+                  type="button"
+                  onClick={() => setQualityRating(rating)}
+                  className="p-1"
+                >
+                  <Star
+                    className={cn(
+                      'h-6 w-6 transition-colors',
+                      rating <= qualityRating
+                        ? 'fill-amber-400 text-amber-400'
+                        : 'text-surface-600'
+                    )}
+                  />
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Failure Reason (only for failure) */}
+        {!success && (
+          <div>
+            <label className="block text-sm font-medium text-surface-300 mb-1">
+              Failure Reason
+            </label>
+            <input
+              type="text"
+              value={failureReason}
+              onChange={(e) => setFailureReason(e.target.value)}
+              className="input"
+              placeholder="e.g., Bed adhesion, spaghetti, layer shift"
+            />
+          </div>
+        )}
+
+        {/* Material Used */}
+        <div>
+          <label className="block text-sm font-medium text-surface-300 mb-1">
+            Material Used (grams)
+          </label>
+          <input
+            type="number"
+            value={materialUsed}
+            onChange={(e) => setMaterialUsed(e.target.value)}
+            className="input"
+            placeholder="e.g., 25"
+            min="0"
+            step="0.1"
+          />
+          <p className="text-xs text-surface-500 mt-1">
+            Enter the amount of material consumed during this print
+          </p>
+        </div>
+
+        {/* Notes */}
+        <div>
+          <label className="block text-sm font-medium text-surface-300 mb-1">
+            Notes
+          </label>
+          <textarea
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            rows={2}
+            className="input resize-none"
+            placeholder="Optional notes about this print"
+          />
+        </div>
+      </div>
+
+      <div className="flex justify-end gap-3 mt-6">
+        <button onClick={onClose} className="btn btn-ghost">
+          Cancel
+        </button>
+        <button
+          onClick={handleSubmit}
+          disabled={submitting}
+          className="btn btn-primary"
+        >
+          {submitting ? 'Saving...' : 'Save Outcome'}
+        </button>
+      </div>
+    </Modal>
   )
 }
 

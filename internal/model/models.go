@@ -19,14 +19,114 @@ const (
 
 // Project represents a maker project containing parts to be printed.
 type Project struct {
-	ID          uuid.UUID     `json:"id"`
-	Name        string        `json:"name"`
-	Description string        `json:"description"`
-	Status      ProjectStatus `json:"status"`
-	TargetDate  *time.Time    `json:"target_date,omitempty"`
-	Tags        []string      `json:"tags"`
-	CreatedAt   time.Time     `json:"created_at"`
-	UpdatedAt   time.Time     `json:"updated_at"`
+	ID              uuid.UUID     `json:"id"`
+	Name            string        `json:"name"`
+	Description     string        `json:"description"`
+	Status          ProjectStatus `json:"status"`
+	TargetDate      *time.Time    `json:"target_date,omitempty"`
+	Tags            []string      `json:"tags"`
+	TemplateID      *uuid.UUID    `json:"template_id,omitempty"`
+	Source          string        `json:"source"`
+	ExternalOrderID string        `json:"external_order_id,omitempty"`
+	CustomerNotes   string        `json:"customer_notes,omitempty"`
+	CreatedAt       time.Time     `json:"created_at"`
+	UpdatedAt       time.Time     `json:"updated_at"`
+}
+
+// PrintProfile represents a symbolic slicer profile.
+type PrintProfile string
+
+const (
+	PrintProfileStandard PrintProfile = "standard"
+	PrintProfileDetailed PrintProfile = "detailed"
+	PrintProfileFast     PrintProfile = "fast"
+	PrintProfileStrong   PrintProfile = "strong"
+	PrintProfileCustom   PrintProfile = "custom"
+)
+
+// PrinterConstraints defines hardware requirements for a recipe.
+type PrinterConstraints struct {
+	MinBedSize        *BuildVolume `json:"min_bed_size,omitempty"`
+	NozzleDiameters   []float64    `json:"nozzle_diameters,omitempty"`
+	RequiresEnclosure bool         `json:"requires_enclosure"`
+	RequiresAMS       bool         `json:"requires_ams"`
+	PrinterTags       []string     `json:"printer_tags,omitempty"`
+}
+
+// ColorSpec defines how to match material color.
+type ColorSpec struct {
+	Mode string `json:"mode"` // "exact", "category", "any"
+	Hex  string `json:"hex,omitempty"`
+	Name string `json:"name,omitempty"`
+}
+
+// RecipeMaterial represents a material requirement for a recipe.
+type RecipeMaterial struct {
+	ID            uuid.UUID    `json:"id"`
+	RecipeID      uuid.UUID    `json:"recipe_id"`
+	MaterialType  MaterialType `json:"material_type"`
+	ColorSpec     *ColorSpec   `json:"color_spec,omitempty"`
+	WeightGrams   float64      `json:"weight_grams"`
+	AMSPosition   *int         `json:"ams_position,omitempty"`
+	SequenceOrder int          `json:"sequence_order"`
+	Notes         string       `json:"notes,omitempty"`
+	CreatedAt     time.Time    `json:"created_at"`
+}
+
+// RecipeCostEstimate represents the cost breakdown for a recipe.
+type RecipeCostEstimate struct {
+	MaterialCostCents   int                          `json:"material_cost_cents"`
+	TimeCostCents       int                          `json:"time_cost_cents"`
+	TotalCostCents      int                          `json:"total_cost_cents"`
+	EstimatedPrintTime  int                          `json:"estimated_print_time_seconds"`
+	MaterialBreakdown   []RecipeMaterialCostBreakdown `json:"material_breakdown"`
+	HourlyRateCents     int                          `json:"hourly_rate_cents"`
+}
+
+// RecipeMaterialCostBreakdown shows cost for each material in a recipe.
+type RecipeMaterialCostBreakdown struct {
+	MaterialType string  `json:"material_type"`
+	WeightGrams  float64 `json:"weight_grams"`
+	CostCents    int     `json:"cost_cents"`
+	ColorName    string  `json:"color_name,omitempty"`
+}
+
+// Template represents a reusable project blueprint for order fulfillment (aka Recipe).
+type Template struct {
+	ID                     uuid.UUID           `json:"id"`
+	Name                   string              `json:"name"`
+	Description            string              `json:"description"`
+	SKU                    string              `json:"sku"`
+	Tags                   []string            `json:"tags"`
+	MaterialType           MaterialType        `json:"material_type"`
+	EstimatedMaterialGrams float64             `json:"estimated_material_grams"`
+	PreferredPrinterID     *uuid.UUID          `json:"preferred_printer_id,omitempty"`
+	AllowAnyPrinter        bool                `json:"allow_any_printer"`
+	QuantityPerOrder       int                 `json:"quantity_per_order"`
+	PostProcessChecklist   []string            `json:"post_process_checklist"`
+	IsActive               bool                `json:"is_active"`
+	PrinterConstraints     *PrinterConstraints `json:"printer_constraints,omitempty"`
+	PrintProfile           PrintProfile        `json:"print_profile"`
+	EstimatedPrintSeconds  int                 `json:"estimated_print_seconds"`
+	Version                int                 `json:"version"`
+	ArchivedAt             *time.Time          `json:"archived_at,omitempty"`
+	CreatedAt              time.Time           `json:"created_at"`
+	UpdatedAt              time.Time           `json:"updated_at"`
+	Designs                []TemplateDesign    `json:"designs,omitempty"`
+	Materials              []RecipeMaterial    `json:"materials,omitempty"`
+}
+
+// TemplateDesign represents a design file linked to a template.
+type TemplateDesign struct {
+	ID            uuid.UUID `json:"id"`
+	TemplateID    uuid.UUID `json:"template_id"`
+	DesignID      uuid.UUID `json:"design_id"`
+	IsPrimary     bool      `json:"is_primary"`
+	Quantity      int       `json:"quantity"`
+	SequenceOrder int       `json:"sequence_order"`
+	Notes         string    `json:"notes"`
+	CreatedAt     time.Time `json:"created_at"`
+	Design        *Design   `json:"design,omitempty"`
 }
 
 // PartStatus represents the status of a part.
@@ -198,11 +298,31 @@ type PrintJobStatus string
 
 const (
 	PrintJobStatusQueued    PrintJobStatus = "queued"
-	PrintJobStatusSending   PrintJobStatus = "sending"
+	PrintJobStatusAssigned  PrintJobStatus = "assigned"  // assigned to printer
+	PrintJobStatusUploaded  PrintJobStatus = "uploaded"  // file sent to printer
 	PrintJobStatusPrinting  PrintJobStatus = "printing"
+	PrintJobStatusPaused    PrintJobStatus = "paused"
 	PrintJobStatusCompleted PrintJobStatus = "completed"
 	PrintJobStatusFailed    PrintJobStatus = "failed"
 	PrintJobStatusCancelled PrintJobStatus = "cancelled"
+)
+
+// IsTerminal returns true if this status is a final state.
+func (s PrintJobStatus) IsTerminal() bool {
+	return s == PrintJobStatusCompleted || s == PrintJobStatusFailed || s == PrintJobStatusCancelled
+}
+
+// FailureCategory categorizes why a print job failed.
+type FailureCategory string
+
+const (
+	FailureMechanical    FailureCategory = "mechanical"     // printer hardware issue
+	FailureFilament      FailureCategory = "filament"       // filament jam, runout, tangle
+	FailureAdhesion      FailureCategory = "adhesion"       // bed adhesion failure
+	FailureThermal       FailureCategory = "thermal"        // thermal runaway, heating failure
+	FailureNetwork       FailureCategory = "network"        // connection lost during print
+	FailureUserCancelled FailureCategory = "user_cancelled" // user stopped the print
+	FailureUnknown       FailureCategory = "unknown"        // unclassified failure
 )
 
 // PrintOutcome captures the result of a print job.
@@ -218,52 +338,334 @@ type PrintOutcome struct {
 	MaterialCost  float64  `json:"material_cost"`
 }
 
-// PrintJob represents a print job assignment.
+// PrintJob represents an immutable print job instance.
+// Once created, core fields should not change. State changes are recorded as JobEvents.
 type PrintJob struct {
 	ID              uuid.UUID       `json:"id"`
 	DesignID        uuid.UUID       `json:"design_id"`
 	PrinterID       uuid.UUID       `json:"printer_id"`
 	MaterialSpoolID uuid.UUID       `json:"material_spool_id"`
-	Status          PrintJobStatus  `json:"status"`
-	Progress        float64         `json:"progress"`
-	StartedAt       *time.Time      `json:"started_at,omitempty"`
-	CompletedAt     *time.Time      `json:"completed_at,omitempty"`
-	Outcome         *PrintOutcome   `json:"outcome,omitempty"`
 	Notes           string          `json:"notes"`
 	CreatedAt       time.Time       `json:"created_at"`
+
+	// Recipe context (optional, for SKU-based orders)
+	RecipeID *uuid.UUID `json:"recipe_id,omitempty"`
+
+	// Retry tracking
+	AttemptNumber int        `json:"attempt_number"` // 1 = first attempt, 2+ = retries
+	ParentJobID   *uuid.UUID `json:"parent_job_id,omitempty"`
+
+	// Failure classification (set when job fails)
+	FailureCategory *FailureCategory `json:"failure_category,omitempty"`
+
+	// Time tracking
+	EstimatedSeconds *int `json:"estimated_seconds,omitempty"`
+	ActualSeconds    *int `json:"actual_seconds,omitempty"`
+
+	// Cost tracking
+	MaterialUsedGrams *float64 `json:"material_used_grams,omitempty"`
+	CostCents         *int     `json:"cost_cents,omitempty"`
+
+	// Computed fields (derived from events, not stored in print_jobs table)
+	Status      PrintJobStatus `json:"status"`                   // computed from latest event
+	Progress    float64        `json:"progress"`                 // computed from latest event
+	StartedAt   *time.Time     `json:"started_at,omitempty"`     // computed from first printing event
+	CompletedAt *time.Time     `json:"completed_at,omitempty"`   // computed from terminal event
+	Outcome     *PrintOutcome  `json:"outcome,omitempty"`        // kept for backward compat
+	Events      []JobEvent     `json:"events,omitempty"`         // full event timeline when requested
 }
 
-// PrintEventType represents types of print events.
-type PrintEventType string
+// JobEventType represents types of job events.
+type JobEventType string
 
 const (
-	EventJobCreated   PrintEventType = "job_created"
-	EventJobStarted   PrintEventType = "job_started"
-	EventJobProgress  PrintEventType = "job_progress"
-	EventJobPaused    PrintEventType = "job_paused"
-	EventJobResumed   PrintEventType = "job_resumed"
-	EventJobCompleted PrintEventType = "job_completed"
-	EventJobFailed    PrintEventType = "job_failed"
-	EventJobCancelled PrintEventType = "job_cancelled"
+	JobEventQueued    JobEventType = "queued"     // job created and waiting
+	JobEventAssigned  JobEventType = "assigned"   // assigned to a printer
+	JobEventUploaded  JobEventType = "uploaded"   // file sent to printer
+	JobEventStarted   JobEventType = "started"    // print started
+	JobEventProgress  JobEventType = "progress"   // progress update (no status change)
+	JobEventPaused    JobEventType = "paused"     // print paused
+	JobEventResumed   JobEventType = "resumed"    // print resumed
+	JobEventCompleted JobEventType = "completed"  // print finished successfully
+	JobEventFailed    JobEventType = "failed"     // print failed
+	JobEventCancelled JobEventType = "cancelled"  // print cancelled by user/system
+	JobEventRetried   JobEventType = "retried"    // new job created as retry
 )
 
-// PrintEvent represents an immutable event in the print job lifecycle.
-type PrintEvent struct {
-	ID         uuid.UUID       `json:"id"`
-	PrintJobID uuid.UUID       `json:"print_job_id"`
-	EventType  PrintEventType  `json:"event_type"`
-	Timestamp  time.Time       `json:"timestamp"`
-	Data       json.RawMessage `json:"data,omitempty"`
+// ActorType identifies what triggered an event.
+type ActorType string
+
+const (
+	ActorUser    ActorType = "user"    // human user action
+	ActorSystem  ActorType = "system"  // automated system action
+	ActorPrinter ActorType = "printer" // printer-reported event
+	ActorWebhook ActorType = "webhook" // external webhook trigger
+)
+
+// JobEvent represents an immutable event in the print job lifecycle.
+// These are append-only records that form the complete history of a job.
+type JobEvent struct {
+	ID         uuid.UUID    `json:"id"`
+	JobID      uuid.UUID    `json:"job_id"`
+	EventType  JobEventType `json:"event_type"`
+	OccurredAt time.Time    `json:"occurred_at"`
+
+	// Status context
+	Status   *PrintJobStatus `json:"status,omitempty"`   // resulting status (nil for progress events)
+	Progress *float64        `json:"progress,omitempty"` // progress at time of event
+
+	// Printer context (for assignment/transfer)
+	PrinterID *uuid.UUID `json:"printer_id,omitempty"`
+
+	// Error context (for failures)
+	ErrorCode    string `json:"error_code,omitempty"`
+	ErrorMessage string `json:"error_message,omitempty"`
+
+	// Actor tracking
+	ActorType ActorType `json:"actor_type"`
+	ActorID   string    `json:"actor_id,omitempty"`
+
+	// Flexible metadata
+	Metadata map[string]interface{} `json:"metadata,omitempty"`
+
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// NewJobEvent creates a new job event with sensible defaults.
+func NewJobEvent(jobID uuid.UUID, eventType JobEventType, status *PrintJobStatus) *JobEvent {
+	now := time.Now()
+	return &JobEvent{
+		ID:         uuid.New(),
+		JobID:      jobID,
+		EventType:  eventType,
+		OccurredAt: now,
+		Status:     status,
+		ActorType:  ActorSystem,
+		CreatedAt:  now,
+	}
+}
+
+// WithActor sets the actor information on the event.
+func (e *JobEvent) WithActor(actorType ActorType, actorID string) *JobEvent {
+	e.ActorType = actorType
+	e.ActorID = actorID
+	return e
+}
+
+// WithError sets error information on the event.
+func (e *JobEvent) WithError(code, message string) *JobEvent {
+	e.ErrorCode = code
+	e.ErrorMessage = message
+	return e
+}
+
+// WithProgress sets the progress on the event.
+func (e *JobEvent) WithProgress(progress float64) *JobEvent {
+	e.Progress = &progress
+	return e
+}
+
+// WithPrinter sets the printer context on the event.
+func (e *JobEvent) WithPrinter(printerID uuid.UUID) *JobEvent {
+	e.PrinterID = &printerID
+	return e
+}
+
+// WithMetadata sets metadata on the event.
+func (e *JobEvent) WithMetadata(metadata map[string]interface{}) *JobEvent {
+	e.Metadata = metadata
+	return e
+}
+
+// Legacy type aliases for backward compatibility
+type PrintEventType = JobEventType
+type PrintEvent = JobEvent
+
+// Legacy constants for backward compatibility
+const (
+	EventJobCreated   = JobEventQueued
+	EventJobStarted   = JobEventStarted
+	EventJobProgress  = JobEventProgress
+	EventJobPaused    = JobEventPaused
+	EventJobResumed   = JobEventResumed
+	EventJobCompleted = JobEventCompleted
+	EventJobFailed    = JobEventFailed
+	EventJobCancelled = JobEventCancelled
+)
+
+// WebSocket event types for real-time updates.
+const (
+	EventPrinterStateUpdated = "printer_state_updated"
+	EventPrinterConnected    = "printer_connected"
+	EventPrinterDisconnected = "printer_disconnected"
+)
+
+// Broadcaster defines the interface for broadcasting real-time events.
+// This interface allows the printer package to broadcast without importing realtime.
+type Broadcaster interface {
+	Broadcast(event BroadcastEvent)
+}
+
+// BroadcastEvent represents an event to be sent to WebSocket clients.
+type BroadcastEvent struct {
+	Type string      `json:"type"`
+	Data interface{} `json:"data"`
 }
 
 // File represents a stored file.
 type File struct {
-	ID          uuid.UUID `json:"id"`
-	Hash        string    `json:"hash"`
-	OriginalName string   `json:"original_name"`
-	ContentType string    `json:"content_type"`
-	SizeBytes   int64     `json:"size_bytes"`
-	StoragePath string    `json:"storage_path"`
-	CreatedAt   time.Time `json:"created_at"`
+	ID           uuid.UUID `json:"id"`
+	Hash         string    `json:"hash"`
+	OriginalName string    `json:"original_name"`
+	ContentType  string    `json:"content_type"`
+	SizeBytes    int64     `json:"size_bytes"`
+	StoragePath  string    `json:"storage_path"`
+	CreatedAt    time.Time `json:"created_at"`
+}
+
+// ExpenseStatus represents the status of an expense record.
+type ExpenseStatus string
+
+const (
+	ExpenseStatusPending   ExpenseStatus = "pending"
+	ExpenseStatusConfirmed ExpenseStatus = "confirmed"
+	ExpenseStatusRejected  ExpenseStatus = "rejected"
+)
+
+// ExpenseCategory represents categories for expenses.
+type ExpenseCategory string
+
+const (
+	ExpenseCategoryFilament        ExpenseCategory = "filament"
+	ExpenseCategoryParts           ExpenseCategory = "parts"
+	ExpenseCategoryTools           ExpenseCategory = "tools"
+	ExpenseCategoryShipping        ExpenseCategory = "shipping"
+	ExpenseCategoryMarketplaceFees ExpenseCategory = "marketplace_fees"
+	ExpenseCategorySubscription    ExpenseCategory = "subscription"
+	ExpenseCategoryOther           ExpenseCategory = "other"
+)
+
+// Expense represents an expense record.
+type Expense struct {
+	ID               uuid.UUID       `json:"id"`
+	OccurredAt       time.Time       `json:"occurred_at"`
+	Vendor           string          `json:"vendor"`
+	SubtotalCents    int             `json:"subtotal_cents"`
+	TaxCents         int             `json:"tax_cents"`
+	ShippingCents    int             `json:"shipping_cents"`
+	TotalCents       int             `json:"total_cents"`
+	Currency         string          `json:"currency"`
+	Category         ExpenseCategory `json:"category"`
+	Notes            string          `json:"notes"`
+	ReceiptFileID    *uuid.UUID      `json:"receipt_file_id,omitempty"`
+	ReceiptFilePath  string          `json:"receipt_file_path,omitempty"`
+	Status           ExpenseStatus   `json:"status"`
+	RawOCRText       string          `json:"raw_ocr_text,omitempty"`
+	RawAIResponse    json.RawMessage `json:"raw_ai_response,omitempty"`
+	Confidence       int             `json:"confidence"`
+	CreatedAt        time.Time       `json:"created_at"`
+	UpdatedAt        time.Time       `json:"updated_at"`
+
+	// Joined data
+	Items []ExpenseItem `json:"items,omitempty"`
+}
+
+// ExpenseItemAction represents what action was taken for an expense item.
+type ExpenseItemAction string
+
+const (
+	ExpenseItemActionNone         ExpenseItemAction = "none"
+	ExpenseItemActionCreatedSpool ExpenseItemAction = "created_spool"
+	ExpenseItemActionMatchedSpool ExpenseItemAction = "matched_spool"
+	ExpenseItemActionSkipped      ExpenseItemAction = "skipped"
+)
+
+// FilamentMetadata holds parsed attributes for filament items.
+type FilamentMetadata struct {
+	Brand        string  `json:"brand,omitempty"`
+	MaterialType string  `json:"material_type,omitempty"` // PLA, PETG, ABS, etc.
+	Color        string  `json:"color,omitempty"`
+	ColorHex     string  `json:"color_hex,omitempty"`
+	WeightGrams  float64 `json:"weight_grams,omitempty"`
+	DiameterMM   float64 `json:"diameter_mm,omitempty"`
+}
+
+// ExpenseItem represents a line item in an expense.
+type ExpenseItem struct {
+	ID                uuid.UUID         `json:"id"`
+	ExpenseID         uuid.UUID         `json:"expense_id"`
+	Description       string            `json:"description"`
+	Quantity          float64           `json:"quantity"`
+	UnitPriceCents    int               `json:"unit_price_cents"`
+	TotalPriceCents   int               `json:"total_price_cents"`
+	SKU               string            `json:"sku,omitempty"`
+	VendorItemID      string            `json:"vendor_item_id,omitempty"`
+	Category          ExpenseCategory   `json:"category"`
+	Metadata          *FilamentMetadata `json:"metadata,omitempty"`
+	MatchedSpoolID    *uuid.UUID        `json:"matched_spool_id,omitempty"`
+	MatchedMaterialID *uuid.UUID        `json:"matched_material_id,omitempty"`
+	Confidence        int               `json:"confidence"`
+	ActionTaken       ExpenseItemAction `json:"action_taken"`
+	CreatedAt         time.Time         `json:"created_at"`
+}
+
+// SalesChannel represents where a sale was made.
+type SalesChannel string
+
+const (
+	SalesChannelMarketplace SalesChannel = "marketplace"
+	SalesChannelEtsy        SalesChannel = "etsy"
+	SalesChannelWebsite     SalesChannel = "website"
+	SalesChannelDirect      SalesChannel = "direct"
+	SalesChannelOther       SalesChannel = "other"
+)
+
+// Sale represents a revenue record.
+type Sale struct {
+	ID                   uuid.UUID    `json:"id"`
+	OccurredAt           time.Time    `json:"occurred_at"`
+	Channel              SalesChannel `json:"channel"`
+	Platform             string       `json:"platform"`
+	GrossCents           int          `json:"gross_cents"`
+	FeesCents            int          `json:"fees_cents"`
+	ShippingChargedCents int          `json:"shipping_charged_cents"`
+	ShippingCostCents    int          `json:"shipping_cost_cents"`
+	TaxCollectedCents    int          `json:"tax_collected_cents"`
+	NetCents             int          `json:"net_cents"`
+	Currency             string       `json:"currency"`
+	ProjectID            *uuid.UUID   `json:"project_id,omitempty"`
+	OrderReference       string       `json:"order_reference,omitempty"`
+	CustomerName         string       `json:"customer_name,omitempty"`
+	ItemDescription      string       `json:"item_description"`
+	Quantity             int          `json:"quantity"`
+	Notes                string       `json:"notes"`
+	CreatedAt            time.Time    `json:"created_at"`
+	UpdatedAt            time.Time    `json:"updated_at"`
+}
+
+// ParsedReceipt represents the AI-extracted data from a receipt.
+type ParsedReceipt struct {
+	Vendor       string             `json:"vendor"`
+	Date         string             `json:"date"`
+	SubtotalCents int               `json:"subtotal_cents"`
+	TaxCents     int                `json:"tax_cents"`
+	ShippingCents int               `json:"shipping_cents"`
+	TotalCents   int                `json:"total_cents"`
+	Currency     string             `json:"currency"`
+	Items        []ParsedReceiptItem `json:"items"`
+	Confidence   int                `json:"confidence"`
+	RawText      string             `json:"raw_text,omitempty"`
+}
+
+// ParsedReceiptItem represents a parsed line item from a receipt.
+type ParsedReceiptItem struct {
+	Description    string           `json:"description"`
+	Quantity       float64          `json:"quantity"`
+	UnitPriceCents int              `json:"unit_price_cents"`
+	TotalPriceCents int             `json:"total_price_cents"`
+	Category       ExpenseCategory  `json:"category"`
+	IsFilament     bool             `json:"is_filament"`
+	Filament       *FilamentMetadata `json:"filament,omitempty"`
+	Confidence     int              `json:"confidence"`
 }
 
