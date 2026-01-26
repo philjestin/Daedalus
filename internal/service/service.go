@@ -1,0 +1,540 @@
+package service
+
+import (
+	"context"
+	"fmt"
+	"io"
+	"path/filepath"
+	"strings"
+
+	"github.com/google/uuid"
+	"github.com/hyperion/printfarm/internal/model"
+	"github.com/hyperion/printfarm/internal/printer"
+	"github.com/hyperion/printfarm/internal/realtime"
+	"github.com/hyperion/printfarm/internal/repository"
+	"github.com/hyperion/printfarm/internal/storage"
+)
+
+// Services holds all service instances.
+type Services struct {
+	Projects  *ProjectService
+	Parts     *PartService
+	Designs   *DesignService
+	Printers  *PrinterService
+	Materials *MaterialService
+	Spools    *SpoolService
+	PrintJobs *PrintJobService
+	Files     *FileService
+}
+
+// NewServices creates all service instances.
+func NewServices(repos *repository.Repositories, store storage.Storage, printerMgr *printer.Manager, hub *realtime.Hub) *Services {
+	return &Services{
+		Projects:  &ProjectService{repo: repos.Projects},
+		Parts:     &PartService{repo: repos.Parts},
+		Designs:   &DesignService{repo: repos.Designs, fileRepo: repos.Files, storage: store},
+		Printers:  &PrinterService{repo: repos.Printers, manager: printerMgr, hub: hub, discovery: printer.NewDiscovery()},
+		Materials: &MaterialService{repo: repos.Materials},
+		Spools:    &SpoolService{repo: repos.Spools},
+		PrintJobs: &PrintJobService{repo: repos.PrintJobs, printerRepo: repos.Printers, designRepo: repos.Designs, spoolRepo: repos.Spools, printerMgr: printerMgr, hub: hub, storage: store},
+		Files:     &FileService{repo: repos.Files, storage: store},
+	}
+}
+
+// ProjectService handles project business logic.
+type ProjectService struct {
+	repo *repository.ProjectRepository
+}
+
+// Create creates a new project.
+func (s *ProjectService) Create(ctx context.Context, p *model.Project) error {
+	if p.Name == "" {
+		return fmt.Errorf("project name is required")
+	}
+	return s.repo.Create(ctx, p)
+}
+
+// GetByID retrieves a project by ID.
+func (s *ProjectService) GetByID(ctx context.Context, id uuid.UUID) (*model.Project, error) {
+	return s.repo.GetByID(ctx, id)
+}
+
+// List retrieves all projects.
+func (s *ProjectService) List(ctx context.Context, status *model.ProjectStatus) ([]model.Project, error) {
+	return s.repo.List(ctx, status)
+}
+
+// Update updates a project.
+func (s *ProjectService) Update(ctx context.Context, p *model.Project) error {
+	return s.repo.Update(ctx, p)
+}
+
+// Delete removes a project.
+func (s *ProjectService) Delete(ctx context.Context, id uuid.UUID) error {
+	return s.repo.Delete(ctx, id)
+}
+
+// PartService handles part business logic.
+type PartService struct {
+	repo *repository.PartRepository
+}
+
+// Create creates a new part.
+func (s *PartService) Create(ctx context.Context, p *model.Part) error {
+	if p.Name == "" {
+		return fmt.Errorf("part name is required")
+	}
+	if p.ProjectID == uuid.Nil {
+		return fmt.Errorf("project ID is required")
+	}
+	return s.repo.Create(ctx, p)
+}
+
+// GetByID retrieves a part by ID.
+func (s *PartService) GetByID(ctx context.Context, id uuid.UUID) (*model.Part, error) {
+	return s.repo.GetByID(ctx, id)
+}
+
+// ListByProject retrieves all parts for a project.
+func (s *PartService) ListByProject(ctx context.Context, projectID uuid.UUID) ([]model.Part, error) {
+	return s.repo.ListByProject(ctx, projectID)
+}
+
+// Update updates a part.
+func (s *PartService) Update(ctx context.Context, p *model.Part) error {
+	return s.repo.Update(ctx, p)
+}
+
+// Delete removes a part.
+func (s *PartService) Delete(ctx context.Context, id uuid.UUID) error {
+	return s.repo.Delete(ctx, id)
+}
+
+// DesignService handles design business logic.
+type DesignService struct {
+	repo     *repository.DesignRepository
+	fileRepo *repository.FileRepository
+	storage  storage.Storage
+}
+
+// Create creates a new design version with file upload.
+func (s *DesignService) Create(ctx context.Context, partID uuid.UUID, filename string, reader io.Reader, notes string) (*model.Design, error) {
+	if partID == uuid.Nil {
+		return nil, fmt.Errorf("part ID is required")
+	}
+
+	// Determine file type from extension
+	ext := strings.ToLower(strings.TrimPrefix(filepath.Ext(filename), "."))
+	var fileType model.FileType
+	switch ext {
+	case "stl":
+		fileType = model.FileTypeSTL
+	case "3mf":
+		fileType = model.FileType3MF
+	case "gcode":
+		fileType = model.FileTypeGCODE
+	default:
+		return nil, fmt.Errorf("unsupported file type: %s", ext)
+	}
+
+	// Save file to storage
+	storagePath, hash, size, err := s.storage.Save(filename, reader)
+	if err != nil {
+		return nil, fmt.Errorf("failed to save file: %w", err)
+	}
+
+	// Check for existing file with same hash (deduplication)
+	existingFile, err := s.fileRepo.GetByHash(ctx, hash)
+	if err != nil {
+		return nil, err
+	}
+
+	var fileID uuid.UUID
+	if existingFile != nil {
+		fileID = existingFile.ID
+		// Remove duplicate file from storage
+		s.storage.Delete(storagePath)
+		storagePath = existingFile.StoragePath
+	} else {
+		// Create new file record
+		file := &model.File{
+			Hash:         hash,
+			OriginalName: filename,
+			ContentType:  getContentType(ext),
+			SizeBytes:    size,
+			StoragePath:  storagePath,
+		}
+		if err := s.fileRepo.Create(ctx, file); err != nil {
+			return nil, fmt.Errorf("failed to create file record: %w", err)
+		}
+		fileID = file.ID
+	}
+
+	// Create design record
+	design := &model.Design{
+		PartID:        partID,
+		FileID:        fileID,
+		FileName:      filename,
+		FileHash:      hash,
+		FileSizeBytes: size,
+		FileType:      fileType,
+		Notes:         notes,
+	}
+	if err := s.repo.Create(ctx, design); err != nil {
+		return nil, fmt.Errorf("failed to create design: %w", err)
+	}
+
+	return design, nil
+}
+
+// GetByID retrieves a design by ID.
+func (s *DesignService) GetByID(ctx context.Context, id uuid.UUID) (*model.Design, error) {
+	return s.repo.GetByID(ctx, id)
+}
+
+// ListByPart retrieves all designs for a part.
+func (s *DesignService) ListByPart(ctx context.Context, partID uuid.UUID) ([]model.Design, error) {
+	return s.repo.ListByPart(ctx, partID)
+}
+
+// GetFile retrieves the file for a design.
+func (s *DesignService) GetFile(ctx context.Context, id uuid.UUID) (io.ReadCloser, *model.Design, error) {
+	design, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return nil, nil, err
+	}
+	if design == nil {
+		return nil, nil, fmt.Errorf("design not found")
+	}
+
+	file, err := s.fileRepo.GetByID(ctx, design.FileID)
+	if err != nil {
+		return nil, nil, err
+	}
+	if file == nil {
+		return nil, nil, fmt.Errorf("file not found")
+	}
+
+	reader, err := s.storage.Get(file.StoragePath)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return reader, design, nil
+}
+
+// PrinterService handles printer business logic.
+type PrinterService struct {
+	repo      *repository.PrinterRepository
+	manager   *printer.Manager
+	hub       *realtime.Hub
+	discovery *printer.Discovery
+}
+
+// Create creates a new printer.
+func (s *PrinterService) Create(ctx context.Context, p *model.Printer) error {
+	if p.Name == "" {
+		return fmt.Errorf("printer name is required")
+	}
+	if err := s.repo.Create(ctx, p); err != nil {
+		return err
+	}
+
+	// Connect printer if not manual
+	if p.ConnectionType != model.ConnectionTypeManual {
+		go s.manager.Connect(p)
+	}
+
+	return nil
+}
+
+// GetByID retrieves a printer by ID.
+func (s *PrinterService) GetByID(ctx context.Context, id uuid.UUID) (*model.Printer, error) {
+	return s.repo.GetByID(ctx, id)
+}
+
+// List retrieves all printers.
+func (s *PrinterService) List(ctx context.Context) ([]model.Printer, error) {
+	return s.repo.List(ctx)
+}
+
+// Update updates a printer.
+func (s *PrinterService) Update(ctx context.Context, p *model.Printer) error {
+	return s.repo.Update(ctx, p)
+}
+
+// Delete removes a printer.
+func (s *PrinterService) Delete(ctx context.Context, id uuid.UUID) error {
+	s.manager.Disconnect(id)
+	return s.repo.Delete(ctx, id)
+}
+
+// GetState retrieves real-time state for a printer.
+func (s *PrinterService) GetState(ctx context.Context, id uuid.UUID) (*model.PrinterState, error) {
+	return s.manager.GetState(id)
+}
+
+// GetAllStates retrieves real-time state for all printers.
+func (s *PrinterService) GetAllStates(ctx context.Context) map[uuid.UUID]*model.PrinterState {
+	return s.manager.GetAllStates()
+}
+
+// DiscoverPrinters scans the network for printers.
+func (s *PrinterService) DiscoverPrinters(ctx context.Context) ([]printer.DiscoveredPrinter, error) {
+	discovered, err := s.discovery.QuickScan(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// Mark printers that are already added
+	existing, _ := s.repo.List(ctx)
+	existingHosts := make(map[string]bool)
+	for _, p := range existing {
+		// Extract host from connection URI
+		existingHosts[p.ConnectionURI] = true
+	}
+
+	for i := range discovered {
+		uri := fmt.Sprintf("http://%s:%d", discovered[i].Host, discovered[i].Port)
+		if existingHosts[uri] {
+			discovered[i].AlreadyAdded = true
+		}
+	}
+
+	return discovered, nil
+}
+
+// MaterialService handles material business logic.
+type MaterialService struct {
+	repo *repository.MaterialRepository
+}
+
+// Create creates a new material.
+func (s *MaterialService) Create(ctx context.Context, m *model.Material) error {
+	if m.Name == "" {
+		return fmt.Errorf("material name is required")
+	}
+	return s.repo.Create(ctx, m)
+}
+
+// GetByID retrieves a material by ID.
+func (s *MaterialService) GetByID(ctx context.Context, id uuid.UUID) (*model.Material, error) {
+	return s.repo.GetByID(ctx, id)
+}
+
+// List retrieves all materials.
+func (s *MaterialService) List(ctx context.Context) ([]model.Material, error) {
+	return s.repo.List(ctx)
+}
+
+// SpoolService handles spool business logic.
+type SpoolService struct {
+	repo *repository.SpoolRepository
+}
+
+// Create creates a new spool.
+func (s *SpoolService) Create(ctx context.Context, sp *model.MaterialSpool) error {
+	if sp.MaterialID == uuid.Nil {
+		return fmt.Errorf("material ID is required")
+	}
+	if sp.RemainingWeight == 0 {
+		sp.RemainingWeight = sp.InitialWeight
+	}
+	return s.repo.Create(ctx, sp)
+}
+
+// GetByID retrieves a spool by ID.
+func (s *SpoolService) GetByID(ctx context.Context, id uuid.UUID) (*model.MaterialSpool, error) {
+	return s.repo.GetByID(ctx, id)
+}
+
+// List retrieves all spools.
+func (s *SpoolService) List(ctx context.Context) ([]model.MaterialSpool, error) {
+	return s.repo.List(ctx)
+}
+
+// PrintJobService handles print job business logic.
+type PrintJobService struct {
+	repo        *repository.PrintJobRepository
+	printerRepo *repository.PrinterRepository
+	designRepo  *repository.DesignRepository
+	spoolRepo   *repository.SpoolRepository
+	printerMgr  *printer.Manager
+	hub         *realtime.Hub
+	storage     storage.Storage
+}
+
+// Create creates a new print job.
+func (s *PrintJobService) Create(ctx context.Context, j *model.PrintJob) error {
+	if j.DesignID == uuid.Nil {
+		return fmt.Errorf("design ID is required")
+	}
+	if j.PrinterID == uuid.Nil {
+		return fmt.Errorf("printer ID is required")
+	}
+	if j.MaterialSpoolID == uuid.Nil {
+		return fmt.Errorf("material spool ID is required")
+	}
+	return s.repo.Create(ctx, j)
+}
+
+// GetByID retrieves a print job by ID.
+func (s *PrintJobService) GetByID(ctx context.Context, id uuid.UUID) (*model.PrintJob, error) {
+	return s.repo.GetByID(ctx, id)
+}
+
+// List retrieves print jobs.
+func (s *PrintJobService) List(ctx context.Context, printerID *uuid.UUID, status *model.PrintJobStatus) ([]model.PrintJob, error) {
+	return s.repo.List(ctx, printerID, status)
+}
+
+// ListByDesign retrieves print jobs for a design.
+func (s *PrintJobService) ListByDesign(ctx context.Context, designID uuid.UUID) ([]model.PrintJob, error) {
+	return s.repo.ListByDesign(ctx, designID)
+}
+
+// Start sends a print job to the printer.
+func (s *PrintJobService) Start(ctx context.Context, id uuid.UUID) error {
+	job, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	if job == nil {
+		return fmt.Errorf("job not found")
+	}
+
+	// Get design and file
+	design, err := s.designRepo.GetByID(ctx, job.DesignID)
+	if err != nil {
+		return err
+	}
+
+	// Get printer
+	printerData, err := s.printerRepo.GetByID(ctx, job.PrinterID)
+	if err != nil {
+		return err
+	}
+	if printerData == nil {
+		return fmt.Errorf("printer not found")
+	}
+
+	// Send to printer via manager
+	if err := s.printerMgr.StartJob(job.PrinterID, design.FileName, s.storage.GetFullPath(design.FileName)); err != nil {
+		return fmt.Errorf("failed to start print: %w", err)
+	}
+
+	// Update job status
+	job.Status = model.PrintJobStatusSending
+	if err := s.repo.Update(ctx, job); err != nil {
+		return err
+	}
+
+	// Broadcast update
+	s.hub.Broadcast(realtime.Event{
+		Type: "job_started",
+		Data: job,
+	})
+
+	return nil
+}
+
+// Pause pauses a print job.
+func (s *PrintJobService) Pause(ctx context.Context, id uuid.UUID) error {
+	job, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	if job == nil {
+		return fmt.Errorf("job not found")
+	}
+
+	if err := s.printerMgr.PauseJob(job.PrinterID); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// Resume resumes a paused print job.
+func (s *PrintJobService) Resume(ctx context.Context, id uuid.UUID) error {
+	job, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	if job == nil {
+		return fmt.Errorf("job not found")
+	}
+
+	if err := s.printerMgr.ResumeJob(job.PrinterID); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// Cancel cancels a print job.
+func (s *PrintJobService) Cancel(ctx context.Context, id uuid.UUID) error {
+	job, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	if job == nil {
+		return fmt.Errorf("job not found")
+	}
+
+	if err := s.printerMgr.CancelJob(job.PrinterID); err != nil {
+		return err
+	}
+
+	job.Status = model.PrintJobStatusCancelled
+	return s.repo.Update(ctx, job)
+}
+
+// Update updates a print job (for outcome logging).
+func (s *PrintJobService) Update(ctx context.Context, j *model.PrintJob) error {
+	return s.repo.Update(ctx, j)
+}
+
+// FileService handles file operations.
+type FileService struct {
+	repo    *repository.FileRepository
+	storage storage.Storage
+}
+
+// GetByID retrieves a file by ID.
+func (s *FileService) GetByID(ctx context.Context, id uuid.UUID) (*model.File, error) {
+	return s.repo.GetByID(ctx, id)
+}
+
+// GetReader retrieves a file reader.
+func (s *FileService) GetReader(ctx context.Context, id uuid.UUID) (io.ReadCloser, *model.File, error) {
+	file, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return nil, nil, err
+	}
+	if file == nil {
+		return nil, nil, fmt.Errorf("file not found")
+	}
+
+	reader, err := s.storage.Get(file.StoragePath)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return reader, file, nil
+}
+
+// getContentType returns MIME type for file extension.
+func getContentType(ext string) string {
+	switch ext {
+	case "stl":
+		return "model/stl"
+	case "3mf":
+		return "model/3mf"
+	case "gcode":
+		return "text/x-gcode"
+	default:
+		return "application/octet-stream"
+	}
+}
+
