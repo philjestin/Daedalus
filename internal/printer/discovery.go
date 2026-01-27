@@ -135,8 +135,13 @@ func (d *Discovery) probeHost(ctx context.Context, host string) []DiscoveredPrin
 
 // isPortOpen does a quick TCP port check.
 func (d *Discovery) isPortOpen(host string, port int) bool {
+	return d.isPortOpenTimeout(host, port, 500*time.Millisecond)
+}
+
+// isPortOpenTimeout does a TCP port check with a custom timeout.
+func (d *Discovery) isPortOpenTimeout(host string, port int, timeout time.Duration) bool {
 	address := fmt.Sprintf("%s:%d", host, port)
-	conn, err := net.DialTimeout("tcp", address, 300*time.Millisecond)
+	conn, err := net.DialTimeout("tcp", address, timeout)
 	if err != nil {
 		return false
 	}
@@ -331,38 +336,55 @@ func (d *Discovery) checkChiTu(ctx context.Context, host string, port int) *Disc
 // checkBambu probes for Bambu Lab printers.
 // Bambu printers use MQTT on port 8883 and have FTPS on port 990.
 func (d *Discovery) checkBambu(ctx context.Context, host string, port int) *DiscoveredPrinter {
-	// Check if both Bambu-specific ports are open
-	// Bambu uses 8883 (MQTTS) and 990 (FTPS)
-	hasMQTT := d.isPortOpen(host, 8883)
-	hasFTPS := d.isPortOpen(host, 990)
-	
-	// Must have at least MQTT port
+	// Use a longer timeout for Bambu-specific port checks since these
+	// are secondary verification on an already-responsive host.
+	bambuTimeout := 1500 * time.Millisecond
+
+	// Check Bambu-specific ports with generous timeout
+	hasMQTT := d.isPortOpenTimeout(host, 8883, bambuTimeout)
 	if !hasMQTT {
 		return nil
 	}
-	
-	// If only MQTT, could be many things - need more verification
-	// If both MQTT and FTPS, very likely Bambu
-	if !hasFTPS {
-		// Try to verify via FTP banner on port 21 (some Bambu have this)
-		conn, err := net.DialTimeout("tcp", fmt.Sprintf("%s:21", host), 2*time.Second)
-		if err == nil {
-			defer conn.Close()
-			conn.SetReadDeadline(time.Now().Add(2 * time.Second))
-			banner := make([]byte, 512)
-			n, _ := conn.Read(banner)
-			bannerStr := strings.ToLower(string(banner[:n]))
-			if !strings.Contains(bannerStr, "bambu") && !strings.Contains(bannerStr, "bbl") {
-				return nil
-			}
-		} else {
-			// No FTP either - not conclusive enough
-			return nil
+
+	hasFTPS := d.isPortOpenTimeout(host, 990, bambuTimeout)
+
+	// MQTT + FTPS is definitive Bambu identification
+	if hasFTPS {
+		slog.Info("found Bambu printer (MQTT+FTPS)", "host", host)
+		return &DiscoveredPrinter{
+			ID:           uuid.New().String(),
+			Name:         fmt.Sprintf("Bambu Printer @ %s", host),
+			Host:         host,
+			Port:         8883,
+			Type:         model.ConnectionTypeBambuLAN,
+			Manufacturer: "Bambu Lab",
 		}
 	}
-	
-	slog.Info("found potential Bambu printer", "host", host, "hasMQTT", hasMQTT, "hasFTPS", hasFTPS)
-	
+
+	// MQTT only - check port 21 for FTP banner as secondary confirmation
+	conn, err := net.DialTimeout("tcp", fmt.Sprintf("%s:21", host), bambuTimeout)
+	if err == nil {
+		conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+		banner := make([]byte, 512)
+		n, _ := conn.Read(banner)
+		conn.Close()
+		bannerStr := strings.ToLower(string(banner[:n]))
+		if strings.Contains(bannerStr, "bambu") || strings.Contains(bannerStr, "bbl") {
+			slog.Info("found Bambu printer (MQTT+FTP banner)", "host", host)
+			return &DiscoveredPrinter{
+				ID:           uuid.New().String(),
+				Name:         fmt.Sprintf("Bambu Printer @ %s", host),
+				Host:         host,
+				Port:         8883,
+				Type:         model.ConnectionTypeBambuLAN,
+				Manufacturer: "Bambu Lab",
+			}
+		}
+	}
+
+	// MQTT-only on a local network: still likely Bambu.
+	// Port 8883 (MQTTS) is uncommon outside IoT/printers on home networks.
+	slog.Info("found probable Bambu printer (MQTT only)", "host", host)
 	return &DiscoveredPrinter{
 		ID:           uuid.New().String(),
 		Name:         fmt.Sprintf("Bambu Printer @ %s", host),
