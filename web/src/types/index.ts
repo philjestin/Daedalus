@@ -78,7 +78,7 @@ export interface Design {
 }
 
 // Printer types
-export type ConnectionType = 'manual' | 'octoprint' | 'bambu_lan' | 'moonraker'
+export type ConnectionType = 'manual' | 'octoprint' | 'bambu_lan' | 'bambu_cloud' | 'moonraker'
 export type PrinterStatus = 'idle' | 'printing' | 'paused' | 'error' | 'offline'
 
 export interface BuildVolume {
@@ -94,6 +94,8 @@ export interface Printer {
   manufacturer: string
   connection_type: ConnectionType
   connection_uri: string
+  api_key?: string
+  serial_number?: string
   status: PrinterStatus
   build_volume?: BuildVolume
   nozzle_diameter: number
@@ -630,5 +632,22 @@ export interface SyncResult {
   updated: number
   skipped: number
   errors: number
+}
+
+// Bambu Cloud types
+export interface CloudDevice {
+  dev_id: string
+  name: string
+  online: boolean
+  print_status: string
+  dev_model_name: string
+  dev_product_name: string
+  dev_access_code: string
+  nozzle_diameter: number
+}
+
+export interface BambuCloudStatus {
+  connected: boolean
+  email?: string
 }
 

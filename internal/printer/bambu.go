@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -19,15 +20,19 @@ import (
 	"github.com/jlaffaye/ftp"
 )
 
-// BambuClient implements Client for Bambu Lab printers via LAN MQTT.
+// BambuClient implements Client for Bambu Lab printers via LAN or Cloud MQTT.
 // Bambu printers use MQTT over TLS on port 8883 for status and control.
-// File uploads are done via FTPS on port 990.
+// File uploads are done via FTPS on port 990 (LAN mode only).
 type BambuClient struct {
 	printerID      uuid.UUID
 	host           string
 	accessCode     string
 	serialNumber   string
 	statusCallback func(*model.PrinterState)
+
+	// Cloud MQTT mode fields
+	cloudMode    bool
+	mqttUsername string // "u_{uid}" for cloud, "bblp" for LAN
 
 	mu         sync.RWMutex
 	mqttClient mqtt.Client
@@ -44,16 +49,20 @@ const BambuFTPSPort = 990
 
 // NewBambuClient creates a new Bambu LAN client.
 // The host should be the IP address or hostname of the printer.
+// If host is a full URI (http://IP:PORT), the hostname is extracted.
 // The accessCode is the LAN access code from the printer's settings.
-func NewBambuClient(printerID uuid.UUID, host string, accessCode string) *BambuClient {
-	// Extract serial number from host if it contains it, or use a placeholder
-	// In practice, serial is discovered via SSDP or provided by user
-	serial := "unknown"
-	if strings.Contains(host, "_") {
-		parts := strings.Split(host, "_")
-		if len(parts) > 0 {
-			serial = parts[0]
+// The serialNumber is needed for MQTT topic subscription.
+func NewBambuClient(printerID uuid.UUID, host string, accessCode string, serialNumber string) *BambuClient {
+	// If host is a full URI, extract just the hostname
+	if strings.HasPrefix(host, "http://") || strings.HasPrefix(host, "https://") {
+		if u, err := url.Parse(host); err == nil {
+			host = u.Hostname()
 		}
+	}
+
+	serial := serialNumber
+	if serial == "" {
+		serial = "unknown"
 	}
 
 	return &BambuClient{
@@ -61,6 +70,26 @@ func NewBambuClient(printerID uuid.UUID, host string, accessCode string) *BambuC
 		host:         host,
 		accessCode:   accessCode,
 		serialNumber: serial,
+		stopChan:     make(chan struct{}),
+		lastState: &model.PrinterState{
+			PrinterID: printerID,
+			Status:    model.PrinterStatusOffline,
+			UpdatedAt: time.Now(),
+		},
+	}
+}
+
+// NewBambuCloudClient creates a Bambu client that connects via the cloud MQTT broker.
+// mqttUsername is "u_{uid}" from the Bambu account preferences.
+// authToken is the access token from Bambu Cloud login (used as MQTT password).
+func NewBambuCloudClient(printerID uuid.UUID, serial, mqttUsername, authToken string) *BambuClient {
+	return &BambuClient{
+		printerID:    printerID,
+		host:         "us.mqtt.bambulab.com",
+		accessCode:   authToken,
+		serialNumber: serial,
+		cloudMode:    true,
+		mqttUsername:  mqttUsername,
 		stopChan:     make(chan struct{}),
 		lastState: &model.PrinterState{
 			PrinterID: printerID,
@@ -78,6 +107,7 @@ func (c *BambuClient) SetSerialNumber(serial string) {
 }
 
 // Connect establishes MQTT connection to Bambu printer.
+// Connection pattern follows the bambulabs_api community SDK.
 func (c *BambuClient) Connect() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -86,69 +116,91 @@ func (c *BambuClient) Connect() error {
 		return nil
 	}
 
-	// Configure MQTT client options
 	broker := fmt.Sprintf("ssl://%s:%d", c.host, BambuMQTTPort)
-	clientID := fmt.Sprintf("printfarm_%s_%d", c.printerID.String()[:8], time.Now().Unix())
 
-	opts := mqtt.NewClientOptions()
-	opts.AddBroker(broker)
-	opts.SetClientID(clientID)
-
-	// Bambu uses "bblp" as username and access code as password
-	opts.SetUsername("bblp")
-	opts.SetPassword(c.accessCode)
-
-	// TLS configuration - Bambu uses self-signed certificates
-	tlsConfig := &tls.Config{
-		InsecureSkipVerify: true, // Bambu printers use self-signed certs
-		MinVersion:         tls.VersionTLS12,
+	// Determine MQTT credentials based on mode
+	username := "bblp"
+	if c.cloudMode && c.mqttUsername != "" {
+		username = c.mqttUsername
 	}
-	opts.SetTLSConfig(tlsConfig)
 
-	// Connection settings
-	opts.SetAutoReconnect(true)
-	opts.SetConnectRetry(true)
-	opts.SetConnectRetryInterval(5 * time.Second)
-	opts.SetKeepAlive(30 * time.Second)
-	opts.SetPingTimeout(10 * time.Second)
-	opts.SetWriteTimeout(5 * time.Second)
+	// TLS config differs between local and cloud mode
+	var tlsConfig *tls.Config
+	if c.cloudMode {
+		// Cloud broker has a valid certificate — use system CA pool
+		tlsConfig = &tls.Config{
+			MinVersion: tls.VersionTLS12,
+		}
+	} else {
+		// Local printer uses self-signed cert
+		tlsConfig = &tls.Config{InsecureSkipVerify: true}
+	}
 
-	// Connection handlers
+	opts := mqtt.NewClientOptions().
+		AddBroker(broker).
+		SetClientID(fmt.Sprintf("printfarm_%s", c.printerID.String()[:8])).
+		SetUsername(username).
+		SetPassword(c.accessCode).
+		SetTLSConfig(tlsConfig).
+		SetAutoReconnect(true).
+		SetConnectTimeout(10 * time.Second).
+		SetWriteTimeout(10 * time.Second).
+		SetKeepAlive(30 * time.Second)
+
+	// Use DefaultPublishHandler for all incoming messages (matches community SDK pattern)
+	opts.SetDefaultPublishHandler(c.handleMessage)
 	opts.SetOnConnectHandler(c.onConnect)
 	opts.SetConnectionLostHandler(c.onConnectionLost)
 	opts.SetReconnectingHandler(c.onReconnecting)
 
-	// Create client
 	c.mqttClient = mqtt.NewClient(opts)
 
-	// Connect
-	slog.Info("connecting to Bambu printer", "host", c.host, "printer_id", c.printerID)
-	token := c.mqttClient.Connect()
-	if !token.WaitTimeout(10 * time.Second) {
-		return fmt.Errorf("MQTT connection timeout")
+	mode := "LAN"
+	if c.cloudMode {
+		mode = "cloud"
 	}
-	if token.Error() != nil {
+	slog.Info("connecting to Bambu printer",
+		"mode", mode,
+		"host", c.host,
+		"printer_id", c.printerID,
+		"serial", c.serialNumber,
+		"broker", broker,
+		"username", username,
+	)
+	token := c.mqttClient.Connect()
+	if token.Wait() && token.Error() != nil {
 		return fmt.Errorf("MQTT connection failed: %w", token.Error())
 	}
 
 	c.connected = true
-	slog.Info("connected to Bambu printer", "host", c.host, "printer_id", c.printerID)
+	slog.Info("connected to Bambu printer", "mode", mode, "host", c.host, "printer_id", c.printerID)
 
 	return nil
 }
 
 // onConnect is called when MQTT connection is established.
 func (c *BambuClient) onConnect(client mqtt.Client) {
-	slog.Info("Bambu MQTT connected", "printer_id", c.printerID)
+	slog.Info("Bambu MQTT connected",
+		"printer_id", c.printerID,
+		"host", c.host,
+		"serial", c.serialNumber,
+		"has_access_code", c.accessCode != "",
+		"access_code_len", len(c.accessCode),
+	)
 
-	// Subscribe to report topic for status updates
-	reportTopic := fmt.Sprintf("device/%s/report", c.serialNumber)
-	token := client.Subscribe(reportTopic, 1, c.handleMessage)
+	// Subscribe to report topic — matches community SDK pattern:
+	// QoS 0, nil handler (messages go through DefaultPublishHandler)
+	topic := fmt.Sprintf("device/%s/report", c.serialNumber)
+	token := client.Subscribe(topic, 0, nil)
 	if token.Wait() && token.Error() != nil {
-		slog.Error("failed to subscribe to Bambu report topic", "error", token.Error())
+		slog.Error("failed to subscribe to Bambu report topic",
+			"error", token.Error(),
+			"topic", topic,
+			"serial", c.serialNumber,
+		)
 		return
 	}
-	slog.Info("subscribed to Bambu report topic", "topic", reportTopic)
+	slog.Info("subscribed to Bambu report topic", "topic", topic)
 
 	// Request initial status
 	c.requestPushAll()
@@ -172,7 +224,13 @@ func (c *BambuClient) onConnectionLost(client mqtt.Client, err error) {
 
 // onReconnecting is called when MQTT client is attempting to reconnect.
 func (c *BambuClient) onReconnecting(client mqtt.Client, opts *mqtt.ClientOptions) {
-	slog.Info("Bambu MQTT reconnecting", "printer_id", c.printerID)
+	slog.Info("Bambu MQTT reconnecting",
+		"printer_id", c.printerID,
+		"host", c.host,
+		"serial", c.serialNumber,
+		"has_access_code", c.accessCode != "",
+		"access_code_len", len(c.accessCode),
+	)
 }
 
 // handleMessage processes incoming MQTT messages from the printer.

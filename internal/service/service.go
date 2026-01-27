@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/hyperion/printfarm/internal/bambu"
 	"github.com/hyperion/printfarm/internal/model"
 	"github.com/hyperion/printfarm/internal/printer"
 	"github.com/hyperion/printfarm/internal/realtime"
@@ -22,20 +23,21 @@ import (
 
 // Services holds all service instances.
 type Services struct {
-	Projects  *ProjectService
-	Parts     *PartService
-	Designs   *DesignService
-	Printers  *PrinterService
-	Materials *MaterialService
-	Spools    *SpoolService
-	PrintJobs *PrintJobService
-	Files     *FileService
-	Expenses  *ExpenseService
-	Sales     *SaleService
-	Stats     *StatsService
-	Templates *TemplateService
-	Etsy      *EtsyService
-	Auth      *AuthService
+	Projects   *ProjectService
+	Parts      *PartService
+	Designs    *DesignService
+	Printers   *PrinterService
+	Materials  *MaterialService
+	Spools     *SpoolService
+	PrintJobs  *PrintJobService
+	Files      *FileService
+	Expenses   *ExpenseService
+	Sales      *SaleService
+	Stats      *StatsService
+	Templates  *TemplateService
+	Etsy       *EtsyService
+	Auth       *AuthService
+	BambuCloud *BambuCloudService
 }
 
 // EtsyConfig holds Etsy OAuth configuration.
@@ -65,8 +67,9 @@ func NewServices(repos *repository.Repositories, store storage.Storage, printerM
 		Sales:     &SaleService{repo: repos.Sales},
 		Stats:     &StatsService{expenseRepo: repos.Expenses, saleRepo: repos.Sales, printJobRepo: repos.PrintJobs},
 		Templates: &TemplateService{repo: repos.Templates, projectRepo: repos.Projects, partRepo: repos.Parts, designRepo: repos.Designs, printJobRepo: repos.PrintJobs, spoolRepo: repos.Spools, materialRepo: repos.Materials, printerRepo: repos.Printers},
-		Etsy:      nil, // Initialize separately with NewServicesWithEtsy
-		Auth:      nil, // Initialize separately with NewServicesWithConfig
+		Etsy:       nil, // Initialize separately with NewServicesWithEtsy
+		Auth:       nil, // Initialize separately with NewServicesWithConfig
+		BambuCloud: NewBambuCloudService(repos.BambuCloud, repos.Printers, printerMgr, bambu.NewCloudClient()),
 	}
 }
 
@@ -608,20 +611,182 @@ func (s *PrinterService) DiscoverPrinters(ctx context.Context) ([]printer.Discov
 
 	// Mark printers that are already added
 	existing, _ := s.repo.List(ctx)
-	existingHosts := make(map[string]bool)
+	existingURIs := make(map[string]bool)
 	for _, p := range existing {
-		// Extract host from connection URI
-		existingHosts[p.ConnectionURI] = true
+		existingURIs[p.ConnectionURI] = true
 	}
 
 	for i := range discovered {
-		uri := fmt.Sprintf("http://%s:%d", discovered[i].Host, discovered[i].Port)
-		if existingHosts[uri] {
+		host := discovered[i].Host
+		uri := fmt.Sprintf("http://%s:%d", host, discovered[i].Port)
+		// Check both full URI and bare host (Bambu printers store just the IP)
+		if existingURIs[uri] || existingURIs[host] {
 			discovered[i].AlreadyAdded = true
 		}
 	}
 
 	return discovered, nil
+}
+
+// ConnectAllPrinters loads all printers from the database and connects
+// non-manual printers. Called at startup to restore connections.
+func (s *PrinterService) ConnectAllPrinters(ctx context.Context) {
+	printers, err := s.repo.List(ctx)
+	if err != nil {
+		slog.Error("failed to load printers for reconnection", "error", err)
+		return
+	}
+
+	for i := range printers {
+		p := &printers[i]
+		if p.ConnectionType == model.ConnectionTypeManual {
+			continue
+		}
+		slog.Info("reconnecting printer", "id", p.ID, "name", p.Name, "type", p.ConnectionType)
+		go s.manager.Connect(p)
+	}
+}
+
+// BambuCloudService handles Bambu Cloud authentication and device management.
+type BambuCloudService struct {
+	cloud      *bambu.CloudClient
+	repo       *repository.BambuCloudRepository
+	printerRepo *repository.PrinterRepository
+	printerMgr *printer.Manager
+}
+
+// NewBambuCloudService creates a new BambuCloudService.
+func NewBambuCloudService(repo *repository.BambuCloudRepository, printerRepo *repository.PrinterRepository, printerMgr *printer.Manager, cloud *bambu.CloudClient) *BambuCloudService {
+	return &BambuCloudService{
+		cloud:       cloud,
+		repo:        repo,
+		printerRepo: printerRepo,
+		printerMgr:  printerMgr,
+	}
+}
+
+// Login authenticates with Bambu Cloud. Returns true if a verification code is needed.
+func (s *BambuCloudService) Login(ctx context.Context, email, password string) (needsCode bool, err error) {
+	resp, err := s.cloud.Login(email, password)
+	if err != nil {
+		return false, err
+	}
+
+	if resp.LoginType == "verifyCode" || resp.LoginType == "tfa" {
+		// Need email verification code
+		if err := s.cloud.RequestVerifyCode(email); err != nil {
+			return false, fmt.Errorf("failed to request verification code: %w", err)
+		}
+		return true, nil
+	}
+
+	// Direct login succeeded — store credentials
+	return false, s.storeAuth(ctx, email, resp)
+}
+
+// VerifyCode completes login with a verification code.
+func (s *BambuCloudService) VerifyCode(ctx context.Context, email, code string) error {
+	resp, err := s.cloud.LoginWithCode(email, code)
+	if err != nil {
+		return err
+	}
+	return s.storeAuth(ctx, email, resp)
+}
+
+// storeAuth fetches the MQTT username and persists credentials.
+func (s *BambuCloudService) storeAuth(ctx context.Context, email string, resp *bambu.LoginResponse) error {
+	mqttUsername, err := s.cloud.GetUsername(resp.AccessToken)
+	if err != nil {
+		return fmt.Errorf("failed to get MQTT username: %w", err)
+	}
+
+	var expiresAt *time.Time
+	if resp.ExpiresIn > 0 {
+		t := time.Now().Add(time.Duration(resp.ExpiresIn) * time.Second)
+		expiresAt = &t
+	}
+
+	auth := &model.BambuCloudAuth{
+		Email:        email,
+		AccessToken:  resp.AccessToken,
+		MQTTUsername: mqttUsername,
+		ExpiresAt:    expiresAt,
+	}
+	return s.repo.Upsert(ctx, auth)
+}
+
+// GetDevices fetches the device list from Bambu Cloud.
+func (s *BambuCloudService) GetDevices(ctx context.Context) ([]bambu.CloudDevice, error) {
+	auth, err := s.repo.Get(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if auth == nil {
+		return nil, fmt.Errorf("not authenticated with Bambu Cloud")
+	}
+	return s.cloud.GetDevices(auth.AccessToken)
+}
+
+// GetStoredAuth returns the stored authentication info (without exposing the token).
+func (s *BambuCloudService) GetStoredAuth(ctx context.Context) (*model.BambuCloudAuth, error) {
+	return s.repo.Get(ctx)
+}
+
+// AddDevice creates a printer from a cloud device and connects it.
+func (s *BambuCloudService) AddDevice(ctx context.Context, devID string) (*model.Printer, error) {
+	auth, err := s.repo.Get(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if auth == nil {
+		return nil, fmt.Errorf("not authenticated with Bambu Cloud")
+	}
+
+	devices, err := s.cloud.GetDevices(auth.AccessToken)
+	if err != nil {
+		return nil, err
+	}
+
+	// Find the requested device
+	var device *bambu.CloudDevice
+	for i := range devices {
+		if devices[i].DevID == devID {
+			device = &devices[i]
+			break
+		}
+	}
+	if device == nil {
+		return nil, fmt.Errorf("device %s not found in cloud account", devID)
+	}
+
+	// Create the printer record
+	p := &model.Printer{
+		Name:           device.Name,
+		Model:          device.DevProductName,
+		Manufacturer:   "Bambu Lab",
+		ConnectionType: model.ConnectionTypeBambuCloud,
+		ConnectionURI:  auth.MQTTUsername,   // Store MQTT username here
+		APIKey:         auth.AccessToken,     // Store auth token here
+		SerialNumber:   device.DevID,
+		NozzleDiameter: device.NozzleDiameter,
+	}
+	if p.NozzleDiameter == 0 {
+		p.NozzleDiameter = 0.4
+	}
+
+	if err := s.printerRepo.Create(ctx, p); err != nil {
+		return nil, err
+	}
+
+	// Connect via cloud MQTT
+	go s.printerMgr.Connect(p)
+
+	return p, nil
+}
+
+// Logout clears stored Bambu Cloud credentials.
+func (s *BambuCloudService) Logout(ctx context.Context) error {
+	return s.repo.Delete(ctx)
 }
 
 // MaterialService handles material business logic.

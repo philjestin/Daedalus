@@ -209,8 +209,9 @@ type ConnectionType string
 const (
 	ConnectionTypeManual    ConnectionType = "manual"
 	ConnectionTypeOctoPrint ConnectionType = "octoprint"
-	ConnectionTypeBambuLAN  ConnectionType = "bambu_lan"
-	ConnectionTypeMoonraker ConnectionType = "moonraker"
+	ConnectionTypeBambuLAN   ConnectionType = "bambu_lan"
+	ConnectionTypeBambuCloud ConnectionType = "bambu_cloud"
+	ConnectionTypeMoonraker  ConnectionType = "moonraker"
 	ConnectionTypeChiTu     ConnectionType = "chitu"      // Elegoo, Anycubic, Phrozen resin printers
 )
 
@@ -241,6 +242,7 @@ type Printer struct {
 	ConnectionType    ConnectionType `json:"connection_type"`
 	ConnectionURI     string         `json:"connection_uri"`
 	APIKey            string         `json:"api_key,omitempty"`
+	SerialNumber      string         `json:"serial_number,omitempty"`
 	Status            PrinterStatus  `json:"status"`
 	BuildVolume       *BuildVolume   `json:"build_volume,omitempty"`
 	NozzleDiameter    float64        `json:"nozzle_diameter"`
@@ -760,5 +762,16 @@ type ParsedReceiptItem struct {
 	IsFilament     bool             `json:"is_filament"`
 	Filament       *FilamentMetadata `json:"filament,omitempty"`
 	Confidence     int              `json:"confidence"`
+}
+
+// BambuCloudAuth stores authentication credentials for Bambu Cloud API.
+type BambuCloudAuth struct {
+	ID           uuid.UUID  `json:"id"`
+	Email        string     `json:"email"`
+	AccessToken  string     `json:"access_token"`
+	MQTTUsername string     `json:"mqtt_username"`
+	ExpiresAt    *time.Time `json:"expires_at,omitempty"`
+	CreatedAt    time.Time  `json:"created_at"`
+	UpdatedAt    time.Time  `json:"updated_at"`
 }
 

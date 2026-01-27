@@ -86,7 +86,10 @@ func (m *Manager) Connect(p *model.Printer) error {
 	case model.ConnectionTypeOctoPrint:
 		client = NewOctoPrintClient(p.ID, p.ConnectionURI, p.APIKey)
 	case model.ConnectionTypeBambuLAN:
-		client = NewBambuClient(p.ID, p.ConnectionURI, p.APIKey)
+		client = NewBambuClient(p.ID, p.ConnectionURI, p.APIKey, p.SerialNumber)
+	case model.ConnectionTypeBambuCloud:
+		// For cloud printers: ConnectionURI = MQTT username, APIKey = auth token
+		client = NewBambuCloudClient(p.ID, p.SerialNumber, p.ConnectionURI, p.APIKey)
 	case model.ConnectionTypeMoonraker:
 		client = NewMoonrakerClient(p.ID, p.ConnectionURI)
 	case model.ConnectionTypeManual:

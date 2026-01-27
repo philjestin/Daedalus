@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS printers (
     connection_type TEXT NOT NULL DEFAULT 'manual',
     connection_uri TEXT DEFAULT '',
     api_key TEXT DEFAULT '',
+    serial_number TEXT DEFAULT '',
     status TEXT NOT NULL DEFAULT 'offline',
     build_volume TEXT,
     nozzle_diameter REAL DEFAULT 0.4,
@@ -519,6 +520,17 @@ CREATE TABLE IF NOT EXISTS recipe_materials (
 );
 
 CREATE INDEX IF NOT EXISTS idx_recipe_materials_recipe ON recipe_materials(recipe_id);
+
+-- Bambu Cloud authentication storage
+CREATE TABLE IF NOT EXISTS bambu_cloud_auth (
+    id TEXT PRIMARY KEY,
+    email TEXT NOT NULL,
+    access_token TEXT NOT NULL,
+    mqtt_username TEXT NOT NULL,
+    expires_at TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
 
 -- Views
 

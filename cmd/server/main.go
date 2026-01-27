@@ -81,6 +81,9 @@ func main() {
 	// Initialize PrintJobService to register for printer status changes (auto failure detection)
 	services.PrintJobs.Init()
 
+	// Reconnect all saved printers at startup
+	services.Printers.ConnectAllPrinters(context.Background())
+
 	if etsyClientID != "" {
 		slog.Info("Etsy integration enabled", "redirect_uri", etsyRedirectURI)
 	}

@@ -23,8 +23,9 @@ type Repositories struct {
 	Expenses  *ExpenseRepository
 	Sales     *SaleRepository
 	Templates *TemplateRepository
-	Etsy      *EtsyRepository
-	Auth      *AuthRepository
+	Etsy       *EtsyRepository
+	Auth       *AuthRepository
+	BambuCloud *BambuCloudRepository
 }
 
 // NewRepositories creates all repository instances.
@@ -41,8 +42,9 @@ func NewRepositories(db *sql.DB) *Repositories {
 		Expenses:  &ExpenseRepository{db: db},
 		Sales:     &SaleRepository{db: db},
 		Templates: &TemplateRepository{db: db},
-		Etsy:      &EtsyRepository{db: db},
-		Auth:      &AuthRepository{db: db},
+		Etsy:       &EtsyRepository{db: db},
+		Auth:       &AuthRepository{db: db},
+		BambuCloud: &BambuCloudRepository{db: db},
 	}
 }
 
@@ -321,9 +323,9 @@ func (r *PrinterRepository) Create(ctx context.Context, p *model.Printer) error 
 	buildVolumeJSON, _ := json.Marshal(p.BuildVolume)
 
 	_, err := r.db.ExecContext(ctx, `
-		INSERT INTO printers (id, name, model, manufacturer, connection_type, connection_uri, api_key, status, build_volume, nozzle_diameter, location, notes, min_material_percent, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, p.ID, p.Name, p.Model, p.Manufacturer, p.ConnectionType, p.ConnectionURI, p.APIKey, p.Status, buildVolumeJSON, p.NozzleDiameter, p.Location, p.Notes, p.MinMaterialPercent, p.CreatedAt, p.UpdatedAt)
+		INSERT INTO printers (id, name, model, manufacturer, connection_type, connection_uri, api_key, serial_number, status, build_volume, nozzle_diameter, location, notes, min_material_percent, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, p.ID, p.Name, p.Model, p.Manufacturer, p.ConnectionType, p.ConnectionURI, p.APIKey, p.SerialNumber, p.Status, buildVolumeJSON, p.NozzleDiameter, p.Location, p.Notes, p.MinMaterialPercent, p.CreatedAt, p.UpdatedAt)
 	return err
 }
 
@@ -332,9 +334,9 @@ func (r *PrinterRepository) GetByID(ctx context.Context, id uuid.UUID) (*model.P
 	var p model.Printer
 	var buildVolumeJSON []byte
 	err := scanRow(r.db.QueryRowContext(ctx, `
-		SELECT id, name, model, manufacturer, connection_type, connection_uri, api_key, status, build_volume, nozzle_diameter, location, notes, min_material_percent, created_at, updated_at
+		SELECT id, name, model, manufacturer, connection_type, connection_uri, api_key, serial_number, status, build_volume, nozzle_diameter, location, notes, min_material_percent, created_at, updated_at
 		FROM printers WHERE id = ?
-	`, id), &p.ID, &p.Name, &p.Model, &p.Manufacturer, &p.ConnectionType, &p.ConnectionURI, &p.APIKey, &p.Status, &buildVolumeJSON, &p.NozzleDiameter, &p.Location, &p.Notes, &p.MinMaterialPercent, &p.CreatedAt, &p.UpdatedAt)
+	`, id), &p.ID, &p.Name, &p.Model, &p.Manufacturer, &p.ConnectionType, &p.ConnectionURI, &p.APIKey, &p.SerialNumber, &p.Status, &buildVolumeJSON, &p.NozzleDiameter, &p.Location, &p.Notes, &p.MinMaterialPercent, &p.CreatedAt, &p.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -350,7 +352,7 @@ func (r *PrinterRepository) GetByID(ctx context.Context, id uuid.UUID) (*model.P
 // List retrieves all printers.
 func (r *PrinterRepository) List(ctx context.Context) ([]model.Printer, error) {
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT id, name, model, manufacturer, connection_type, connection_uri, api_key, status, build_volume, nozzle_diameter, location, notes, min_material_percent, created_at, updated_at
+		SELECT id, name, model, manufacturer, connection_type, connection_uri, api_key, serial_number, status, build_volume, nozzle_diameter, location, notes, min_material_percent, created_at, updated_at
 		FROM printers ORDER BY name ASC
 	`)
 	if err != nil {
@@ -362,7 +364,7 @@ func (r *PrinterRepository) List(ctx context.Context) ([]model.Printer, error) {
 	for rows.Next() {
 		var p model.Printer
 		var buildVolumeJSON []byte
-		if err := scanRow(rows, &p.ID, &p.Name, &p.Model, &p.Manufacturer, &p.ConnectionType, &p.ConnectionURI, &p.APIKey, &p.Status, &buildVolumeJSON, &p.NozzleDiameter, &p.Location, &p.Notes, &p.MinMaterialPercent, &p.CreatedAt, &p.UpdatedAt); err != nil {
+		if err := scanRow(rows, &p.ID, &p.Name, &p.Model, &p.Manufacturer, &p.ConnectionType, &p.ConnectionURI, &p.APIKey, &p.SerialNumber, &p.Status, &buildVolumeJSON, &p.NozzleDiameter, &p.Location, &p.Notes, &p.MinMaterialPercent, &p.CreatedAt, &p.UpdatedAt); err != nil {
 			return nil, err
 		}
 		if buildVolumeJSON != nil {
@@ -379,9 +381,9 @@ func (r *PrinterRepository) Update(ctx context.Context, p *model.Printer) error 
 	buildVolumeJSON, _ := json.Marshal(p.BuildVolume)
 
 	_, err := r.db.ExecContext(ctx, `
-		UPDATE printers SET name = ?, model = ?, manufacturer = ?, connection_type = ?, connection_uri = ?, api_key = ?, status = ?, build_volume = ?, nozzle_diameter = ?, location = ?, notes = ?, min_material_percent = ?, updated_at = ?
+		UPDATE printers SET name = ?, model = ?, manufacturer = ?, connection_type = ?, connection_uri = ?, api_key = ?, serial_number = ?, status = ?, build_volume = ?, nozzle_diameter = ?, location = ?, notes = ?, min_material_percent = ?, updated_at = ?
 		WHERE id = ?
-	`, p.Name, p.Model, p.Manufacturer, p.ConnectionType, p.ConnectionURI, p.APIKey, p.Status, buildVolumeJSON, p.NozzleDiameter, p.Location, p.Notes, p.MinMaterialPercent, p.UpdatedAt, p.ID)
+	`, p.Name, p.Model, p.Manufacturer, p.ConnectionType, p.ConnectionURI, p.APIKey, p.SerialNumber, p.Status, buildVolumeJSON, p.NozzleDiameter, p.Location, p.Notes, p.MinMaterialPercent, p.UpdatedAt, p.ID)
 	return err
 }
 
@@ -1593,4 +1595,51 @@ func (r *TemplateRepository) FindCompatiblePrinters(ctx context.Context, recipeI
 	}
 
 	return compatible, nil
+}
+
+// BambuCloudRepository handles Bambu Cloud auth token storage.
+type BambuCloudRepository struct {
+	db *sql.DB
+}
+
+// Upsert stores or updates Bambu Cloud auth credentials.
+// Only one row is expected (single account).
+func (r *BambuCloudRepository) Upsert(ctx context.Context, auth *model.BambuCloudAuth) error {
+	if auth.ID == uuid.Nil {
+		auth.ID = uuid.New()
+	}
+	auth.UpdatedAt = time.Now()
+	if auth.CreatedAt.IsZero() {
+		auth.CreatedAt = auth.UpdatedAt
+	}
+
+	// Delete existing then insert (simpler than upsert for single-row table)
+	_, _ = r.db.ExecContext(ctx, `DELETE FROM bambu_cloud_auth`)
+	_, err := r.db.ExecContext(ctx, `
+		INSERT INTO bambu_cloud_auth (id, email, access_token, mqtt_username, expires_at, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
+	`, auth.ID, auth.Email, auth.AccessToken, auth.MQTTUsername, auth.ExpiresAt, auth.CreatedAt, auth.UpdatedAt)
+	return err
+}
+
+// Get retrieves the stored Bambu Cloud auth (if any).
+func (r *BambuCloudRepository) Get(ctx context.Context) (*model.BambuCloudAuth, error) {
+	var auth model.BambuCloudAuth
+	err := scanRow(r.db.QueryRowContext(ctx, `
+		SELECT id, email, access_token, mqtt_username, expires_at, created_at, updated_at
+		FROM bambu_cloud_auth LIMIT 1
+	`), &auth.ID, &auth.Email, &auth.AccessToken, &auth.MQTTUsername, &auth.ExpiresAt, &auth.CreatedAt, &auth.UpdatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &auth, nil
+}
+
+// Delete removes the stored Bambu Cloud auth.
+func (r *BambuCloudRepository) Delete(ctx context.Context) error {
+	_, err := r.db.ExecContext(ctx, `DELETE FROM bambu_cloud_auth`)
+	return err
 }

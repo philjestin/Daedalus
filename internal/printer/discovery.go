@@ -25,6 +25,7 @@ type DiscoveredPrinter struct {
 	Model          string              `json:"model,omitempty"`
 	Manufacturer   string              `json:"manufacturer,omitempty"`
 	Version        string              `json:"version,omitempty"`
+	SerialNumber   string              `json:"serial_number,omitempty"`
 	AlreadyAdded   bool                `json:"already_added"`
 }
 
@@ -333,6 +334,107 @@ func (d *Discovery) checkChiTu(ctx context.Context, host string, port int) *Disc
 	return nil
 }
 
+// bambuUDPInfo holds parsed fields from a Bambu UDP discovery response.
+type bambuUDPInfo struct {
+	DevName        string `json:"dev_name"`
+	DevID          string `json:"dev_id"`
+	DevProductName string `json:"dev_product_name"`
+}
+
+// probeBambuUDP sends M99999 to host:2021 and parses the JSON response
+// to get the printer's real name, serial number and model.
+// Tries both unicast (direct) and broadcast approaches.
+func (d *Discovery) probeBambuUDP(host string) *bambuUDPInfo {
+	// Try unicast first (direct to the printer)
+	if info := d.probeBambuUDPUnicast(host); info != nil {
+		return info
+	}
+
+	// Try broadcast — some Bambu printers only respond to broadcast on port 2021
+	return d.probeBambuUDPBroadcast(host)
+}
+
+func (d *Discovery) probeBambuUDPUnicast(host string) *bambuUDPInfo {
+	addr, err := net.ResolveUDPAddr("udp4", fmt.Sprintf("%s:2021", host))
+	if err != nil {
+		slog.Debug("Bambu UDP unicast resolve failed", "host", host, "error", err)
+		return nil
+	}
+
+	conn, err := net.DialUDP("udp4", nil, addr)
+	if err != nil {
+		slog.Debug("Bambu UDP unicast dial failed", "host", host, "error", err)
+		return nil
+	}
+	defer conn.Close()
+
+	conn.SetDeadline(time.Now().Add(3 * time.Second))
+
+	if _, err := conn.Write([]byte("M99999")); err != nil {
+		slog.Debug("Bambu UDP unicast write failed", "host", host, "error", err)
+		return nil
+	}
+
+	buf := make([]byte, 4096)
+	n, err := conn.Read(buf)
+	if err != nil || n == 0 {
+		slog.Debug("Bambu UDP unicast no response", "host", host, "error", err)
+		return nil
+	}
+
+	return d.parseBambuUDPResponse(host, buf[:n])
+}
+
+func (d *Discovery) probeBambuUDPBroadcast(targetHost string) *bambuUDPInfo {
+	broadcastAddr, err := net.ResolveUDPAddr("udp4", "255.255.255.255:2021")
+	if err != nil {
+		return nil
+	}
+
+	conn, err := net.ListenUDP("udp4", &net.UDPAddr{Port: 0})
+	if err != nil {
+		slog.Debug("Bambu UDP broadcast listen failed", "error", err)
+		return nil
+	}
+	defer conn.Close()
+
+	conn.SetDeadline(time.Now().Add(4 * time.Second))
+
+	// Send broadcast discovery
+	for i := 0; i < 2; i++ {
+		conn.WriteToUDP([]byte("M99999"), broadcastAddr)
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	// Read responses and look for our target host
+	buf := make([]byte, 4096)
+	for {
+		n, remoteAddr, err := conn.ReadFromUDP(buf)
+		if err != nil {
+			break
+		}
+		if remoteAddr.IP.String() == targetHost {
+			if info := d.parseBambuUDPResponse(targetHost, buf[:n]); info != nil {
+				return info
+			}
+		}
+	}
+
+	slog.Debug("Bambu UDP broadcast got no match", "target", targetHost)
+	return nil
+}
+
+func (d *Discovery) parseBambuUDPResponse(host string, data []byte) *bambuUDPInfo {
+	var info bambuUDPInfo
+	if err := json.Unmarshal(data, &info); err != nil {
+		slog.Debug("failed to parse Bambu UDP response", "host", host, "error", err, "raw", string(data))
+		return nil
+	}
+
+	slog.Info("Bambu UDP probe success", "host", host, "name", info.DevName, "serial", info.DevID, "model", info.DevProductName)
+	return &info
+}
+
 // checkBambu probes for Bambu Lab printers.
 // Bambu printers use MQTT on port 8883 and have FTPS on port 990.
 func (d *Discovery) checkBambu(ctx context.Context, host string, port int) *DiscoveredPrinter {
@@ -348,44 +450,37 @@ func (d *Discovery) checkBambu(ctx context.Context, host string, port int) *Disc
 
 	hasFTPS := d.isPortOpenTimeout(host, 990, bambuTimeout)
 
+	isBambu := false
+
 	// MQTT + FTPS is definitive Bambu identification
 	if hasFTPS {
 		slog.Info("found Bambu printer (MQTT+FTPS)", "host", host)
-		return &DiscoveredPrinter{
-			ID:           uuid.New().String(),
-			Name:         fmt.Sprintf("Bambu Printer @ %s", host),
-			Host:         host,
-			Port:         8883,
-			Type:         model.ConnectionTypeBambuLAN,
-			Manufacturer: "Bambu Lab",
-		}
+		isBambu = true
 	}
 
-	// MQTT only - check port 21 for FTP banner as secondary confirmation
-	conn, err := net.DialTimeout("tcp", fmt.Sprintf("%s:21", host), bambuTimeout)
-	if err == nil {
-		conn.SetReadDeadline(time.Now().Add(2 * time.Second))
-		banner := make([]byte, 512)
-		n, _ := conn.Read(banner)
-		conn.Close()
-		bannerStr := strings.ToLower(string(banner[:n]))
-		if strings.Contains(bannerStr, "bambu") || strings.Contains(bannerStr, "bbl") {
-			slog.Info("found Bambu printer (MQTT+FTP banner)", "host", host)
-			return &DiscoveredPrinter{
-				ID:           uuid.New().String(),
-				Name:         fmt.Sprintf("Bambu Printer @ %s", host),
-				Host:         host,
-				Port:         8883,
-				Type:         model.ConnectionTypeBambuLAN,
-				Manufacturer: "Bambu Lab",
+	if !isBambu {
+		// MQTT only - check port 21 for FTP banner as secondary confirmation
+		conn, err := net.DialTimeout("tcp", fmt.Sprintf("%s:21", host), bambuTimeout)
+		if err == nil {
+			conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+			banner := make([]byte, 512)
+			n, _ := conn.Read(banner)
+			conn.Close()
+			bannerStr := strings.ToLower(string(banner[:n]))
+			if strings.Contains(bannerStr, "bambu") || strings.Contains(bannerStr, "bbl") {
+				slog.Info("found Bambu printer (MQTT+FTP banner)", "host", host)
+				isBambu = true
 			}
 		}
 	}
 
-	// MQTT-only on a local network: still likely Bambu.
-	// Port 8883 (MQTTS) is uncommon outside IoT/printers on home networks.
-	slog.Info("found probable Bambu printer (MQTT only)", "host", host)
-	return &DiscoveredPrinter{
+	if !isBambu {
+		// MQTT-only on a local network: still likely Bambu.
+		// Port 8883 (MQTTS) is uncommon outside IoT/printers on home networks.
+		slog.Info("found probable Bambu printer (MQTT only)", "host", host)
+	}
+
+	printer := &DiscoveredPrinter{
 		ID:           uuid.New().String(),
 		Name:         fmt.Sprintf("Bambu Printer @ %s", host),
 		Host:         host,
@@ -393,6 +488,21 @@ func (d *Discovery) checkBambu(ctx context.Context, host string, port int) *Disc
 		Type:         model.ConnectionTypeBambuLAN,
 		Manufacturer: "Bambu Lab",
 	}
+
+	// Try UDP probe to get real name, model and serial number
+	if info := d.probeBambuUDP(host); info != nil {
+		if info.DevName != "" {
+			printer.Name = info.DevName
+		}
+		if info.DevProductName != "" {
+			printer.Model = info.DevProductName
+		}
+		if info.DevID != "" {
+			printer.SerialNumber = info.DevID
+		}
+	}
+
+	return printer
 }
 
 // ScanSSDPBambu performs SSDP discovery specifically for Bambu printers.
@@ -608,40 +718,35 @@ func (d *Discovery) ScanBambuUDP(ctx context.Context) ([]DiscoveredPrinter, erro
 		response := string(buffer[:n])
 		slog.Debug("Bambu UDP response", "from", remoteAddr.IP.String(), "response", response)
 
-		// Bambu responds with printer info
-		// Example response might contain device name, model, etc.
-		if len(response) > 0 {
-			printer := DiscoveredPrinter{
-				ID:           uuid.New().String(),
-				Name:         fmt.Sprintf("Bambu Printer @ %s", remoteAddr.IP.String()),
-				Host:         remoteAddr.IP.String(),
-				Port:         8883,
-				Type:         model.ConnectionTypeBambuLAN,
-				Manufacturer: "Bambu Lab",
-			}
-
-			// Try to parse model from response
-			responseLower := strings.ToLower(response)
-			if strings.Contains(responseLower, "x1") || strings.Contains(responseLower, "x1c") {
-				printer.Name = fmt.Sprintf("Bambu X1 @ %s", remoteAddr.IP.String())
-				printer.Model = "X1 Carbon"
-			} else if strings.Contains(responseLower, "p1s") {
-				printer.Name = fmt.Sprintf("Bambu P1S @ %s", remoteAddr.IP.String())
-				printer.Model = "P1S"
-			} else if strings.Contains(responseLower, "p1p") {
-				printer.Name = fmt.Sprintf("Bambu P1P @ %s", remoteAddr.IP.String())
-				printer.Model = "P1P"
-			} else if strings.Contains(responseLower, "a1 mini") || strings.Contains(responseLower, "a1mini") {
-				printer.Name = fmt.Sprintf("Bambu A1 Mini @ %s", remoteAddr.IP.String())
-				printer.Model = "A1 Mini"
-			} else if strings.Contains(responseLower, "a1") {
-				printer.Name = fmt.Sprintf("Bambu A1 @ %s", remoteAddr.IP.String())
-				printer.Model = "A1"
-			}
-
-			slog.Info("found Bambu via UDP", "host", printer.Host, "model", printer.Model)
-			printers = append(printers, printer)
+		if n == 0 {
+			continue
 		}
+
+		printer := DiscoveredPrinter{
+			ID:           uuid.New().String(),
+			Name:         fmt.Sprintf("Bambu Printer @ %s", remoteAddr.IP.String()),
+			Host:         remoteAddr.IP.String(),
+			Port:         8883,
+			Type:         model.ConnectionTypeBambuLAN,
+			Manufacturer: "Bambu Lab",
+		}
+
+		// Try to parse as JSON (Bambu discovery response)
+		var info bambuUDPInfo
+		if err := json.Unmarshal(buffer[:n], &info); err == nil {
+			if info.DevName != "" {
+				printer.Name = info.DevName
+			}
+			if info.DevProductName != "" {
+				printer.Model = info.DevProductName
+			}
+			if info.DevID != "" {
+				printer.SerialNumber = info.DevID
+			}
+		}
+
+		slog.Info("found Bambu via UDP", "host", printer.Host, "name", printer.Name, "model", printer.Model)
+		printers = append(printers, printer)
 	}
 
 	return printers, nil

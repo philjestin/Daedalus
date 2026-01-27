@@ -245,6 +245,19 @@ func NewRouterWithConfig(services *service.Services, hub *realtime.Hub, config R
 			})
 		})
 
+			// Bambu Cloud Integration
+			if services.BambuCloud != nil {
+				bambuCloudHandler := &BambuCloudHandler{service: services.BambuCloud}
+				r.Route("/bambu-cloud", func(r chi.Router) {
+					r.Post("/login", bambuCloudHandler.Login)
+					r.Post("/verify", bambuCloudHandler.Verify)
+					r.Get("/status", bambuCloudHandler.Status)
+					r.Get("/devices", bambuCloudHandler.Devices)
+					r.Post("/devices/add", bambuCloudHandler.AddDevice)
+					r.Delete("/logout", bambuCloudHandler.Logout)
+				})
+			}
+
 			// Etsy Integration
 			if services.Etsy != nil {
 				etsyHandler := NewEtsyHandler(services.Etsy)

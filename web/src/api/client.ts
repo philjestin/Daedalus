@@ -159,6 +159,7 @@ export interface DiscoveredPrinter {
   model?: string
   manufacturer?: string
   version?: string
+  serial_number?: string
   already_added: boolean
 }
 
@@ -586,6 +587,36 @@ export const etsyApi = {
     fetchApi<{ status: string }>(`/integrations/etsy/webhook/events/${id}/reprocess`, {
       method: 'POST',
     }),
+}
+
+// Bambu Cloud API
+export const bambuCloudApi = {
+  login: (email: string, password: string) =>
+    fetchApi<{ status: string }>('/bambu-cloud/login', {
+      method: 'POST',
+      body: JSON.stringify({ email, password }),
+    }),
+
+  verify: (email: string, code: string) =>
+    fetchApi<{ status: string }>('/bambu-cloud/verify', {
+      method: 'POST',
+      body: JSON.stringify({ email, code }),
+    }),
+
+  status: () =>
+    fetchApi<import('../types').BambuCloudStatus>('/bambu-cloud/status'),
+
+  devices: () =>
+    fetchApi<import('../types').CloudDevice[]>('/bambu-cloud/devices'),
+
+  addDevice: (devId: string) =>
+    fetchApi<import('../types').Printer>('/bambu-cloud/devices/add', {
+      method: 'POST',
+      body: JSON.stringify({ dev_id: devId }),
+    }),
+
+  logout: () =>
+    fetchApi<void>('/bambu-cloud/logout', { method: 'DELETE' }),
 }
 
 // WebSocket connection for real-time updates
