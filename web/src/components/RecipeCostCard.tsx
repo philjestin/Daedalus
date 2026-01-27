@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
-import { DollarSign, Clock, Package, RefreshCw } from 'lucide-react'
+import { DollarSign, Clock, Package, RefreshCw, Wrench, TrendingUp } from 'lucide-react'
 import { templatesApi } from '../api/client'
+import { cn } from '../lib/utils'
 
 interface RecipeCostCardProps {
   templateId: string
@@ -79,7 +80,7 @@ export default function RecipeCostCard({ templateId }: RecipeCostCardProps) {
       </div>
 
       {/* Cost Breakdown */}
-      <div className="space-y-4">
+      <div className="space-y-2">
         <div className="flex items-center justify-between p-3 rounded-lg bg-surface-800/50">
           <div className="flex items-center gap-3">
             <Package className="h-4 w-4 text-surface-400" />
@@ -104,7 +105,62 @@ export default function RecipeCostCard({ templateId }: RecipeCostCardProps) {
             {formatCents(estimate.time_cost_cents)}
           </span>
         </div>
+
+        {estimate.labor_minutes > 0 && (
+          <div className="flex items-center justify-between p-3 rounded-lg bg-surface-800/50">
+            <div className="flex items-center gap-3">
+              <Wrench className="h-4 w-4 text-surface-400" />
+              <div>
+                <span className="text-surface-200">Labor</span>
+                <span className="text-sm text-surface-500 ml-2">
+                  ({estimate.labor_minutes} min)
+                </span>
+              </div>
+            </div>
+            <span className="font-medium text-surface-100">
+              {formatCents(estimate.labor_cost_cents)}
+            </span>
+          </div>
+        )}
       </div>
+
+      {/* Margin Section */}
+      {estimate.sale_price_cents > 0 && (
+        <div className="mt-4 p-4 rounded-lg bg-surface-800/50 border border-surface-700">
+          <div className="flex items-center gap-2 mb-3">
+            <TrendingUp className="h-4 w-4 text-surface-400" />
+            <span className="text-sm font-medium text-surface-300">Margin Analysis</span>
+          </div>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-surface-400">Sale Price</span>
+              <span className="text-surface-100">{formatCents(estimate.sale_price_cents)}</span>
+            </div>
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-surface-400">Total Cost</span>
+              <span className="text-surface-100">-{formatCents(estimate.total_cost_cents)}</span>
+            </div>
+            <div className="border-t border-surface-700 my-2" />
+            <div className="flex items-center justify-between">
+              <span className="text-surface-300 font-medium">Gross Margin</span>
+              <div className="text-right">
+                <span className={cn(
+                  'font-bold',
+                  estimate.gross_margin_cents >= 0 ? 'text-emerald-400' : 'text-red-400'
+                )}>
+                  {formatCents(estimate.gross_margin_cents)}
+                </span>
+                <span className={cn(
+                  'text-sm ml-2',
+                  estimate.gross_margin_percent >= 0 ? 'text-emerald-500' : 'text-red-500'
+                )}>
+                  ({estimate.gross_margin_percent.toFixed(1)}%)
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Material Breakdown */}
       {estimate.material_breakdown && estimate.material_breakdown.length > 0 && (
@@ -132,7 +188,10 @@ export default function RecipeCostCard({ templateId }: RecipeCostCardProps) {
 
       {/* Rate Info */}
       <div className="mt-4 text-xs text-surface-500 text-center">
-        Hourly rate: {formatCents(estimate.hourly_rate_cents)}/hour
+        Machine: {formatCents(estimate.hourly_rate_cents)}/hr
+        {estimate.labor_rate_cents > 0 && (
+          <span> • Labor: {formatCents(estimate.labor_rate_cents)}/hr</span>
+        )}
       </div>
     </div>
   )

@@ -30,20 +30,34 @@ type Client interface {
 	SetStatusCallback(func(*model.PrinterState))
 }
 
+// StatusChangeCallback is called when a printer's status changes.
+// Receives the new state and the previous state (nil if first update).
+type StatusChangeCallback func(newState *model.PrinterState, oldState *model.PrinterState)
+
 // Manager manages connections to multiple printers.
 type Manager struct {
-	mu          sync.RWMutex
-	clients     map[uuid.UUID]Client
-	states      map[uuid.UUID]*model.PrinterState
-	broadcaster model.Broadcaster
+	mu               sync.RWMutex
+	clients          map[uuid.UUID]Client
+	states           map[uuid.UUID]*model.PrinterState
+	broadcaster      model.Broadcaster
+	statusCallbacks  []StatusChangeCallback
 }
 
 // NewManager creates a new printer manager.
 func NewManager() *Manager {
 	return &Manager{
-		clients: make(map[uuid.UUID]Client),
-		states:  make(map[uuid.UUID]*model.PrinterState),
+		clients:         make(map[uuid.UUID]Client),
+		states:          make(map[uuid.UUID]*model.PrinterState),
+		statusCallbacks: []StatusChangeCallback{},
 	}
+}
+
+// OnStatusChange registers a callback for printer status changes.
+// This allows services to react to printer state transitions (e.g., detect failures).
+func (m *Manager) OnStatusChange(cb StatusChangeCallback) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.statusCallbacks = append(m.statusCallbacks, cb)
 }
 
 // SetBroadcaster sets the broadcaster for real-time updates.
@@ -90,12 +104,21 @@ func (m *Manager) Connect(p *model.Printer) error {
 	// Set up status callback
 	client.SetStatusCallback(func(state *model.PrinterState) {
 		m.mu.Lock()
+		oldState := m.states[p.ID]
 		m.states[p.ID] = state
+		callbacks := make([]StatusChangeCallback, len(m.statusCallbacks))
+		copy(callbacks, m.statusCallbacks)
 		m.mu.Unlock()
+
 		slog.Info("printer status update", "printer_id", p.ID, "status", state.Status, "progress", state.Progress)
 
 		// Broadcast state change to WebSocket clients
 		m.broadcast(model.EventPrinterStateUpdated, state)
+
+		// Notify registered status change listeners
+		for _, cb := range callbacks {
+			cb(state, oldState)
+		}
 	})
 
 	// Connect

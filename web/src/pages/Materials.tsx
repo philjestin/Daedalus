@@ -66,7 +66,7 @@ export default function Materials() {
   const getMaterialById = (id: string) => materials.find(m => m.id === id)
 
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-6 lg:p-8">
       {/* Header */}
       <div className="flex items-center justify-between mb-8">
         <div>
@@ -145,7 +145,7 @@ export default function Materials() {
             </button>
           </div>
         ) : (
-          <div className="grid grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             {spools.map((spool) => {
               const material = getMaterialById(spool.material_id)
               const percentRemaining = (spool.remaining_weight / spool.initial_weight) * 100
@@ -225,7 +225,7 @@ export default function Materials() {
             </button>
           </div>
         ) : (
-          <div className="grid grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             {materials.map((material) => (
               <div key={material.id} className="card p-4">
                 <div className="flex items-center gap-3 mb-3">

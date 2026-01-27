@@ -491,6 +491,78 @@ func (c *BambuClient) parsePrintStatus(print *BambuPrintStatus) *model.PrinterSt
 		state.NozzleTemp = print.NozzleTemper
 	}
 
+	// Parse AMS state
+	if print.AMS != nil {
+		state.AMS = c.parseAMSState(print.AMS, print.VTTray)
+	}
+
+	return state
+}
+
+// parseAMSState converts Bambu AMS data to model.AMSState.
+func (c *BambuClient) parseAMSState(ams *BambuAMS, vtTray *BambuVTTray) *model.AMSState {
+	state := &model.AMSState{
+		CurrentTray: ams.TrayNow,
+	}
+
+	// Parse AMS units
+	for _, unit := range ams.Units {
+		unitID, _ := strconv.Atoi(unit.ID)
+		humidity, _ := strconv.Atoi(unit.Humidity)
+		temp, _ := strconv.ParseFloat(unit.Temp, 64)
+
+		amsUnit := model.AMSUnit{
+			ID:       unitID,
+			Humidity: humidity,
+			Temp:     temp,
+		}
+
+		// Parse trays in unit
+		for _, tray := range unit.Trays {
+			trayID, _ := strconv.Atoi(tray.ID)
+			nozzleMin, _ := strconv.Atoi(tray.NozzleTempMin)
+			nozzleMax, _ := strconv.Atoi(tray.NozzleTempMax)
+			bedTemp, _ := strconv.Atoi(tray.BedTemp)
+
+			amsTray := model.AMSTray{
+				ID:            trayID,
+				MaterialType:  tray.TrayType,
+				Color:         tray.TraySubBrands,
+				ColorHex:      tray.TrayColor,
+				Remain:        tray.Remain,
+				TagUID:        tray.TagUID,
+				Brand:         tray.TraySubBrands,
+				NozzleTempMin: nozzleMin,
+				NozzleTempMax: nozzleMax,
+				BedTemp:       bedTemp,
+				Empty:         tray.TrayType == "" || tray.Remain == 0,
+			}
+			amsUnit.Trays = append(amsUnit.Trays, amsTray)
+		}
+
+		state.Units = append(state.Units, amsUnit)
+	}
+
+	// Parse external spool (VT tray)
+	if vtTray != nil && vtTray.TrayType != "" {
+		nozzleMin, _ := strconv.Atoi(vtTray.NozzleTempMin)
+		nozzleMax, _ := strconv.Atoi(vtTray.NozzleTempMax)
+		bedTemp, _ := strconv.Atoi(vtTray.BedTemp)
+
+		state.ExternalSpool = &model.AMSTray{
+			ID:            255, // External spool uses ID 255
+			MaterialType:  vtTray.TrayType,
+			Color:         vtTray.TraySubBrands,
+			ColorHex:      vtTray.TrayColor,
+			Remain:        vtTray.Remain,
+			Brand:         vtTray.TraySubBrands,
+			NozzleTempMin: nozzleMin,
+			NozzleTempMax: nozzleMax,
+			BedTemp:       bedTemp,
+			Empty:         vtTray.TrayType == "" || vtTray.Remain == 0,
+		}
+	}
+
 	return state
 }
 

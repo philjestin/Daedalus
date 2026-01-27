@@ -1,0 +1,74 @@
+package database
+
+import (
+	"database/sql"
+	_ "embed"
+	"fmt"
+	"log/slog"
+	"os"
+	"path/filepath"
+
+	_ "github.com/glebarez/go-sqlite"
+)
+
+//go:embed schema.sql
+var schemaSQL string
+
+// DefaultDBPath returns the default database path (~/.daedalus/daedalus.db).
+func DefaultDBPath() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("get home dir: %w", err)
+	}
+	return filepath.Join(home, ".daedalus", "daedalus.db"), nil
+}
+
+// Open opens or creates a SQLite database at the given path.
+// It configures WAL mode, foreign keys, and busy timeout.
+func Open(path string) (*sql.DB, error) {
+	// Ensure parent directory exists
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return nil, fmt.Errorf("create db directory: %w", err)
+	}
+
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		return nil, fmt.Errorf("open database: %w", err)
+	}
+
+	// Single connection for SQLite to ensure PRAGMAs persist
+	db.SetMaxOpenConns(1)
+
+	// Configure connection
+	if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("set WAL mode: %w", err)
+	}
+	if _, err := db.Exec("PRAGMA foreign_keys=ON"); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("enable foreign keys: %w", err)
+	}
+	if _, err := db.Exec("PRAGMA busy_timeout=5000"); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("set busy timeout: %w", err)
+	}
+
+	// Run schema
+	if err := RunMigrations(db); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("run migrations: %w", err)
+	}
+
+	slog.Info("database opened", "path", path)
+	return db, nil
+}
+
+// RunMigrations applies the embedded schema to the database.
+func RunMigrations(db *sql.DB) error {
+	_, err := db.Exec(schemaSQL)
+	if err != nil {
+		return fmt.Errorf("apply schema: %w", err)
+	}
+	return nil
+}

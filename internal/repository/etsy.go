@@ -2,23 +2,21 @@ package repository
 
 import (
 	"context"
-	"fmt"
+	"database/sql"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/hyperion/printfarm/internal/model"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // EtsyRepository handles Etsy integration database operations.
 type EtsyRepository struct {
-	pool *pgxpool.Pool
+	db *sql.DB
 }
 
 // NewEtsyRepository creates a new EtsyRepository.
-func NewEtsyRepository(pool *pgxpool.Pool) *EtsyRepository {
-	return &EtsyRepository{pool: pool}
+func NewEtsyRepository(db *sql.DB) *EtsyRepository {
+	return &EtsyRepository{db: db}
 }
 
 // SaveIntegration creates or updates an Etsy integration.
@@ -33,9 +31,9 @@ func (r *EtsyRepository) SaveIntegration(ctx context.Context, i *model.EtsyInteg
 		i.Scopes = []string{}
 	}
 
-	_, err := r.pool.Exec(ctx, `
+	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO etsy_integration (id, shop_id, shop_name, user_id, access_token, refresh_token, token_expires_at, scopes, is_active, last_sync_at, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (shop_id) DO UPDATE SET
 			shop_name = EXCLUDED.shop_name,
 			user_id = EXCLUDED.user_id,
@@ -45,57 +43,63 @@ func (r *EtsyRepository) SaveIntegration(ctx context.Context, i *model.EtsyInteg
 			scopes = EXCLUDED.scopes,
 			is_active = EXCLUDED.is_active,
 			updated_at = EXCLUDED.updated_at
-	`, i.ID, i.ShopID, i.ShopName, i.UserID, i.AccessToken, i.RefreshToken, i.TokenExpiresAt, i.Scopes, i.IsActive, i.LastSyncAt, i.CreatedAt, i.UpdatedAt)
+	`, i.ID, i.ShopID, i.ShopName, i.UserID, i.AccessToken, i.RefreshToken, i.TokenExpiresAt, marshalStringArray(i.Scopes), i.IsActive, i.LastSyncAt, i.CreatedAt, i.UpdatedAt)
 	return err
 }
 
 // GetIntegration retrieves the current Etsy integration (only one per install).
 func (r *EtsyRepository) GetIntegration(ctx context.Context) (*model.EtsyIntegration, error) {
 	var i model.EtsyIntegration
-	err := r.pool.QueryRow(ctx, `
+	var scopesJSON []byte
+	err := scanRow(r.db.QueryRowContext(ctx, `
 		SELECT id, shop_id, shop_name, user_id, access_token, refresh_token, token_expires_at, scopes, is_active, last_sync_at, created_at, updated_at
 		FROM etsy_integration
-		WHERE is_active = true
+		WHERE is_active = 1
 		LIMIT 1
-	`).Scan(&i.ID, &i.ShopID, &i.ShopName, &i.UserID, &i.AccessToken, &i.RefreshToken, &i.TokenExpiresAt, &i.Scopes, &i.IsActive, &i.LastSyncAt, &i.CreatedAt, &i.UpdatedAt)
-	if err == pgx.ErrNoRows {
+	`), &i.ID, &i.ShopID, &i.ShopName, &i.UserID, &i.AccessToken, &i.RefreshToken, &i.TokenExpiresAt, &scopesJSON, &i.IsActive, &i.LastSyncAt, &i.CreatedAt, &i.UpdatedAt)
+	if err == sql.ErrNoRows {
 		return nil, nil
 	}
-	return &i, err
+	if err != nil {
+		return nil, err
+	}
+	i.Scopes = unmarshalStringArray(scopesJSON)
+	return &i, nil
 }
 
 // UpdateTokens updates the access and refresh tokens.
 func (r *EtsyRepository) UpdateTokens(ctx context.Context, accessToken, refreshToken string, expiresAt time.Time) error {
-	_, err := r.pool.Exec(ctx, `
+	_, err := r.db.ExecContext(ctx, `
 		UPDATE etsy_integration
-		SET access_token = $1, refresh_token = $2, token_expires_at = $3, updated_at = $4
-		WHERE is_active = true
+		SET access_token = ?, refresh_token = ?, token_expires_at = ?, updated_at = ?
+		WHERE is_active = 1
 	`, accessToken, refreshToken, expiresAt, time.Now())
 	return err
 }
 
 // UpdateLastSync updates the last sync timestamp.
 func (r *EtsyRepository) UpdateLastSync(ctx context.Context) error {
-	_, err := r.pool.Exec(ctx, `
+	now := time.Now()
+	_, err := r.db.ExecContext(ctx, `
 		UPDATE etsy_integration
-		SET last_sync_at = $1, updated_at = $1
-		WHERE is_active = true
-	`, time.Now())
+		SET last_sync_at = ?, updated_at = ?
+		WHERE is_active = 1
+	`, now, now)
 	return err
 }
 
 // DeleteIntegration removes the Etsy integration.
 func (r *EtsyRepository) DeleteIntegration(ctx context.Context) error {
-	_, err := r.pool.Exec(ctx, `DELETE FROM etsy_integration WHERE is_active = true`)
+	_, err := r.db.ExecContext(ctx, `DELETE FROM etsy_integration WHERE is_active = 1`)
 	return err
 }
 
 // SaveOAuthState saves a pending OAuth state for PKCE verification.
 func (r *EtsyRepository) SaveOAuthState(ctx context.Context, s *model.EtsyOAuthState) error {
 	s.CreatedAt = time.Now()
-	_, err := r.pool.Exec(ctx, `
+	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO etsy_oauth_states (state, code_verifier, redirect_uri, created_at)
-		VALUES ($1, $2, $3, $4)
+		VALUES (?, ?, ?, ?)
 	`, s.State, s.CodeVerifier, s.RedirectURI, s.CreatedAt)
 	return err
 }
@@ -103,12 +107,12 @@ func (r *EtsyRepository) SaveOAuthState(ctx context.Context, s *model.EtsyOAuthS
 // GetOAuthState retrieves a pending OAuth state.
 func (r *EtsyRepository) GetOAuthState(ctx context.Context, state string) (*model.EtsyOAuthState, error) {
 	var s model.EtsyOAuthState
-	err := r.pool.QueryRow(ctx, `
+	err := scanRow(r.db.QueryRowContext(ctx, `
 		SELECT state, code_verifier, redirect_uri, created_at
 		FROM etsy_oauth_states
-		WHERE state = $1
-	`, state).Scan(&s.State, &s.CodeVerifier, &s.RedirectURI, &s.CreatedAt)
-	if err == pgx.ErrNoRows {
+		WHERE state = ?
+	`, state), &s.State, &s.CodeVerifier, &s.RedirectURI, &s.CreatedAt)
+	if err == sql.ErrNoRows {
 		return nil, nil
 	}
 	return &s, err
@@ -116,14 +120,14 @@ func (r *EtsyRepository) GetOAuthState(ctx context.Context, state string) (*mode
 
 // DeleteOAuthState removes a pending OAuth state.
 func (r *EtsyRepository) DeleteOAuthState(ctx context.Context, state string) error {
-	_, err := r.pool.Exec(ctx, `DELETE FROM etsy_oauth_states WHERE state = $1`, state)
+	_, err := r.db.ExecContext(ctx, `DELETE FROM etsy_oauth_states WHERE state = ?`, state)
 	return err
 }
 
 // CleanupExpiredStates removes OAuth states older than 10 minutes.
 func (r *EtsyRepository) CleanupExpiredStates(ctx context.Context) error {
 	cutoff := time.Now().Add(-10 * time.Minute)
-	_, err := r.pool.Exec(ctx, `DELETE FROM etsy_oauth_states WHERE created_at < $1`, cutoff)
+	_, err := r.db.ExecContext(ctx, `DELETE FROM etsy_oauth_states WHERE created_at < ?`, cutoff)
 	return err
 }
 
@@ -142,7 +146,7 @@ func (r *EtsyRepository) SaveReceipt(ctx context.Context, receipt *model.EtsyRec
 		receipt.SyncedAt = time.Now()
 	}
 
-	_, err := r.pool.Exec(ctx, `
+	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO etsy_receipts (
 			id, etsy_receipt_id, etsy_shop_id, buyer_user_id, buyer_email, name, status,
 			message_from_buyer, is_shipped, is_paid, is_gift, gift_message,
@@ -153,8 +157,8 @@ func (r *EtsyRepository) SaveReceipt(ctx context.Context, receipt *model.EtsyRec
 			create_timestamp, update_timestamp, is_processed, project_id,
 			synced_at, created_at, updated_at
 		) VALUES (
-			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19,
-			$20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33
+			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 		)
 		ON CONFLICT (etsy_receipt_id) DO UPDATE SET
 			status = EXCLUDED.status,
@@ -178,7 +182,7 @@ func (r *EtsyRepository) SaveReceipt(ctx context.Context, receipt *model.EtsyRec
 // GetReceiptByEtsyID retrieves a receipt by its Etsy receipt ID.
 func (r *EtsyRepository) GetReceiptByEtsyID(ctx context.Context, etsyReceiptID int64) (*model.EtsyReceipt, error) {
 	var receipt model.EtsyReceipt
-	err := r.pool.QueryRow(ctx, `
+	err := scanRow(r.db.QueryRowContext(ctx, `
 		SELECT id, etsy_receipt_id, etsy_shop_id, buyer_user_id, buyer_email, name, status,
 			message_from_buyer, is_shipped, is_paid, is_gift, gift_message,
 			grandtotal_cents, subtotal_cents, total_price_cents, total_shipping_cost_cents,
@@ -188,8 +192,8 @@ func (r *EtsyRepository) GetReceiptByEtsyID(ctx context.Context, etsyReceiptID i
 			create_timestamp, update_timestamp, is_processed, project_id,
 			synced_at, created_at, updated_at
 		FROM etsy_receipts
-		WHERE etsy_receipt_id = $1
-	`, etsyReceiptID).Scan(
+		WHERE etsy_receipt_id = ?
+	`, etsyReceiptID),
 		&receipt.ID, &receipt.EtsyReceiptID, &receipt.EtsyShopID, &receipt.BuyerUserID,
 		&receipt.BuyerEmail, &receipt.Name, &receipt.Status, &receipt.MessageFromBuyer,
 		&receipt.IsShipped, &receipt.IsPaid, &receipt.IsGift, &receipt.GiftMessage,
@@ -201,7 +205,7 @@ func (r *EtsyRepository) GetReceiptByEtsyID(ctx context.Context, etsyReceiptID i
 		&receipt.UpdateTimestamp, &receipt.IsProcessed, &receipt.ProjectID,
 		&receipt.SyncedAt, &receipt.CreatedAt, &receipt.UpdatedAt,
 	)
-	if err == pgx.ErrNoRows {
+	if err == sql.ErrNoRows {
 		return nil, nil
 	}
 	return &receipt, err
@@ -210,7 +214,7 @@ func (r *EtsyRepository) GetReceiptByEtsyID(ctx context.Context, etsyReceiptID i
 // GetReceiptByID retrieves a receipt by its internal UUID.
 func (r *EtsyRepository) GetReceiptByID(ctx context.Context, id uuid.UUID) (*model.EtsyReceipt, error) {
 	var receipt model.EtsyReceipt
-	err := r.pool.QueryRow(ctx, `
+	err := scanRow(r.db.QueryRowContext(ctx, `
 		SELECT id, etsy_receipt_id, etsy_shop_id, buyer_user_id, buyer_email, name, status,
 			message_from_buyer, is_shipped, is_paid, is_gift, gift_message,
 			grandtotal_cents, subtotal_cents, total_price_cents, total_shipping_cost_cents,
@@ -220,8 +224,8 @@ func (r *EtsyRepository) GetReceiptByID(ctx context.Context, id uuid.UUID) (*mod
 			create_timestamp, update_timestamp, is_processed, project_id,
 			synced_at, created_at, updated_at
 		FROM etsy_receipts
-		WHERE id = $1
-	`, id).Scan(
+		WHERE id = ?
+	`, id),
 		&receipt.ID, &receipt.EtsyReceiptID, &receipt.EtsyShopID, &receipt.BuyerUserID,
 		&receipt.BuyerEmail, &receipt.Name, &receipt.Status, &receipt.MessageFromBuyer,
 		&receipt.IsShipped, &receipt.IsPaid, &receipt.IsGift, &receipt.GiftMessage,
@@ -233,7 +237,7 @@ func (r *EtsyRepository) GetReceiptByID(ctx context.Context, id uuid.UUID) (*mod
 		&receipt.UpdateTimestamp, &receipt.IsProcessed, &receipt.ProjectID,
 		&receipt.SyncedAt, &receipt.CreatedAt, &receipt.UpdatedAt,
 	)
-	if err == pgx.ErrNoRows {
+	if err == sql.ErrNoRows {
 		return nil, nil
 	}
 	return &receipt, err
@@ -253,27 +257,24 @@ func (r *EtsyRepository) ListReceipts(ctx context.Context, processed *bool, limi
 		FROM etsy_receipts
 	`
 	var args []interface{}
-	argCount := 1
 
 	if processed != nil {
-		query += fmt.Sprintf(" WHERE is_processed = $%d", argCount)
+		query += " WHERE is_processed = ?"
 		args = append(args, *processed)
-		argCount++
 	}
 
 	query += " ORDER BY create_timestamp DESC"
 
 	if limit > 0 {
-		query += fmt.Sprintf(" LIMIT $%d", argCount)
+		query += " LIMIT ?"
 		args = append(args, limit)
-		argCount++
 	}
 	if offset > 0 {
-		query += fmt.Sprintf(" OFFSET $%d", argCount)
+		query += " OFFSET ?"
 		args = append(args, offset)
 	}
 
-	rows, err := r.pool.Query(ctx, query, args...)
+	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -282,7 +283,7 @@ func (r *EtsyRepository) ListReceipts(ctx context.Context, processed *bool, limi
 	var receipts []model.EtsyReceipt
 	for rows.Next() {
 		var receipt model.EtsyReceipt
-		err := rows.Scan(
+		err := scanRow(rows,
 			&receipt.ID, &receipt.EtsyReceiptID, &receipt.EtsyShopID, &receipt.BuyerUserID,
 			&receipt.BuyerEmail, &receipt.Name, &receipt.Status, &receipt.MessageFromBuyer,
 			&receipt.IsShipped, &receipt.IsPaid, &receipt.IsGift, &receipt.GiftMessage,
@@ -305,10 +306,10 @@ func (r *EtsyRepository) ListReceipts(ctx context.Context, processed *bool, limi
 
 // UpdateReceiptProcessed marks a receipt as processed.
 func (r *EtsyRepository) UpdateReceiptProcessed(ctx context.Context, id uuid.UUID, projectID *uuid.UUID) error {
-	_, err := r.pool.Exec(ctx, `
+	_, err := r.db.ExecContext(ctx, `
 		UPDATE etsy_receipts
-		SET is_processed = true, project_id = $1, updated_at = $2
-		WHERE id = $3
+		SET is_processed = 1, project_id = ?, updated_at = ?
+		WHERE id = ?
 	`, projectID, time.Now(), id)
 	return err
 }
@@ -324,12 +325,12 @@ func (r *EtsyRepository) SaveReceiptItem(ctx context.Context, item *model.EtsyRe
 		item.CreatedAt = time.Now()
 	}
 
-	_, err := r.pool.Exec(ctx, `
+	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO etsy_receipt_items (
 			id, etsy_receipt_item_id, receipt_id, etsy_listing_id, etsy_transaction_id,
 			title, description, quantity, price_cents, shipping_cost_cents,
 			sku, variations, is_digital, template_id, created_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (etsy_receipt_item_id) DO UPDATE SET
 			quantity = EXCLUDED.quantity,
 			sku = EXCLUDED.sku,
@@ -343,12 +344,12 @@ func (r *EtsyRepository) SaveReceiptItem(ctx context.Context, item *model.EtsyRe
 
 // GetReceiptItems retrieves all items for a receipt.
 func (r *EtsyRepository) GetReceiptItems(ctx context.Context, receiptID uuid.UUID) ([]model.EtsyReceiptItem, error) {
-	rows, err := r.pool.Query(ctx, `
+	rows, err := r.db.QueryContext(ctx, `
 		SELECT id, etsy_receipt_item_id, receipt_id, etsy_listing_id, etsy_transaction_id,
 			title, description, quantity, price_cents, shipping_cost_cents,
 			sku, variations, is_digital, template_id, created_at
 		FROM etsy_receipt_items
-		WHERE receipt_id = $1
+		WHERE receipt_id = ?
 		ORDER BY created_at
 	`, receiptID)
 	if err != nil {
@@ -359,7 +360,7 @@ func (r *EtsyRepository) GetReceiptItems(ctx context.Context, receiptID uuid.UUI
 	var items []model.EtsyReceiptItem
 	for rows.Next() {
 		var item model.EtsyReceiptItem
-		err := rows.Scan(
+		err := scanRow(rows,
 			&item.ID, &item.EtsyReceiptItemID, &item.ReceiptID, &item.EtsyListingID,
 			&item.EtsyTransactionID, &item.Title, &item.Description, &item.Quantity,
 			&item.PriceCents, &item.ShippingCostCents, &item.SKU, &item.Variations,
@@ -379,13 +380,13 @@ func (r *EtsyRepository) GetReceiptItems(ctx context.Context, receiptID uuid.UUI
 // GetSyncState retrieves the sync state for a shop.
 func (r *EtsyRepository) GetSyncState(ctx context.Context, shopID int64) (*model.EtsySyncState, error) {
 	var state model.EtsySyncState
-	err := r.pool.QueryRow(ctx, `
+	err := scanRow(r.db.QueryRowContext(ctx, `
 		SELECT id, shop_id, last_receipt_sync_at, last_listing_sync_at, created_at, updated_at
 		FROM etsy_sync_state
-		WHERE shop_id = $1
-	`, shopID).Scan(&state.ID, &state.ShopID, &state.LastReceiptSyncAt,
+		WHERE shop_id = ?
+	`, shopID), &state.ID, &state.ShopID, &state.LastReceiptSyncAt,
 		&state.LastListingSyncAt, &state.CreatedAt, &state.UpdatedAt)
-	if err == pgx.ErrNoRows {
+	if err == sql.ErrNoRows {
 		return nil, nil
 	}
 	return &state, err
@@ -401,9 +402,9 @@ func (r *EtsyRepository) SaveSyncState(ctx context.Context, state *model.EtsySyn
 		state.CreatedAt = time.Now()
 	}
 
-	_, err := r.pool.Exec(ctx, `
+	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO etsy_sync_state (id, shop_id, last_receipt_sync_at, last_listing_sync_at, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6)
+		VALUES (?, ?, ?, ?, ?, ?)
 		ON CONFLICT (shop_id) DO UPDATE SET
 			last_receipt_sync_at = EXCLUDED.last_receipt_sync_at,
 			last_listing_sync_at = EXCLUDED.last_listing_sync_at,
@@ -428,12 +429,12 @@ func (r *EtsyRepository) SaveListing(ctx context.Context, listing *model.EtsyLis
 		listing.SyncedAt = time.Now()
 	}
 
-	_, err := r.pool.Exec(ctx, `
+	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO etsy_listings (
 			id, etsy_listing_id, etsy_shop_id, title, description, state, quantity,
 			url, views, num_favorers, is_customizable, is_personalizable, tags,
 			has_variations, price_cents, currency, skus, synced_at, created_at, updated_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (etsy_listing_id) DO UPDATE SET
 			title = EXCLUDED.title,
 			description = EXCLUDED.description,
@@ -458,20 +459,20 @@ func (r *EtsyRepository) SaveListing(ctx context.Context, listing *model.EtsyLis
 // GetListingByEtsyID retrieves a listing by its Etsy listing ID.
 func (r *EtsyRepository) GetListingByEtsyID(ctx context.Context, etsyListingID int64) (*model.EtsyListing, error) {
 	var listing model.EtsyListing
-	err := r.pool.QueryRow(ctx, `
+	err := scanRow(r.db.QueryRowContext(ctx, `
 		SELECT id, etsy_listing_id, etsy_shop_id, title, description, state, quantity,
 			url, views, num_favorers, is_customizable, is_personalizable, tags,
 			has_variations, price_cents, currency, skus, synced_at, created_at, updated_at
 		FROM etsy_listings
-		WHERE etsy_listing_id = $1
-	`, etsyListingID).Scan(
+		WHERE etsy_listing_id = ?
+	`, etsyListingID),
 		&listing.ID, &listing.EtsyListingID, &listing.EtsyShopID, &listing.Title,
 		&listing.Description, &listing.State, &listing.Quantity, &listing.URL,
 		&listing.Views, &listing.NumFavorers, &listing.IsCustomizable, &listing.IsPersonalizable,
 		&listing.Tags, &listing.HasVariations, &listing.PriceCents, &listing.Currency,
 		&listing.SKUs, &listing.SyncedAt, &listing.CreatedAt, &listing.UpdatedAt,
 	)
-	if err == pgx.ErrNoRows {
+	if err == sql.ErrNoRows {
 		return nil, nil
 	}
 	return &listing, err
@@ -480,20 +481,20 @@ func (r *EtsyRepository) GetListingByEtsyID(ctx context.Context, etsyListingID i
 // GetListingByID retrieves a listing by its internal UUID.
 func (r *EtsyRepository) GetListingByID(ctx context.Context, id uuid.UUID) (*model.EtsyListing, error) {
 	var listing model.EtsyListing
-	err := r.pool.QueryRow(ctx, `
+	err := scanRow(r.db.QueryRowContext(ctx, `
 		SELECT id, etsy_listing_id, etsy_shop_id, title, description, state, quantity,
 			url, views, num_favorers, is_customizable, is_personalizable, tags,
 			has_variations, price_cents, currency, skus, synced_at, created_at, updated_at
 		FROM etsy_listings
-		WHERE id = $1
-	`, id).Scan(
+		WHERE id = ?
+	`, id),
 		&listing.ID, &listing.EtsyListingID, &listing.EtsyShopID, &listing.Title,
 		&listing.Description, &listing.State, &listing.Quantity, &listing.URL,
 		&listing.Views, &listing.NumFavorers, &listing.IsCustomizable, &listing.IsPersonalizable,
 		&listing.Tags, &listing.HasVariations, &listing.PriceCents, &listing.Currency,
 		&listing.SKUs, &listing.SyncedAt, &listing.CreatedAt, &listing.UpdatedAt,
 	)
-	if err == pgx.ErrNoRows {
+	if err == sql.ErrNoRows {
 		return nil, nil
 	}
 	return &listing, err
@@ -508,27 +509,24 @@ func (r *EtsyRepository) ListListings(ctx context.Context, state string, limit, 
 		FROM etsy_listings
 	`
 	var args []interface{}
-	argCount := 1
 
 	if state != "" {
-		query += fmt.Sprintf(" WHERE state = $%d", argCount)
+		query += " WHERE state = ?"
 		args = append(args, state)
-		argCount++
 	}
 
 	query += " ORDER BY title"
 
 	if limit > 0 {
-		query += fmt.Sprintf(" LIMIT $%d", argCount)
+		query += " LIMIT ?"
 		args = append(args, limit)
-		argCount++
 	}
 	if offset > 0 {
-		query += fmt.Sprintf(" OFFSET $%d", argCount)
+		query += " OFFSET ?"
 		args = append(args, offset)
 	}
 
-	rows, err := r.pool.Query(ctx, query, args...)
+	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -537,7 +535,7 @@ func (r *EtsyRepository) ListListings(ctx context.Context, state string, limit, 
 	var listings []model.EtsyListing
 	for rows.Next() {
 		var listing model.EtsyListing
-		err := rows.Scan(
+		err := scanRow(rows,
 			&listing.ID, &listing.EtsyListingID, &listing.EtsyShopID, &listing.Title,
 			&listing.Description, &listing.State, &listing.Quantity, &listing.URL,
 			&listing.Views, &listing.NumFavorers, &listing.IsCustomizable, &listing.IsPersonalizable,
@@ -564,9 +562,9 @@ func (r *EtsyRepository) SaveListingTemplate(ctx context.Context, link *model.Et
 		link.CreatedAt = time.Now()
 	}
 
-	_, err := r.pool.Exec(ctx, `
+	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO etsy_listing_templates (id, etsy_listing_id, template_id, sku, sync_inventory, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6)
+		VALUES (?, ?, ?, ?, ?, ?)
 		ON CONFLICT (etsy_listing_id, template_id) DO UPDATE SET
 			sku = EXCLUDED.sku,
 			sync_inventory = EXCLUDED.sync_inventory
@@ -577,15 +575,15 @@ func (r *EtsyRepository) SaveListingTemplate(ctx context.Context, link *model.Et
 // GetListingTemplate retrieves a listing-template link.
 func (r *EtsyRepository) GetListingTemplate(ctx context.Context, etsyListingID int64, templateID uuid.UUID) (*model.EtsyListingTemplate, error) {
 	var link model.EtsyListingTemplate
-	err := r.pool.QueryRow(ctx, `
+	err := scanRow(r.db.QueryRowContext(ctx, `
 		SELECT id, etsy_listing_id, template_id, sku, sync_inventory, created_at
 		FROM etsy_listing_templates
-		WHERE etsy_listing_id = $1 AND template_id = $2
-	`, etsyListingID, templateID).Scan(
+		WHERE etsy_listing_id = ? AND template_id = ?
+	`, etsyListingID, templateID),
 		&link.ID, &link.EtsyListingID, &link.TemplateID, &link.SKU,
 		&link.SyncInventory, &link.CreatedAt,
 	)
-	if err == pgx.ErrNoRows {
+	if err == sql.ErrNoRows {
 		return nil, nil
 	}
 	return &link, err
@@ -593,10 +591,10 @@ func (r *EtsyRepository) GetListingTemplate(ctx context.Context, etsyListingID i
 
 // GetListingTemplatesBySKU retrieves listing-template links by SKU.
 func (r *EtsyRepository) GetListingTemplatesBySKU(ctx context.Context, sku string) ([]model.EtsyListingTemplate, error) {
-	rows, err := r.pool.Query(ctx, `
+	rows, err := r.db.QueryContext(ctx, `
 		SELECT id, etsy_listing_id, template_id, sku, sync_inventory, created_at
 		FROM etsy_listing_templates
-		WHERE sku = $1
+		WHERE sku = ?
 	`, sku)
 	if err != nil {
 		return nil, err
@@ -606,7 +604,7 @@ func (r *EtsyRepository) GetListingTemplatesBySKU(ctx context.Context, sku strin
 	var links []model.EtsyListingTemplate
 	for rows.Next() {
 		var link model.EtsyListingTemplate
-		err := rows.Scan(
+		err := scanRow(rows,
 			&link.ID, &link.EtsyListingID, &link.TemplateID, &link.SKU,
 			&link.SyncInventory, &link.CreatedAt,
 		)
@@ -621,10 +619,10 @@ func (r *EtsyRepository) GetListingTemplatesBySKU(ctx context.Context, sku strin
 
 // GetTemplatesForListing retrieves all templates linked to a listing.
 func (r *EtsyRepository) GetTemplatesForListing(ctx context.Context, etsyListingID int64) ([]model.EtsyListingTemplate, error) {
-	rows, err := r.pool.Query(ctx, `
+	rows, err := r.db.QueryContext(ctx, `
 		SELECT id, etsy_listing_id, template_id, sku, sync_inventory, created_at
 		FROM etsy_listing_templates
-		WHERE etsy_listing_id = $1
+		WHERE etsy_listing_id = ?
 	`, etsyListingID)
 	if err != nil {
 		return nil, err
@@ -634,7 +632,7 @@ func (r *EtsyRepository) GetTemplatesForListing(ctx context.Context, etsyListing
 	var links []model.EtsyListingTemplate
 	for rows.Next() {
 		var link model.EtsyListingTemplate
-		err := rows.Scan(
+		err := scanRow(rows,
 			&link.ID, &link.EtsyListingID, &link.TemplateID, &link.SKU,
 			&link.SyncInventory, &link.CreatedAt,
 		)
@@ -649,9 +647,9 @@ func (r *EtsyRepository) GetTemplatesForListing(ctx context.Context, etsyListing
 
 // DeleteListingTemplate removes a listing-template link.
 func (r *EtsyRepository) DeleteListingTemplate(ctx context.Context, etsyListingID int64, templateID uuid.UUID) error {
-	_, err := r.pool.Exec(ctx, `
+	_, err := r.db.ExecContext(ctx, `
 		DELETE FROM etsy_listing_templates
-		WHERE etsy_listing_id = $1 AND template_id = $2
+		WHERE etsy_listing_id = ? AND template_id = ?
 	`, etsyListingID, templateID)
 	return err
 }
@@ -670,11 +668,11 @@ func (r *EtsyRepository) SaveWebhookEvent(ctx context.Context, event *model.Etsy
 		event.CreatedAt = time.Now()
 	}
 
-	_, err := r.pool.Exec(ctx, `
+	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO etsy_webhook_events (
 			id, event_type, resource_type, resource_id, shop_id, payload,
 			signature, processed, processed_at, error, received_at, created_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, event.ID, event.EventType, event.ResourceType, event.ResourceID,
 		event.ShopID, event.Payload, event.Signature, event.Processed,
 		event.ProcessedAt, event.Error, event.ReceivedAt, event.CreatedAt)
@@ -684,17 +682,17 @@ func (r *EtsyRepository) SaveWebhookEvent(ctx context.Context, event *model.Etsy
 // GetWebhookEventByID retrieves a webhook event by ID.
 func (r *EtsyRepository) GetWebhookEventByID(ctx context.Context, id uuid.UUID) (*model.EtsyWebhookEvent, error) {
 	var event model.EtsyWebhookEvent
-	err := r.pool.QueryRow(ctx, `
+	err := scanRow(r.db.QueryRowContext(ctx, `
 		SELECT id, event_type, resource_type, resource_id, shop_id, payload,
 			signature, processed, processed_at, error, received_at, created_at
 		FROM etsy_webhook_events
-		WHERE id = $1
-	`, id).Scan(
+		WHERE id = ?
+	`, id),
 		&event.ID, &event.EventType, &event.ResourceType, &event.ResourceID,
 		&event.ShopID, &event.Payload, &event.Signature, &event.Processed,
 		&event.ProcessedAt, &event.Error, &event.ReceivedAt, &event.CreatedAt,
 	)
-	if err == pgx.ErrNoRows {
+	if err == sql.ErrNoRows {
 		return nil, nil
 	}
 	return &event, err
@@ -708,27 +706,24 @@ func (r *EtsyRepository) ListWebhookEvents(ctx context.Context, eventType string
 		FROM etsy_webhook_events
 	`
 	var args []interface{}
-	argCount := 1
 
 	if eventType != "" {
-		query += fmt.Sprintf(" WHERE event_type = $%d", argCount)
+		query += " WHERE event_type = ?"
 		args = append(args, eventType)
-		argCount++
 	}
 
 	query += " ORDER BY received_at DESC"
 
 	if limit > 0 {
-		query += fmt.Sprintf(" LIMIT $%d", argCount)
+		query += " LIMIT ?"
 		args = append(args, limit)
-		argCount++
 	}
 	if offset > 0 {
-		query += fmt.Sprintf(" OFFSET $%d", argCount)
+		query += " OFFSET ?"
 		args = append(args, offset)
 	}
 
-	rows, err := r.pool.Query(ctx, query, args...)
+	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -737,7 +732,7 @@ func (r *EtsyRepository) ListWebhookEvents(ctx context.Context, eventType string
 	var events []model.EtsyWebhookEvent
 	for rows.Next() {
 		var event model.EtsyWebhookEvent
-		err := rows.Scan(
+		err := scanRow(rows,
 			&event.ID, &event.EventType, &event.ResourceType, &event.ResourceID,
 			&event.ShopID, &event.Payload, &event.Signature, &event.Processed,
 			&event.ProcessedAt, &event.Error, &event.ReceivedAt, &event.CreatedAt,
@@ -754,10 +749,10 @@ func (r *EtsyRepository) ListWebhookEvents(ctx context.Context, eventType string
 // UpdateWebhookEventProcessed marks a webhook event as processed.
 func (r *EtsyRepository) UpdateWebhookEventProcessed(ctx context.Context, id uuid.UUID, errorMsg string) error {
 	now := time.Now()
-	_, err := r.pool.Exec(ctx, `
+	_, err := r.db.ExecContext(ctx, `
 		UPDATE etsy_webhook_events
-		SET processed = true, processed_at = $1, error = $2
-		WHERE id = $3
+		SET processed = 1, processed_at = ?, error = ?
+		WHERE id = ?
 	`, now, errorMsg, id)
 	return err
 }

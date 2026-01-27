@@ -130,6 +130,8 @@ export default function TemplateDetail() {
       print_profile: template?.print_profile || 'standard',
       estimated_print_seconds: template?.estimated_print_seconds || 0,
       printer_constraints: template?.printer_constraints,
+      labor_minutes: template?.labor_minutes || 0,
+      sale_price_cents: template?.sale_price_cents || 0,
     })
     setIsEditing(true)
   }
@@ -158,7 +160,7 @@ export default function TemplateDetail() {
 
   if (isLoading) {
     return (
-      <div className="p-8">
+      <div className="p-4 sm:p-6 lg:p-8">
         <div className="text-surface-500">Loading...</div>
       </div>
     )
@@ -166,14 +168,14 @@ export default function TemplateDetail() {
 
   if (!template) {
     return (
-      <div className="p-8">
+      <div className="p-4 sm:p-6 lg:p-8">
         <div className="text-surface-500">Template not found</div>
       </div>
     )
   }
 
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-6 lg:p-8">
       {/* Header */}
       <div className="mb-8">
         <Link
@@ -356,6 +358,43 @@ export default function TemplateDetail() {
                 placeholder="e.g., 1h 30m"
               />
             </div>
+            <div>
+              <label className="block text-sm font-medium text-surface-300 mb-1">
+                Labor Time (minutes)
+              </label>
+              <input
+                type="number"
+                value={editForm.labor_minutes || 0}
+                onChange={(e) =>
+                  setEditForm({
+                    ...editForm,
+                    labor_minutes: parseInt(e.target.value) || 0,
+                  })
+                }
+                className="input"
+                min="0"
+                placeholder="Manual labor time"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-surface-300 mb-1">
+                Sale Price ($)
+              </label>
+              <input
+                type="number"
+                value={(editForm.sale_price_cents || 0) / 100}
+                onChange={(e) =>
+                  setEditForm({
+                    ...editForm,
+                    sale_price_cents: Math.round(parseFloat(e.target.value) * 100) || 0,
+                  })
+                }
+                className="input"
+                min="0"
+                step="0.01"
+                placeholder="0.00"
+              />
+            </div>
             <div className="flex items-center gap-2">
               <input
                 type="checkbox"
@@ -416,6 +455,20 @@ export default function TemplateDetail() {
                 <span className="font-medium text-surface-100">
                   {formatDuration(template.estimated_print_seconds)}
                 </span>
+              </div>
+            </div>
+            <div>
+              <div className="text-sm text-surface-500 mb-1">Labor Time</div>
+              <div className="font-medium text-surface-100">
+                {template.labor_minutes > 0 ? `${template.labor_minutes} min` : '—'}
+              </div>
+            </div>
+            <div>
+              <div className="text-sm text-surface-500 mb-1">Sale Price</div>
+              <div className="font-medium text-surface-100">
+                {template.sale_price_cents > 0
+                  ? `$${(template.sale_price_cents / 100).toFixed(2)}`
+                  : '—'}
               </div>
             </div>
           </div>

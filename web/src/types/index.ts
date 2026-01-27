@@ -1,5 +1,5 @@
 // Project types
-export type ProjectStatus = 'draft' | 'active' | 'completed' | 'archived'
+export type ProjectStatus = 'draft' | 'active' | 'completed' | 'ready_to_ship' | 'shipped' | 'archived'
 
 export interface Project {
   id: string
@@ -12,8 +12,38 @@ export interface Project {
   source: string
   external_order_id?: string
   customer_notes?: string
+  shipped_at?: string
+  tracking_number?: string
   created_at: string
   updated_at: string
+}
+
+// Job statistics for a project
+export interface JobStats {
+  total: number
+  queued: number
+  assigned: number
+  printing: number
+  completed: number
+  failed: number
+  cancelled: number
+}
+
+// Result of starting production
+export interface StartProductionResult {
+  jobs_started: number
+  jobs_skipped: number
+  failed_jobs?: StartJobFailure[]
+}
+
+export interface StartJobFailure {
+  job_id: string
+  reason: string
+}
+
+// Request for marking a project as shipped
+export interface ShipRequest {
+  tracking_number?: string
 }
 
 // Part types
@@ -81,7 +111,63 @@ export interface PrinterState {
   time_left?: number
   bed_temp?: number
   nozzle_temp?: number
+  ams?: AMSState
   updated_at: string
+}
+
+// AMS (Automatic Material System) types
+export interface AMSState {
+  units: AMSUnit[]
+  current_tray?: string
+  external_spool?: AMSTray
+}
+
+export interface AMSUnit {
+  id: number
+  humidity: number
+  temp: number
+  trays: AMSTray[]
+}
+
+export interface AMSTray {
+  id: number
+  material_type: string
+  color: string
+  color_hex?: string
+  remain: number
+  tag_uid?: string
+  brand?: string
+  nozzle_temp_min?: number
+  nozzle_temp_max?: number
+  bed_temp?: number
+  empty: boolean
+}
+
+// Material snapshot captured at job start
+export interface MaterialSnapshot {
+  captured_at: string
+  selected_tray: number
+  material_type: string
+  color: string
+  remain_percent: number
+  brand?: string
+  ams_state?: AMSState
+}
+
+// Material validation result
+export interface MaterialValidation {
+  valid: boolean
+  warnings?: string[]
+  errors?: string[]
+}
+
+// Preflight check result for job start validation
+export interface PreflightCheckResult {
+  ready: boolean
+  validation?: MaterialValidation
+  ams_state?: AMSState
+  warnings?: string[]
+  errors?: string[]
 }
 
 // Material types
@@ -126,7 +212,51 @@ export interface MaterialSpool {
 }
 
 // Print job types
-export type PrintJobStatus = 'queued' | 'sending' | 'printing' | 'completed' | 'failed' | 'cancelled'
+export type PrintJobStatus = 'queued' | 'assigned' | 'uploaded' | 'sending' | 'printing' | 'paused' | 'completed' | 'failed' | 'cancelled'
+
+// Job event types for immutable history
+export type JobEventType =
+  | 'queued'
+  | 'assigned'
+  | 'uploaded'
+  | 'started'
+  | 'progress'
+  | 'paused'
+  | 'resumed'
+  | 'completed'
+  | 'failed'
+  | 'cancelled'
+  | 'retried'
+
+// Actor types for event tracking
+export type ActorType = 'user' | 'system' | 'printer' | 'webhook'
+
+// Failure categories for analytics
+export type FailureCategory =
+  | 'mechanical'
+  | 'filament'
+  | 'adhesion'
+  | 'thermal'
+  | 'network'
+  | 'user_cancelled'
+  | 'unknown'
+
+// Job event (immutable history record)
+export interface JobEvent {
+  id: string
+  job_id: string
+  event_type: JobEventType
+  occurred_at: string
+  status?: PrintJobStatus
+  progress?: number
+  printer_id?: string
+  error_code?: string
+  error_message?: string
+  actor_type: ActorType
+  actor_id?: string
+  metadata?: Record<string, unknown>
+  created_at: string
+}
 
 export interface PrintOutcome {
   success: boolean
@@ -143,8 +273,9 @@ export interface PrintOutcome {
 export interface PrintJob {
   id: string
   design_id: string
-  printer_id: string
-  material_spool_id: string
+  printer_id?: string
+  material_spool_id?: string
+  project_id?: string
   status: PrintJobStatus
   progress: number
   started_at?: string
@@ -152,6 +283,41 @@ export interface PrintJob {
   outcome?: PrintOutcome
   notes: string
   created_at: string
+  // Recipe/Retry tracking
+  recipe_id?: string
+  attempt_number: number
+  parent_job_id?: string
+  failure_category?: FailureCategory
+  // Cost tracking
+  estimated_seconds?: number
+  actual_seconds?: number
+  material_used_grams?: number
+  cost_cents?: number
+  // Material snapshot captured at job start
+  material_snapshot?: MaterialSnapshot
+  // Event history (when fetched with events)
+  events?: JobEvent[]
+}
+
+// Request type for retrying a job
+export interface RetryJobRequest {
+  printer_id?: string
+  material_spool_id?: string
+  failure_category?: FailureCategory
+  notes?: string
+}
+
+// Request type for recording a failure
+export interface RecordFailureRequest {
+  failure_category: FailureCategory
+  error_code?: string
+  error_message?: string
+}
+
+// Request type for marking a job as scrap
+export interface ScrapRequest {
+  failure_category?: FailureCategory
+  notes?: string
 }
 
 // Print Profile type
@@ -190,10 +356,17 @@ export interface RecipeMaterial {
 export interface RecipeCostEstimate {
   material_cost_cents: number
   time_cost_cents: number
+  labor_cost_cents: number
   total_cost_cents: number
   estimated_print_time_seconds: number
+  labor_minutes: number
   material_breakdown: RecipeMaterialCostBreakdown[]
   hourly_rate_cents: number
+  labor_rate_cents: number
+  // Margin calculation
+  sale_price_cents: number
+  gross_margin_cents: number
+  gross_margin_percent: number
 }
 
 export interface RecipeMaterialCostBreakdown {
@@ -234,6 +407,10 @@ export interface Template {
   printer_constraints?: PrinterConstraints
   print_profile: PrintProfile
   estimated_print_seconds: number
+  // Pricing fields for margin calculation
+  labor_minutes: number
+  sale_price_cents: number
+  material_cost_per_gram_cents: number
   version: number
   archived_at?: string
   created_at: string

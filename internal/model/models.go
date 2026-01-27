@@ -11,10 +11,12 @@ import (
 type ProjectStatus string
 
 const (
-	ProjectStatusDraft     ProjectStatus = "draft"
-	ProjectStatusActive    ProjectStatus = "active"
-	ProjectStatusCompleted ProjectStatus = "completed"
-	ProjectStatusArchived  ProjectStatus = "archived"
+	ProjectStatusDraft       ProjectStatus = "draft"
+	ProjectStatusActive      ProjectStatus = "active"
+	ProjectStatusCompleted   ProjectStatus = "completed"
+	ProjectStatusReadyToShip ProjectStatus = "ready_to_ship"
+	ProjectStatusShipped     ProjectStatus = "shipped"
+	ProjectStatusArchived    ProjectStatus = "archived"
 )
 
 // Project represents a maker project containing parts to be printed.
@@ -29,6 +31,8 @@ type Project struct {
 	Source          string        `json:"source"`
 	ExternalOrderID string        `json:"external_order_id,omitempty"`
 	CustomerNotes   string        `json:"customer_notes,omitempty"`
+	ShippedAt       *time.Time    `json:"shipped_at,omitempty"`
+	TrackingNumber  string        `json:"tracking_number,omitempty"`
 	CreatedAt       time.Time     `json:"created_at"`
 	UpdatedAt       time.Time     `json:"updated_at"`
 }
@@ -75,12 +79,19 @@ type RecipeMaterial struct {
 
 // RecipeCostEstimate represents the cost breakdown for a recipe.
 type RecipeCostEstimate struct {
-	MaterialCostCents   int                          `json:"material_cost_cents"`
-	TimeCostCents       int                          `json:"time_cost_cents"`
-	TotalCostCents      int                          `json:"total_cost_cents"`
-	EstimatedPrintTime  int                          `json:"estimated_print_time_seconds"`
+	MaterialCostCents   int                           `json:"material_cost_cents"`
+	TimeCostCents       int                           `json:"time_cost_cents"`
+	LaborCostCents      int                           `json:"labor_cost_cents"`
+	TotalCostCents      int                           `json:"total_cost_cents"`
+	EstimatedPrintTime  int                           `json:"estimated_print_time_seconds"`
+	LaborMinutes        int                           `json:"labor_minutes"`
 	MaterialBreakdown   []RecipeMaterialCostBreakdown `json:"material_breakdown"`
-	HourlyRateCents     int                          `json:"hourly_rate_cents"`
+	HourlyRateCents     int                           `json:"hourly_rate_cents"`
+	LaborRateCents      int                           `json:"labor_rate_cents"`
+	// Margin calculation
+	SalePriceCents     int     `json:"sale_price_cents"`
+	GrossMarginCents   int     `json:"gross_margin_cents"`
+	GrossMarginPercent float64 `json:"gross_margin_percent"`
 }
 
 // RecipeMaterialCostBreakdown shows cost for each material in a recipe.
@@ -108,12 +119,30 @@ type Template struct {
 	PrinterConstraints     *PrinterConstraints `json:"printer_constraints,omitempty"`
 	PrintProfile           PrintProfile        `json:"print_profile"`
 	EstimatedPrintSeconds  int                 `json:"estimated_print_seconds"`
+	// Pricing fields for margin calculation
+	LaborMinutes             int `json:"labor_minutes"`
+	SalePriceCents           int `json:"sale_price_cents"`
+	MaterialCostPerGramCents int `json:"material_cost_per_gram_cents"`
 	Version                int                 `json:"version"`
 	ArchivedAt             *time.Time          `json:"archived_at,omitempty"`
 	CreatedAt              time.Time           `json:"created_at"`
 	UpdatedAt              time.Time           `json:"updated_at"`
 	Designs                []TemplateDesign    `json:"designs,omitempty"`
 	Materials              []RecipeMaterial    `json:"materials,omitempty"`
+}
+
+// CostBreakdown contains the cost and margin breakdown for a recipe/order.
+type CostBreakdown struct {
+	MaterialCostCents  int     `json:"material_cost_cents"`
+	LaborCostCents     int     `json:"labor_cost_cents"`
+	TotalCostCents     int     `json:"total_cost_cents"`
+	SalePriceCents     int     `json:"sale_price_cents"`
+	GrossMarginCents   int     `json:"gross_margin_cents"`
+	GrossMarginPercent float64 `json:"gross_margin_percent"`
+	// Breakdown details
+	MaterialGrams    float64 `json:"material_grams"`
+	PrintTimeMinutes int     `json:"print_time_minutes"`
+	LaborMinutes     int     `json:"labor_minutes"`
 }
 
 // TemplateDesign represents a design file linked to a template.
@@ -205,20 +234,21 @@ type BuildVolume struct {
 
 // Printer represents a 3D printer in the farm.
 type Printer struct {
-	ID             uuid.UUID      `json:"id"`
-	Name           string         `json:"name"`
-	Model          string         `json:"model"`
-	Manufacturer   string         `json:"manufacturer"`
-	ConnectionType ConnectionType `json:"connection_type"`
-	ConnectionURI  string         `json:"connection_uri"`
-	APIKey         string         `json:"api_key,omitempty"`
-	Status         PrinterStatus  `json:"status"`
-	BuildVolume    *BuildVolume   `json:"build_volume,omitempty"`
-	NozzleDiameter float64        `json:"nozzle_diameter"`
-	Location       string         `json:"location"`
-	Notes          string         `json:"notes"`
-	CreatedAt      time.Time      `json:"created_at"`
-	UpdatedAt      time.Time      `json:"updated_at"`
+	ID                uuid.UUID      `json:"id"`
+	Name              string         `json:"name"`
+	Model             string         `json:"model"`
+	Manufacturer      string         `json:"manufacturer"`
+	ConnectionType    ConnectionType `json:"connection_type"`
+	ConnectionURI     string         `json:"connection_uri"`
+	APIKey            string         `json:"api_key,omitempty"`
+	Status            PrinterStatus  `json:"status"`
+	BuildVolume       *BuildVolume   `json:"build_volume,omitempty"`
+	NozzleDiameter    float64        `json:"nozzle_diameter"`
+	Location          string         `json:"location"`
+	Notes             string         `json:"notes"`
+	MinMaterialPercent int           `json:"min_material_percent"` // Minimum % before warning (default 10)
+	CreatedAt         time.Time      `json:"created_at"`
+	UpdatedAt         time.Time      `json:"updated_at"`
 }
 
 // PrinterState represents real-time state from a connected printer.
@@ -230,7 +260,56 @@ type PrinterState struct {
 	TimeLeft    int           `json:"time_left,omitempty"`
 	BedTemp     float64       `json:"bed_temp,omitempty"`
 	NozzleTemp  float64       `json:"nozzle_temp,omitempty"`
+	AMS         *AMSState     `json:"ams,omitempty"`
 	UpdatedAt   time.Time     `json:"updated_at"`
+}
+
+// AMSState represents the complete AMS (Automatic Material System) state.
+type AMSState struct {
+	Units         []AMSUnit `json:"units"`
+	CurrentTray   string    `json:"current_tray,omitempty"`
+	ExternalSpool *AMSTray  `json:"external_spool,omitempty"`
+}
+
+// AMSUnit represents a single AMS unit (typically holds 4 trays).
+type AMSUnit struct {
+	ID       int       `json:"id"`
+	Humidity int       `json:"humidity"`
+	Temp     float64   `json:"temp"`
+	Trays    []AMSTray `json:"trays"`
+}
+
+// AMSTray represents a single tray/slot in an AMS unit.
+type AMSTray struct {
+	ID            int     `json:"id"`
+	MaterialType  string  `json:"material_type"`
+	Color         string  `json:"color"`
+	ColorHex      string  `json:"color_hex,omitempty"`
+	Remain        int     `json:"remain"`        // Remaining percentage (0-100)
+	TagUID        string  `json:"tag_uid,omitempty"`
+	Brand         string  `json:"brand,omitempty"`
+	NozzleTempMin int     `json:"nozzle_temp_min,omitempty"`
+	NozzleTempMax int     `json:"nozzle_temp_max,omitempty"`
+	BedTemp       int     `json:"bed_temp,omitempty"`
+	Empty         bool    `json:"empty"`
+}
+
+// MaterialSnapshot captures the AMS state at job start for auditing.
+type MaterialSnapshot struct {
+	CapturedAt    time.Time `json:"captured_at"`
+	SelectedTray  int       `json:"selected_tray"`
+	MaterialType  string    `json:"material_type"`
+	Color         string    `json:"color"`
+	RemainPercent int       `json:"remain_percent"`
+	Brand         string    `json:"brand,omitempty"`
+	AMSState      *AMSState `json:"ams_state,omitempty"`
+}
+
+// MaterialValidation contains the result of pre-start material checks.
+type MaterialValidation struct {
+	Valid    bool     `json:"valid"`
+	Warnings []string `json:"warnings,omitempty"`
+	Errors   []string `json:"errors,omitempty"`
 }
 
 // MaterialType represents the type of printing material.
@@ -341,12 +420,13 @@ type PrintOutcome struct {
 // PrintJob represents an immutable print job instance.
 // Once created, core fields should not change. State changes are recorded as JobEvents.
 type PrintJob struct {
-	ID              uuid.UUID       `json:"id"`
-	DesignID        uuid.UUID       `json:"design_id"`
-	PrinterID       uuid.UUID       `json:"printer_id"`
-	MaterialSpoolID uuid.UUID       `json:"material_spool_id"`
-	Notes           string          `json:"notes"`
-	CreatedAt       time.Time       `json:"created_at"`
+	ID              uuid.UUID  `json:"id"`
+	DesignID        uuid.UUID  `json:"design_id"`
+	PrinterID       *uuid.UUID `json:"printer_id,omitempty"`
+	MaterialSpoolID *uuid.UUID `json:"material_spool_id,omitempty"`
+	ProjectID       *uuid.UUID `json:"project_id,omitempty"`
+	Notes           string     `json:"notes"`
+	CreatedAt       time.Time  `json:"created_at"`
 
 	// Recipe context (optional, for SKU-based orders)
 	RecipeID *uuid.UUID `json:"recipe_id,omitempty"`
@@ -366,6 +446,9 @@ type PrintJob struct {
 	MaterialUsedGrams *float64 `json:"material_used_grams,omitempty"`
 	CostCents         *int     `json:"cost_cents,omitempty"`
 
+	// Material snapshot (AMS state captured at job start)
+	MaterialSnapshot *MaterialSnapshot `json:"material_snapshot,omitempty"`
+
 	// Computed fields (derived from events, not stored in print_jobs table)
 	Status      PrintJobStatus `json:"status"`                   // computed from latest event
 	Progress    float64        `json:"progress"`                 // computed from latest event
@@ -373,6 +456,16 @@ type PrintJob struct {
 	CompletedAt *time.Time     `json:"completed_at,omitempty"`   // computed from terminal event
 	Outcome     *PrintOutcome  `json:"outcome,omitempty"`        // kept for backward compat
 	Events      []JobEvent     `json:"events,omitempty"`         // full event timeline when requested
+}
+
+// NeedsAssignment returns true if the job is missing printer or spool assignment.
+func (j *PrintJob) NeedsAssignment() bool {
+	return j.PrinterID == nil || j.MaterialSpoolID == nil
+}
+
+// IsAssigned returns true if the job has both printer and spool assigned.
+func (j *PrintJob) IsAssigned() bool {
+	return j.PrinterID != nil && j.MaterialSpoolID != nil
 }
 
 // JobEventType represents types of job events.

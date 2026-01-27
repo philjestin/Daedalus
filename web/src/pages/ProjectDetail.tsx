@@ -13,7 +13,8 @@ import {
   XCircle,
   Star,
   History,
-  Clock
+  Clock,
+  RefreshCw
 } from 'lucide-react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useProject, useParts, useCreatePart, useUpdateProject } from '../hooks/useProjects'
@@ -21,6 +22,7 @@ import { usePrinters, usePrinterStates } from '../hooks/usePrinters'
 import { useSpoolsWithMaterials } from '../hooks/useMaterials'
 import { designsApi, printJobsApi } from '../api/client'
 import { cn, getStatusBadge, formatBytes, formatRelativeTime } from '../lib/utils'
+import { FailureModal } from '../components/FailureModal'
 import type { Design, Part, ProjectStatus, Material, PrintJob } from '../types'
 
 export default function ProjectDetail() {
@@ -40,6 +42,7 @@ export default function ProjectDetail() {
   const [showUpload, setShowUpload] = useState(false)
   const [showSendToPrinter, setShowSendToPrinter] = useState<Design | null>(null)
   const [showOutcomeCapture, setShowOutcomeCapture] = useState<PrintJob | null>(null)
+  const [showFailureModal, setShowFailureModal] = useState<PrintJob | null>(null)
   const [activeTab, setActiveTab] = useState<'parts' | 'history'>('parts')
 
   const handleAddPart = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -68,7 +71,7 @@ export default function ProjectDetail() {
 
   if (projectLoading) {
     return (
-      <div className="p-8">
+      <div className="p-4 sm:p-6 lg:p-8">
         <div className="text-surface-500">Loading...</div>
       </div>
     )
@@ -76,14 +79,14 @@ export default function ProjectDetail() {
 
   if (!project) {
     return (
-      <div className="p-8">
+      <div className="p-4 sm:p-6 lg:p-8">
         <div className="text-surface-500">Project not found</div>
       </div>
     )
   }
 
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-6 lg:p-8">
       {/* Header */}
       <div className="mb-8">
         <Link 
@@ -127,7 +130,7 @@ export default function ProjectDetail() {
             Printer Fleet
           </h2>
         </div>
-        <div className="grid grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           {printers.length === 0 ? (
             <div className="col-span-4 text-center py-4 text-surface-500">
               <Link to="/printers" className="text-accent-400 hover:text-accent-300">
@@ -264,6 +267,7 @@ export default function ProjectDetail() {
           parts={parts}
           printers={printers}
           onRecordOutcome={(job) => setShowOutcomeCapture(job)}
+          onHandleFailure={(job) => setShowFailureModal(job)}
         />
       )}
 
@@ -367,6 +371,23 @@ export default function ProjectDetail() {
           }}
         />
       )}
+
+      {/* Failure Modal */}
+      {showFailureModal && (
+        <FailureModal
+          job={showFailureModal}
+          printers={printers}
+          onClose={() => setShowFailureModal(null)}
+          onRetry={() => {
+            queryClient.invalidateQueries({ queryKey: ['print-jobs'] })
+            setShowFailureModal(null)
+          }}
+          onScrap={() => {
+            queryClient.invalidateQueries({ queryKey: ['print-jobs'] })
+            setShowFailureModal(null)
+          }}
+        />
+      )}
     </div>
   )
 }
@@ -461,10 +482,12 @@ function PrintHistoryTab({
   parts,
   printers,
   onRecordOutcome,
+  onHandleFailure,
 }: {
   parts: Part[]
   printers: { id: string; name: string }[]
   onRecordOutcome: (job: PrintJob) => void
+  onHandleFailure: (job: PrintJob) => void
 }) {
   // Get all designs from all parts
   const designQueries = parts.map((part) =>
@@ -548,7 +571,7 @@ function PrintHistoryTab({
   return (
     <div className="space-y-4">
       {/* Cost Summary */}
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="card p-4">
           <div className="text-sm text-surface-500 mb-1">Total Prints</div>
           <div className="text-2xl font-semibold text-surface-100">
@@ -582,9 +605,7 @@ function PrintHistoryTab({
       <div className="space-y-3">
       {sortedJobs.map((job) => {
         const design = designMap[job.design_id]
-        const printer = printerMap[job.printer_id]
-        const needsOutcome =
-          (job.status === 'completed' || job.status === 'failed') && !job.outcome
+        const printer = job.printer_id ? printerMap[job.printer_id] : undefined
 
         return (
           <div
@@ -678,7 +699,19 @@ function PrintHistoryTab({
                   : job.status}
               </span>
 
-              {needsOutcome && (
+              {/* Handle Failure button for failed jobs without outcome */}
+              {job.status === 'failed' && !job.outcome && (
+                <button
+                  onClick={() => onHandleFailure(job)}
+                  className="btn btn-primary text-xs py-1 px-2 flex items-center gap-1"
+                >
+                  <RefreshCw className="h-3 w-3" />
+                  Handle Failure
+                </button>
+              )}
+
+              {/* Record Outcome button for completed jobs without outcome */}
+              {job.status === 'completed' && !job.outcome && (
                 <button
                   onClick={() => onRecordOutcome(job)}
                   className="btn btn-secondary text-xs py-1 px-2"

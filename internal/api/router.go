@@ -2,6 +2,8 @@ package api
 
 import (
 	"net/http"
+	"os"
+	"path/filepath"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -10,8 +12,18 @@ import (
 	"github.com/hyperion/printfarm/internal/service"
 )
 
+// RouterConfig holds configuration for the router.
+type RouterConfig struct {
+	RequireAuth bool // If true, protect all API routes with authentication
+}
+
 // NewRouter creates the HTTP router with all routes.
 func NewRouter(services *service.Services, hub *realtime.Hub) http.Handler {
+	return NewRouterWithConfig(services, hub, RouterConfig{RequireAuth: false})
+}
+
+// NewRouterWithConfig creates the HTTP router with configuration.
+func NewRouterWithConfig(services *service.Services, hub *realtime.Hub, config RouterConfig) http.Handler {
 	r := chi.NewRouter()
 
 	// Middleware
@@ -19,13 +31,15 @@ func NewRouter(services *service.Services, hub *realtime.Hub) http.Handler {
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
+	// Configure CORS - allow all origins for desktop app (local API only)
 	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins:   []string{"http://localhost:*", "http://127.0.0.1:*"},
-		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-Request-ID"},
-		ExposedHeaders:   []string{"Link"},
-		AllowCredentials: true,
-		MaxAge:           300,
+		AllowOriginFunc: func(r *http.Request, origin string) bool {
+			return true // Desktop app - API is local only
+		},
+		AllowedMethods: []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+		AllowedHeaders: []string{"Accept", "Authorization", "Content-Type", "X-Request-ID"},
+		ExposedHeaders: []string{"Link"},
+		MaxAge:         300,
 	}))
 
 	// Health check
@@ -33,14 +47,41 @@ func NewRouter(services *service.Services, hub *realtime.Hub) http.Handler {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("ok"))
 	})
-	
 
 	// WebSocket endpoint
 	r.Get("/ws", hub.HandleWebSocket)
 
+	// Auth middleware (only if auth service is configured)
+	var authMiddleware *AuthMiddleware
+	if services.Auth != nil {
+		authMiddleware = NewAuthMiddleware(services.Auth)
+	}
+
 	// API routes
 	r.Route("/api", func(r chi.Router) {
-		// Projects
+		// Auth routes (always public - defined in separate group)
+		if services.Auth != nil {
+			authHandler := NewAuthHandler(services.Auth)
+			// Public auth endpoints
+			r.Post("/auth/request-link", authHandler.RequestMagicLink)
+			r.Get("/auth/verify", authHandler.VerifyMagicLink)
+
+			// Protected auth endpoints (need their own group with middleware)
+			r.Group(func(r chi.Router) {
+				r.Use(authMiddleware.RequireAuth)
+				r.Get("/auth/me", authHandler.GetCurrentUser)
+				r.Post("/auth/logout", authHandler.Logout)
+			})
+		}
+
+		// Protected routes group - all routes below require auth if enabled
+		r.Group(func(r chi.Router) {
+			// Apply auth middleware if required
+			if config.RequireAuth && authMiddleware != nil {
+				r.Use(authMiddleware.RequireAuth)
+			}
+
+			// Projects
 		projectHandler := &ProjectHandler{service: services.Projects}
 		r.Route("/projects", func(r chi.Router) {
 			r.Get("/", projectHandler.List)
@@ -49,6 +90,13 @@ func NewRouter(services *service.Services, hub *realtime.Hub) http.Handler {
 				r.Get("/", projectHandler.Get)
 				r.Patch("/", projectHandler.Update)
 				r.Delete("/", projectHandler.Delete)
+
+				// Project pipeline endpoints
+				r.Get("/jobs", projectHandler.ListJobs)
+				r.Get("/job-stats", projectHandler.GetJobStats)
+				r.Post("/start-production", projectHandler.StartProduction)
+				r.Post("/ready-to-ship", projectHandler.MarkReadyToShip)
+				r.Post("/ship", projectHandler.Ship)
 
 				// Parts nested under project
 				partHandler := &PartHandler{service: services.Parts}
@@ -118,13 +166,25 @@ func NewRouter(services *service.Services, hub *realtime.Hub) http.Handler {
 			r.Route("/{id}", func(r chi.Router) {
 				r.Get("/", printJobHandler.Get)
 				r.Patch("/", printJobHandler.Update)
+				r.Get("/preflight", printJobHandler.PreflightCheck)
 				r.Post("/start", printJobHandler.Start)
 				r.Post("/pause", printJobHandler.Pause)
 				r.Post("/resume", printJobHandler.Resume)
 				r.Post("/cancel", printJobHandler.Cancel)
 				r.Post("/outcome", printJobHandler.RecordOutcome)
+
+				// Job history endpoints
+				r.Get("/events", printJobHandler.GetEvents)
+				r.Get("/with-events", printJobHandler.GetWithEvents)
+				r.Get("/retry-chain", printJobHandler.GetRetryChain)
+				r.Post("/retry", printJobHandler.Retry)
+				r.Post("/failure", printJobHandler.RecordFailure)
+				r.Post("/scrap", printJobHandler.MarkAsScrap)
 			})
 		})
+
+		// Jobs by recipe (for recipe detail page)
+		r.Get("/templates/{id}/jobs", printJobHandler.ListByRecipe)
 
 		// Files
 		fileHandler := &FileHandler{service: services.Files}
@@ -185,38 +245,58 @@ func NewRouter(services *service.Services, hub *realtime.Hub) http.Handler {
 			})
 		})
 
-		// Etsy Integration
-		if services.Etsy != nil {
-			etsyHandler := NewEtsyHandler(services.Etsy)
-			etsyHandler.SetTemplateSvc(services.Templates)
-			r.Route("/integrations/etsy", func(r chi.Router) {
-				// Auth
-				r.Get("/auth", etsyHandler.StartAuth)
-				r.Get("/callback", etsyHandler.Callback)
-				r.Get("/status", etsyHandler.GetStatus)
-				r.Post("/disconnect", etsyHandler.Disconnect)
+			// Etsy Integration
+			if services.Etsy != nil {
+				etsyHandler := NewEtsyHandler(services.Etsy)
+				etsyHandler.SetTemplateSvc(services.Templates)
+				r.Route("/integrations/etsy", func(r chi.Router) {
+					// Auth
+					r.Get("/auth", etsyHandler.StartAuth)
+					r.Get("/callback", etsyHandler.Callback)
+					r.Get("/status", etsyHandler.GetStatus)
+					r.Post("/disconnect", etsyHandler.Disconnect)
 
-				// Receipts/Orders
-				r.Post("/receipts/sync", etsyHandler.SyncReceipts)
-				r.Get("/receipts", etsyHandler.ListReceipts)
-				r.Get("/receipts/{id}", etsyHandler.GetReceipt)
-				r.Post("/receipts/{id}/process", etsyHandler.ProcessReceipt)
+					// Receipts/Orders
+					r.Post("/receipts/sync", etsyHandler.SyncReceipts)
+					r.Get("/receipts", etsyHandler.ListReceipts)
+					r.Get("/receipts/{id}", etsyHandler.GetReceipt)
+					r.Post("/receipts/{id}/process", etsyHandler.ProcessReceipt)
 
-				// Listings
-				r.Post("/listings/sync", etsyHandler.SyncListings)
-				r.Get("/listings", etsyHandler.ListListings)
-				r.Get("/listings/{id}", etsyHandler.GetListing)
-				r.Post("/listings/{id}/link", etsyHandler.LinkListing)
-				r.Delete("/listings/{id}/link", etsyHandler.UnlinkListing)
-				r.Post("/listings/{id}/sync-inventory", etsyHandler.SyncInventory)
+					// Listings
+					r.Post("/listings/sync", etsyHandler.SyncListings)
+					r.Get("/listings", etsyHandler.ListListings)
+					r.Get("/listings/{id}", etsyHandler.GetListing)
+					r.Post("/listings/{id}/link", etsyHandler.LinkListing)
+					r.Delete("/listings/{id}/link", etsyHandler.UnlinkListing)
+					r.Post("/listings/{id}/sync-inventory", etsyHandler.SyncInventory)
 
-				// Webhooks
-				r.Post("/webhook", etsyHandler.HandleWebhook)
-				r.Get("/webhook/events", etsyHandler.ListWebhookEvents)
-				r.Post("/webhook/events/{id}/reprocess", etsyHandler.ReprocessWebhookEvent)
-			})
-		}
+					// Webhooks
+					r.Post("/webhook", etsyHandler.HandleWebhook)
+					r.Get("/webhook/events", etsyHandler.ListWebhookEvents)
+					r.Post("/webhook/events/{id}/reprocess", etsyHandler.ReprocessWebhookEvent)
+				})
+			}
+		}) // End protected routes group
 	})
+
+	// Serve static frontend files in production
+	staticDir := os.Getenv("STATIC_DIR")
+	if staticDir == "" {
+		staticDir = "./web/dist"
+	}
+	if info, err := os.Stat(staticDir); err == nil && info.IsDir() {
+		// Serve static files with SPA fallback
+		r.Get("/*", func(w http.ResponseWriter, req *http.Request) {
+			// Try to serve the exact file
+			path := filepath.Join(staticDir, req.URL.Path)
+			if info, err := os.Stat(path); err == nil && !info.IsDir() {
+				http.ServeFile(w, req, path)
+				return
+			}
+			// Fallback to index.html for SPA routing
+			http.ServeFile(w, req, filepath.Join(staticDir, "index.html"))
+		})
+	}
 
 	return r
 }

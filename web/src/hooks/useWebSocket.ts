@@ -2,8 +2,16 @@ import { useEffect, useRef, useCallback, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import type { PrinterState } from '../types'
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080'
-const WS_URL = API_URL.replace('http', 'ws') + '/ws'
+// Build WebSocket URL - use relative path in production
+function getWsUrl(): string {
+  if (import.meta.env.DEV) {
+    return 'ws://localhost:8080/ws'
+  }
+  // In production, use current host with appropriate protocol
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+  return `${protocol}//${window.location.host}/ws`
+}
+const WS_URL = getWsUrl()
 
 // Reconnection config
 const RECONNECT_INITIAL_DELAY = 1000

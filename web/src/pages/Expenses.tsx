@@ -56,7 +56,7 @@ export default function Expenses() {
   }
 
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-6 lg:p-8">
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-3xl font-display font-bold text-surface-100">
@@ -76,7 +76,7 @@ export default function Expenses() {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-3 gap-4 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
         <div className="card p-4">
           <div className="text-sm text-surface-500 mb-1">Total Expenses</div>
           <div className="text-2xl font-semibold text-surface-100">

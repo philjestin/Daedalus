@@ -67,7 +67,7 @@ body {
 
 /* Card styles */
 .card {
-  @apply rounded-lg border border-surface-800 bg-surface-900/50;
+  @apply rounded-lg border border-surface-800 bg-surface-900;
 }
 
 /* Badge styles */

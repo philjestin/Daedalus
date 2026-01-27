@@ -1,4 +1,4 @@
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080'
+const API_URL = import.meta.env.VITE_API_URL ?? (import.meta.env.DEV ? 'http://localhost:8080' : '')
 
 // Generic fetch wrapper with error handling.
 async function fetchApi<T>(
@@ -6,15 +6,22 @@ async function fetchApi<T>(
   options: RequestInit = {}
 ): Promise<T> {
   const url = `${API_URL}/api${path}`
-  
+
   console.log(`[API] ${options.method || 'GET'} ${url}`)
-  
+
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  }
+
+  // Merge any existing headers
+  if (options.headers) {
+    const existingHeaders = options.headers as Record<string, string>
+    Object.assign(headers, existingHeaders)
+  }
+
   const response = await fetch(url, {
     ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...options.headers,
-    },
+    headers,
   })
 
   console.log(`[API] Response status: ${response.status}`)
@@ -41,26 +48,49 @@ async function fetchApi<T>(
 
 // Projects API
 export const projectsApi = {
-  list: (status?: string) => 
+  list: (status?: string) =>
     fetchApi<import('../types').Project[]>(`/projects${status ? `?status=${status}` : ''}`),
-  
-  get: (id: string) => 
+
+  get: (id: string) =>
     fetchApi<import('../types').Project>(`/projects/${id}`),
-  
-  create: (data: Partial<import('../types').Project>) => 
+
+  create: (data: Partial<import('../types').Project>) =>
     fetchApi<import('../types').Project>('/projects', {
       method: 'POST',
       body: JSON.stringify(data),
     }),
-  
-  update: (id: string, data: Partial<import('../types').Project>) => 
+
+  update: (id: string, data: Partial<import('../types').Project>) =>
     fetchApi<import('../types').Project>(`/projects/${id}`, {
       method: 'PATCH',
       body: JSON.stringify(data),
     }),
-  
-  delete: (id: string) => 
+
+  delete: (id: string) =>
     fetchApi<void>(`/projects/${id}`, { method: 'DELETE' }),
+
+  // Project pipeline methods
+  listJobs: (id: string) =>
+    fetchApi<import('../types').PrintJob[]>(`/projects/${id}/jobs`),
+
+  getJobStats: (id: string) =>
+    fetchApi<import('../types').JobStats>(`/projects/${id}/job-stats`),
+
+  startProduction: (id: string) =>
+    fetchApi<import('../types').StartProductionResult>(`/projects/${id}/start-production`, {
+      method: 'POST',
+    }),
+
+  markReadyToShip: (id: string) =>
+    fetchApi<import('../types').Project>(`/projects/${id}/ready-to-ship`, {
+      method: 'POST',
+    }),
+
+  ship: (id: string, trackingNumber?: string) =>
+    fetchApi<import('../types').Project>(`/projects/${id}/ship`, {
+      method: 'POST',
+      body: JSON.stringify({ tracking_number: trackingNumber }),
+    }),
 }
 
 // Parts API
@@ -214,31 +244,31 @@ export const printJobsApi = {
     const query = searchParams.toString()
     return fetchApi<import('../types').PrintJob[]>(`/print-jobs${query ? `?${query}` : ''}`)
   },
-  
-  get: (id: string) => 
+
+  get: (id: string) =>
     fetchApi<import('../types').PrintJob>(`/print-jobs/${id}`),
-  
-  create: (data: Partial<import('../types').PrintJob>) => 
+
+  create: (data: Partial<import('../types').PrintJob>) =>
     fetchApi<import('../types').PrintJob>('/print-jobs', {
       method: 'POST',
       body: JSON.stringify(data),
     }),
-  
-  update: (id: string, data: Partial<import('../types').PrintJob>) => 
+
+  update: (id: string, data: Partial<import('../types').PrintJob>) =>
     fetchApi<import('../types').PrintJob>(`/print-jobs/${id}`, {
       method: 'PATCH',
       body: JSON.stringify(data),
     }),
-  
-  start: (id: string) => 
+
+  start: (id: string) =>
     fetchApi<void>(`/print-jobs/${id}/start`, { method: 'POST' }),
-  
-  pause: (id: string) => 
+
+  pause: (id: string) =>
     fetchApi<void>(`/print-jobs/${id}/pause`, { method: 'POST' }),
-  
-  resume: (id: string) => 
+
+  resume: (id: string) =>
     fetchApi<void>(`/print-jobs/${id}/resume`, { method: 'POST' }),
-  
+
   cancel: (id: string) =>
     fetchApi<void>(`/print-jobs/${id}/cancel`, { method: 'POST' }),
 
@@ -247,6 +277,43 @@ export const printJobsApi = {
       method: 'POST',
       body: JSON.stringify(outcome),
     }),
+
+  // Job history methods
+  getWithEvents: (id: string) =>
+    fetchApi<import('../types').PrintJob>(`/print-jobs/${id}/with-events`),
+
+  getEvents: (id: string) =>
+    fetchApi<import('../types').JobEvent[]>(`/print-jobs/${id}/events`),
+
+  getRetryChain: (id: string) =>
+    fetchApi<import('../types').PrintJob[]>(`/print-jobs/${id}/retry-chain`),
+
+  retry: (id: string, request?: import('../types').RetryJobRequest) =>
+    fetchApi<import('../types').PrintJob>(`/print-jobs/${id}/retry`, {
+      method: 'POST',
+      body: JSON.stringify(request || {}),
+    }),
+
+  recordFailure: (id: string, request: import('../types').RecordFailureRequest) =>
+    fetchApi<import('../types').PrintJob>(`/print-jobs/${id}/failure`, {
+      method: 'POST',
+      body: JSON.stringify(request),
+    }),
+
+  // Pre-flight check for material validation before starting
+  preflightCheck: (id: string) =>
+    fetchApi<import('../types').PreflightCheckResult>(`/print-jobs/${id}/preflight`),
+
+  // Mark a failed job as scrap (no retry intended)
+  markAsScrap: (id: string, request?: import('../types').ScrapRequest) =>
+    fetchApi<import('../types').PrintJob>(`/print-jobs/${id}/scrap`, {
+      method: 'POST',
+      body: JSON.stringify(request || {}),
+    }),
+
+  // Jobs by recipe
+  listByRecipe: (recipeId: string) =>
+    fetchApi<import('../types').PrintJob[]>(`/templates/${recipeId}/jobs`),
 }
 
 // Expenses API

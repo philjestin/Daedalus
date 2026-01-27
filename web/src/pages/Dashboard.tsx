@@ -38,10 +38,10 @@ export default function Dashboard() {
   const formatCents = (cents: number) => `$${(cents / 100).toFixed(2)}`
 
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-6 lg:p-8">
       {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-display font-bold text-surface-100">
+      <div className="mb-6 lg:mb-8">
+        <h1 className="text-2xl lg:text-3xl font-display font-bold text-surface-100">
           Dashboard
         </h1>
         <p className="text-surface-400 mt-1">
@@ -50,7 +50,7 @@ export default function Dashboard() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-4 mb-6 lg:mb-8">
         <StatCard
           icon={FolderKanban}
           label="Active Projects"
@@ -92,7 +92,7 @@ export default function Dashboard() {
             </Link>
           </div>
 
-          <div className="grid grid-cols-4 gap-6">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
             <div>
               <div className="flex items-center gap-2 text-sm text-surface-500 mb-1">
                 <DollarSign className="h-4 w-4" />
@@ -164,7 +164,7 @@ export default function Dashboard() {
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
         {/* Printer Status */}
         <div className="card p-6">
           <div className="flex items-center justify-between mb-4">

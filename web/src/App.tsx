@@ -1,4 +1,4 @@
-import { Routes, Route } from 'react-router-dom'
+import { Routes, Route, Navigate } from 'react-router-dom'
 import Layout from './components/Layout'
 import Dashboard from './pages/Dashboard'
 import Projects from './pages/Projects'
@@ -24,18 +24,19 @@ function App() {
 
   return (
     <Routes>
-      <Route path="/" element={<Layout />}>
-        <Route index element={<Dashboard />} />
-        <Route path="projects" element={<Projects />} />
-        <Route path="projects/:id" element={<ProjectDetail />} />
-        <Route path="templates" element={<Templates />} />
-        <Route path="templates/:id" element={<TemplateDetail />} />
-        <Route path="printers" element={<Printers />} />
-        <Route path="materials" element={<Materials />} />
-        <Route path="expenses" element={<Expenses />} />
-        <Route path="etsy/orders" element={<EtsyOrders />} />
-        <Route path="etsy/listings" element={<EtsyListings />} />
-        <Route path="settings" element={<Settings />} />
+      <Route element={<Layout />}>
+        <Route path="/" element={<Navigate to="/dashboard" replace />} />
+        <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/projects" element={<Projects />} />
+        <Route path="/projects/:id" element={<ProjectDetail />} />
+        <Route path="/templates" element={<Templates />} />
+        <Route path="/templates/:id" element={<TemplateDetail />} />
+        <Route path="/printers" element={<Printers />} />
+        <Route path="/materials" element={<Materials />} />
+        <Route path="/expenses" element={<Expenses />} />
+        <Route path="/etsy/orders" element={<EtsyOrders />} />
+        <Route path="/etsy/listings" element={<EtsyListings />} />
+        <Route path="/settings" element={<Settings />} />
       </Route>
     </Routes>
   )

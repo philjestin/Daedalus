@@ -10,12 +10,12 @@ import (
 	"time"
 
 	"github.com/hyperion/printfarm/internal/api"
+	"github.com/hyperion/printfarm/internal/database"
 	"github.com/hyperion/printfarm/internal/printer"
 	"github.com/hyperion/printfarm/internal/realtime"
 	"github.com/hyperion/printfarm/internal/repository"
 	"github.com/hyperion/printfarm/internal/service"
 	"github.com/hyperion/printfarm/internal/storage"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
 )
 
@@ -30,7 +30,6 @@ func main() {
 	slog.SetDefault(logger)
 
 	// Get configuration from environment
-	dbURL := getEnv("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/printfarm?sslmode=disable")
 	port := getEnv("PORT", "8080")
 	uploadDir := getEnv("UPLOAD_DIR", "./uploads")
 
@@ -38,27 +37,29 @@ func main() {
 	etsyClientID := os.Getenv("ETSY_CLIENT_ID")
 	etsyRedirectURI := getEnv("ETSY_REDIRECT_URI", "http://localhost:8080/api/integrations/etsy/callback")
 
-	// Connect to database
-	ctx := context.Background()
-	pool, err := pgxpool.New(ctx, dbURL)
-	if err != nil {
-		slog.Error("failed to connect to database", "error", err)
-		os.Exit(1)
+	// Open SQLite database
+	dbPath := os.Getenv("DATABASE_PATH")
+	if dbPath == "" {
+		var err error
+		dbPath, err = database.DefaultDBPath()
+		if err != nil {
+			slog.Error("failed to get default database path", "error", err)
+			os.Exit(1)
+		}
 	}
-	defer pool.Close()
 
-	// Verify database connection
-	if err := pool.Ping(ctx); err != nil {
-		slog.Error("failed to ping database", "error", err)
+	db, err := database.Open(dbPath)
+	if err != nil {
+		slog.Error("failed to open database", "error", err)
 		os.Exit(1)
 	}
-	slog.Info("connected to database")
+	defer db.Close()
 
 	// Initialize storage
 	fileStorage := storage.NewLocalStorage(uploadDir)
 
 	// Initialize repositories
-	repos := repository.NewRepositories(pool)
+	repos := repository.NewRepositories(db)
 
 	// Initialize WebSocket hub for real-time updates
 	hub := realtime.NewHub()
@@ -68,12 +69,17 @@ func main() {
 	printerManager := printer.NewManager()
 	printerManager.SetBroadcaster(hub)
 
-	// Initialize services with Etsy configuration
-	etsyConfig := service.EtsyConfig{
-		ClientID:    etsyClientID,
-		RedirectURI: etsyRedirectURI,
+	// Initialize services
+	servicesConfig := service.ServicesConfig{
+		Etsy: service.EtsyConfig{
+			ClientID:    etsyClientID,
+			RedirectURI: etsyRedirectURI,
+		},
 	}
-	services := service.NewServicesWithEtsy(repos, fileStorage, printerManager, hub, etsyConfig)
+	services := service.NewServicesWithConfig(repos, fileStorage, printerManager, hub, servicesConfig)
+
+	// Initialize PrintJobService to register for printer status changes (auto failure detection)
+	services.PrintJobs.Init()
 
 	if etsyClientID != "" {
 		slog.Info("Etsy integration enabled", "redirect_uri", etsyRedirectURI)
@@ -125,4 +131,3 @@ func getEnv(key, defaultValue string) string {
 	}
 	return defaultValue
 }
-

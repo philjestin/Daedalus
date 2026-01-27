@@ -35,6 +35,7 @@ type Services struct {
 	Stats     *StatsService
 	Templates *TemplateService
 	Etsy      *EtsyService
+	Auth      *AuthService
 }
 
 // EtsyConfig holds Etsy OAuth configuration.
@@ -43,22 +44,29 @@ type EtsyConfig struct {
 	RedirectURI string
 }
 
+// ServicesConfig holds all service configuration.
+type ServicesConfig struct {
+	Etsy EtsyConfig
+	Auth AuthConfig
+}
+
 // NewServices creates all service instances.
 func NewServices(repos *repository.Repositories, store storage.Storage, printerMgr *printer.Manager, hub *realtime.Hub) *Services {
 	return &Services{
-		Projects:  &ProjectService{repo: repos.Projects},
+		Projects:  &ProjectService{repo: repos.Projects, printJobRepo: repos.PrintJobs, printerRepo: repos.Printers, spoolRepo: repos.Spools, templateRepo: repos.Templates, designRepo: repos.Designs, printerMgr: printerMgr, hub: hub, storage: store},
 		Parts:     &PartService{repo: repos.Parts},
 		Designs:   &DesignService{repo: repos.Designs, fileRepo: repos.Files, storage: store},
 		Printers:  &PrinterService{repo: repos.Printers, manager: printerMgr, hub: hub, discovery: printer.NewDiscovery()},
 		Materials: &MaterialService{repo: repos.Materials},
 		Spools:    &SpoolService{repo: repos.Spools},
-		PrintJobs: &PrintJobService{repo: repos.PrintJobs, printerRepo: repos.Printers, designRepo: repos.Designs, spoolRepo: repos.Spools, materialRepo: repos.Materials, printerMgr: printerMgr, hub: hub, storage: store},
+		PrintJobs: &PrintJobService{repo: repos.PrintJobs, printerRepo: repos.Printers, designRepo: repos.Designs, spoolRepo: repos.Spools, materialRepo: repos.Materials, projectRepo: repos.Projects, printerMgr: printerMgr, hub: hub, storage: store},
 		Files:     &FileService{repo: repos.Files, storage: store},
 		Expenses:  &ExpenseService{repo: repos.Expenses, materialRepo: repos.Materials, spoolRepo: repos.Spools, fileRepo: repos.Files, storage: store},
 		Sales:     &SaleService{repo: repos.Sales},
 		Stats:     &StatsService{expenseRepo: repos.Expenses, saleRepo: repos.Sales, printJobRepo: repos.PrintJobs},
 		Templates: &TemplateService{repo: repos.Templates, projectRepo: repos.Projects, partRepo: repos.Parts, designRepo: repos.Designs, printJobRepo: repos.PrintJobs, spoolRepo: repos.Spools, materialRepo: repos.Materials, printerRepo: repos.Printers},
 		Etsy:      nil, // Initialize separately with NewServicesWithEtsy
+		Auth:      nil, // Initialize separately with NewServicesWithConfig
 	}
 }
 
@@ -69,9 +77,29 @@ func NewServicesWithEtsy(repos *repository.Repositories, store storage.Storage, 
 	return services
 }
 
+// NewServicesWithConfig creates all service instances with full configuration.
+func NewServicesWithConfig(repos *repository.Repositories, store storage.Storage, printerMgr *printer.Manager, hub *realtime.Hub, config ServicesConfig) *Services {
+	services := NewServices(repos, store, printerMgr, hub)
+	if config.Etsy.ClientID != "" {
+		services.Etsy = NewEtsyService(repos.Etsy, config.Etsy.ClientID, config.Etsy.RedirectURI)
+	}
+	if config.Auth.JWTSecret != "" {
+		services.Auth = NewAuthService(repos.Auth, config.Auth)
+	}
+	return services
+}
+
 // ProjectService handles project business logic.
 type ProjectService struct {
-	repo *repository.ProjectRepository
+	repo            *repository.ProjectRepository
+	printJobRepo    *repository.PrintJobRepository
+	printerRepo     *repository.PrinterRepository
+	spoolRepo       *repository.SpoolRepository
+	templateRepo    *repository.TemplateRepository
+	designRepo      *repository.DesignRepository
+	printerMgr      *printer.Manager
+	hub             *realtime.Hub
+	storage         storage.Storage
 }
 
 // Create creates a new project.
@@ -100,6 +128,270 @@ func (s *ProjectService) Update(ctx context.Context, p *model.Project) error {
 // Delete removes a project.
 func (s *ProjectService) Delete(ctx context.Context, id uuid.UUID) error {
 	return s.repo.Delete(ctx, id)
+}
+
+// GetJobStats retrieves job statistics for a project.
+func (s *ProjectService) GetJobStats(ctx context.Context, projectID uuid.UUID) (*repository.JobStats, error) {
+	return s.printJobRepo.GetProjectJobStats(ctx, projectID)
+}
+
+// ListJobs retrieves all print jobs for a project.
+func (s *ProjectService) ListJobs(ctx context.Context, projectID uuid.UUID) ([]model.PrintJob, error) {
+	return s.printJobRepo.ListByProject(ctx, projectID)
+}
+
+// StartProductionResult contains the result of starting production.
+type StartProductionResult struct {
+	JobsStarted    int               `json:"jobs_started"`
+	JobsSkipped    int               `json:"jobs_skipped"`
+	FailedJobs     []StartJobFailure `json:"failed_jobs,omitempty"`
+}
+
+// StartJobFailure represents a job that failed to start.
+type StartJobFailure struct {
+	JobID   uuid.UUID `json:"job_id"`
+	Reason  string    `json:"reason"`
+}
+
+// StartProduction auto-assigns resources and starts all queued jobs for a project.
+func (s *ProjectService) StartProduction(ctx context.Context, projectID uuid.UUID) (*StartProductionResult, error) {
+	project, err := s.repo.GetByID(ctx, projectID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get project: %w", err)
+	}
+	if project == nil {
+		return nil, fmt.Errorf("project not found")
+	}
+
+	// Get all jobs for this project
+	jobs, err := s.printJobRepo.ListByProject(ctx, projectID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get project jobs: %w", err)
+	}
+
+	// Get template constraints if this project has a template
+	var template *model.Template
+	if project.TemplateID != nil {
+		template, err = s.templateRepo.GetByID(ctx, *project.TemplateID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get template: %w", err)
+		}
+	}
+
+	// Get available printers and spools
+	printers, err := s.printerRepo.List(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get printers: %w", err)
+	}
+
+	spools, err := s.spoolRepo.List(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get spools: %w", err)
+	}
+
+	result := &StartProductionResult{}
+
+	for _, job := range jobs {
+		// Skip jobs that are not in queued status
+		if job.Status != model.PrintJobStatusQueued {
+			result.JobsSkipped++
+			continue
+		}
+
+		// Find an idle printer
+		var selectedPrinter *model.Printer
+		for i := range printers {
+			p := &printers[i]
+			if p.Status != model.PrinterStatusIdle {
+				continue
+			}
+			// Check template constraints
+			if template != nil {
+				if template.PreferredPrinterID != nil && !template.AllowAnyPrinter {
+					if p.ID != *template.PreferredPrinterID {
+						continue
+					}
+				}
+				// Check printer constraints if specified
+				if template.PrinterConstraints != nil {
+					// Note: Printer model doesn't have HasEnclosure/HasAMS yet
+					// These checks would need printer model updates to fully work
+					// For now, we skip these checks
+				}
+			}
+			selectedPrinter = p
+			break
+		}
+
+		if selectedPrinter == nil {
+			result.FailedJobs = append(result.FailedJobs, StartJobFailure{
+				JobID:  job.ID,
+				Reason: "no idle printer available",
+			})
+			continue
+		}
+
+		// Find a spool with matching material and enough weight
+		var selectedSpool *model.MaterialSpool
+		for i := range spools {
+			sp := &spools[i]
+			if sp.Status != model.SpoolStatusInUse && sp.Status != model.SpoolStatusNew && sp.Status != model.SpoolStatusLow {
+				continue
+			}
+			// Check if spool has enough material (at least 50g as minimum)
+			if sp.RemainingWeight < 50 {
+				continue
+			}
+			// TODO: Check material type constraints from template if specified
+			selectedSpool = sp
+			break
+		}
+
+		if selectedSpool == nil {
+			result.FailedJobs = append(result.FailedJobs, StartJobFailure{
+				JobID:  job.ID,
+				Reason: "no suitable spool available",
+			})
+			continue
+		}
+
+		// Assign resources to the job
+		job.PrinterID = &selectedPrinter.ID
+		job.MaterialSpoolID = &selectedSpool.ID
+
+		if err := s.printJobRepo.Update(ctx, &job); err != nil {
+			result.FailedJobs = append(result.FailedJobs, StartJobFailure{
+				JobID:  job.ID,
+				Reason: fmt.Sprintf("failed to assign resources: %v", err),
+			})
+			continue
+		}
+
+		// Record assignment event
+		assignedStatus := model.PrintJobStatusAssigned
+		event := model.NewJobEvent(job.ID, model.JobEventAssigned, &assignedStatus).
+			WithPrinter(selectedPrinter.ID).
+			WithActor(model.ActorSystem, "start_production")
+		if err := s.printJobRepo.AppendEvent(ctx, event); err != nil {
+			slog.Error("failed to record assignment event", "job_id", job.ID, "error", err)
+		}
+
+		// Get design and start the job
+		design, err := s.designRepo.GetByID(ctx, job.DesignID)
+		if err != nil || design == nil {
+			result.FailedJobs = append(result.FailedJobs, StartJobFailure{
+				JobID:  job.ID,
+				Reason: "design not found",
+			})
+			continue
+		}
+
+		// Send to printer
+		if err := s.printerMgr.StartJob(selectedPrinter.ID, design.FileName, s.storage.GetFullPath(design.FileName)); err != nil {
+			// Record failure event
+			failedStatus := model.PrintJobStatusFailed
+			failEvent := model.NewJobEvent(job.ID, model.JobEventFailed, &failedStatus).
+				WithError("UPLOAD_FAILED", err.Error()).
+				WithActor(model.ActorSystem, "start_production")
+			s.printJobRepo.AppendEvent(ctx, failEvent)
+
+			result.FailedJobs = append(result.FailedJobs, StartJobFailure{
+				JobID:  job.ID,
+				Reason: fmt.Sprintf("failed to start print: %v", err),
+			})
+			continue
+		}
+
+		// Record uploaded event
+		uploadedStatus := model.PrintJobStatusUploaded
+		uploadEvent := model.NewJobEvent(job.ID, model.JobEventUploaded, &uploadedStatus).
+			WithPrinter(selectedPrinter.ID).
+			WithActor(model.ActorSystem, "start_production")
+		s.printJobRepo.AppendEvent(ctx, uploadEvent)
+
+		// Update started_at timestamp
+		now := time.Now()
+		job.StartedAt = &now
+		s.printJobRepo.Update(ctx, &job)
+
+		// Mark printer as printing
+		selectedPrinter.Status = model.PrinterStatusPrinting
+		result.JobsStarted++
+	}
+
+	// Update project status to active if we started any jobs
+	if result.JobsStarted > 0 && project.Status == model.ProjectStatusDraft {
+		project.Status = model.ProjectStatusActive
+		s.repo.Update(ctx, project)
+	}
+
+	s.hub.Broadcast(realtime.Event{
+		Type: "production_started",
+		Data: map[string]interface{}{
+			"project_id":   projectID,
+			"jobs_started": result.JobsStarted,
+		},
+	})
+
+	return result, nil
+}
+
+// MarkReadyToShip marks a project as ready to ship.
+func (s *ProjectService) MarkReadyToShip(ctx context.Context, projectID uuid.UUID) error {
+	project, err := s.repo.GetByID(ctx, projectID)
+	if err != nil {
+		return fmt.Errorf("failed to get project: %w", err)
+	}
+	if project == nil {
+		return fmt.Errorf("project not found")
+	}
+
+	if project.Status != model.ProjectStatusCompleted {
+		return fmt.Errorf("project must be in completed status to mark as ready to ship")
+	}
+
+	project.Status = model.ProjectStatusReadyToShip
+	if err := s.repo.Update(ctx, project); err != nil {
+		return fmt.Errorf("failed to update project: %w", err)
+	}
+
+	s.hub.Broadcast(realtime.Event{
+		Type: "project_ready_to_ship",
+		Data: project,
+	})
+
+	return nil
+}
+
+// MarkShipped marks a project as shipped with a tracking number.
+func (s *ProjectService) MarkShipped(ctx context.Context, projectID uuid.UUID, trackingNumber string) error {
+	project, err := s.repo.GetByID(ctx, projectID)
+	if err != nil {
+		return fmt.Errorf("failed to get project: %w", err)
+	}
+	if project == nil {
+		return fmt.Errorf("project not found")
+	}
+
+	if project.Status != model.ProjectStatusReadyToShip && project.Status != model.ProjectStatusCompleted {
+		return fmt.Errorf("project must be in completed or ready_to_ship status to mark as shipped")
+	}
+
+	now := time.Now()
+	project.Status = model.ProjectStatusShipped
+	project.ShippedAt = &now
+	project.TrackingNumber = trackingNumber
+
+	if err := s.repo.Update(ctx, project); err != nil {
+		return fmt.Errorf("failed to update project: %w", err)
+	}
+
+	s.hub.Broadcast(realtime.Event{
+		Type: "project_shipped",
+		Data: project,
+	})
+
+	return nil
 }
 
 // PartService handles part business logic.
@@ -382,34 +674,38 @@ func (s *SpoolService) List(ctx context.Context) ([]model.MaterialSpool, error) 
 }
 
 // PrintJobService handles print job business logic.
+// Jobs are immutable once created - state changes are recorded as events.
 type PrintJobService struct {
 	repo         *repository.PrintJobRepository
 	printerRepo  *repository.PrinterRepository
 	designRepo   *repository.DesignRepository
 	spoolRepo    *repository.SpoolRepository
 	materialRepo *repository.MaterialRepository
+	projectRepo  *repository.ProjectRepository
 	printerMgr   *printer.Manager
 	hub          *realtime.Hub
 	storage      storage.Storage
 }
 
-// Create creates a new print job.
+// Create creates a new print job and records the initial "queued" event.
+// Printer and spool can be nil - job will be queued pending assignment.
 func (s *PrintJobService) Create(ctx context.Context, j *model.PrintJob) error {
 	if j.DesignID == uuid.Nil {
 		return fmt.Errorf("design ID is required")
 	}
-	if j.PrinterID == uuid.Nil {
-		return fmt.Errorf("printer ID is required")
-	}
-	if j.MaterialSpoolID == uuid.Nil {
-		return fmt.Errorf("material spool ID is required")
-	}
+	// Printer and spool are optional - job can be created without assignment
+	// The repository.Create already records the initial queued event
 	return s.repo.Create(ctx, j)
 }
 
 // GetByID retrieves a print job by ID.
 func (s *PrintJobService) GetByID(ctx context.Context, id uuid.UUID) (*model.PrintJob, error) {
 	return s.repo.GetByID(ctx, id)
+}
+
+// GetByIDWithEvents retrieves a print job with its full event timeline.
+func (s *PrintJobService) GetByIDWithEvents(ctx context.Context, id uuid.UUID) (*model.PrintJob, error) {
+	return s.repo.GetByIDWithEvents(ctx, id)
 }
 
 // List retrieves print jobs.
@@ -422,7 +718,22 @@ func (s *PrintJobService) ListByDesign(ctx context.Context, designID uuid.UUID) 
 	return s.repo.ListByDesign(ctx, designID)
 }
 
-// Start sends a print job to the printer.
+// ListByRecipe retrieves print jobs for a recipe/template.
+func (s *PrintJobService) ListByRecipe(ctx context.Context, recipeID uuid.UUID) ([]model.PrintJob, error) {
+	return s.repo.ListByRecipe(ctx, recipeID)
+}
+
+// GetEvents retrieves all events for a job in chronological order.
+func (s *PrintJobService) GetEvents(ctx context.Context, jobID uuid.UUID) ([]model.JobEvent, error) {
+	return s.repo.GetEvents(ctx, jobID)
+}
+
+// GetRetryChain retrieves all jobs in a retry chain (original + all retries).
+func (s *PrintJobService) GetRetryChain(ctx context.Context, jobID uuid.UUID) ([]model.PrintJob, error) {
+	return s.repo.GetRetryChain(ctx, jobID)
+}
+
+// Start sends a print job to the printer and records the appropriate events.
 func (s *PrintJobService) Start(ctx context.Context, id uuid.UUID) error {
 	job, err := s.repo.GetByID(ctx, id)
 	if err != nil {
@@ -432,6 +743,16 @@ func (s *PrintJobService) Start(ctx context.Context, id uuid.UUID) error {
 		return fmt.Errorf("job not found")
 	}
 
+	// Verify job is in a startable state
+	if job.Status.IsTerminal() {
+		return fmt.Errorf("cannot start job in %s status", job.Status)
+	}
+
+	// Verify resources are assigned before starting
+	if job.NeedsAssignment() {
+		return fmt.Errorf("job needs printer and spool assignment before starting")
+	}
+
 	// Get design and file
 	design, err := s.designRepo.GetByID(ctx, job.DesignID)
 	if err != nil {
@@ -439,7 +760,7 @@ func (s *PrintJobService) Start(ctx context.Context, id uuid.UUID) error {
 	}
 
 	// Get printer
-	printerData, err := s.printerRepo.GetByID(ctx, job.PrinterID)
+	printerData, err := s.printerRepo.GetByID(ctx, *job.PrinterID)
 	if err != nil {
 		return err
 	}
@@ -447,16 +768,53 @@ func (s *PrintJobService) Start(ctx context.Context, id uuid.UUID) error {
 		return fmt.Errorf("printer not found")
 	}
 
+	// Get printer state and validate material (if AMS available)
+	printerState, _ := s.printerMgr.GetState(*job.PrinterID)
+	if printerState != nil && printerState.AMS != nil {
+		validation := s.ValidateMaterial(printerState.AMS, printerData.MinMaterialPercent)
+		if len(validation.Errors) > 0 {
+			return fmt.Errorf("material validation failed: %s", validation.Errors[0])
+		}
+
+		// Capture material snapshot before starting
+		job.MaterialSnapshot = s.captureMaterialSnapshot(printerState.AMS)
+	}
+
+	// Record assignment event if printer wasn't already assigned
+	if job.Status == model.PrintJobStatusQueued {
+		assignedStatus := model.PrintJobStatusAssigned
+		assignEvent := model.NewJobEvent(job.ID, model.JobEventAssigned, &assignedStatus).
+			WithPrinter(*job.PrinterID).
+			WithActor(model.ActorSystem, "print_service")
+		if err := s.repo.AppendEvent(ctx, assignEvent); err != nil {
+			return fmt.Errorf("failed to record assignment: %w", err)
+		}
+	}
+
 	// Send to printer via manager
-	if err := s.printerMgr.StartJob(job.PrinterID, design.FileName, s.storage.GetFullPath(design.FileName)); err != nil {
+	if err := s.printerMgr.StartJob(*job.PrinterID, design.FileName, s.storage.GetFullPath(design.FileName)); err != nil {
+		// Record failure event
+		failedStatus := model.PrintJobStatusFailed
+		failEvent := model.NewJobEvent(job.ID, model.JobEventFailed, &failedStatus).
+			WithError("UPLOAD_FAILED", err.Error()).
+			WithActor(model.ActorSystem, "print_service")
+		s.repo.AppendEvent(ctx, failEvent)
 		return fmt.Errorf("failed to start print: %w", err)
 	}
 
-	// Update job status
-	job.Status = model.PrintJobStatusSending
-	if err := s.repo.Update(ctx, job); err != nil {
-		return err
+	// Record uploaded event
+	uploadedStatus := model.PrintJobStatusUploaded
+	uploadEvent := model.NewJobEvent(job.ID, model.JobEventUploaded, &uploadedStatus).
+		WithPrinter(*job.PrinterID).
+		WithActor(model.ActorSystem, "print_service")
+	if err := s.repo.AppendEvent(ctx, uploadEvent); err != nil {
+		return fmt.Errorf("failed to record upload: %w", err)
 	}
+
+	// Update started_at timestamp and material snapshot
+	now := time.Now()
+	job.StartedAt = &now
+	s.repo.Update(ctx, job)
 
 	// Broadcast update
 	s.hub.Broadcast(realtime.Event{
@@ -467,7 +825,270 @@ func (s *PrintJobService) Start(ctx context.Context, id uuid.UUID) error {
 	return nil
 }
 
-// Pause pauses a print job.
+// ValidateMaterial validates the current AMS material state against thresholds.
+// Returns warnings for low material and errors that should block job start.
+func (s *PrintJobService) ValidateMaterial(ams *model.AMSState, minPercent int) *model.MaterialValidation {
+	result := &model.MaterialValidation{Valid: true}
+
+	if ams == nil {
+		return result
+	}
+
+	// Find the currently selected tray
+	var currentTray *model.AMSTray
+	if ams.CurrentTray == "255" && ams.ExternalSpool != nil {
+		currentTray = ams.ExternalSpool
+	} else if ams.CurrentTray != "" {
+		// Parse tray number (format: "X" where X is 0-15 for AMS trays)
+		for _, unit := range ams.Units {
+			for i := range unit.Trays {
+				tray := &unit.Trays[i]
+				// Calculate global tray ID: unit_id * 4 + tray_id
+				globalID := unit.ID*4 + tray.ID
+				if fmt.Sprintf("%d", globalID) == ams.CurrentTray {
+					currentTray = tray
+					break
+				}
+			}
+			if currentTray != nil {
+				break
+			}
+		}
+	}
+
+	if currentTray == nil {
+		// No tray selected, can't validate
+		return result
+	}
+
+	// Check if tray is empty
+	if currentTray.Empty {
+		result.Valid = false
+		result.Errors = append(result.Errors, "selected tray is empty")
+		return result
+	}
+
+	// Check remaining percentage against threshold
+	if minPercent > 0 && currentTray.Remain < minPercent {
+		result.Valid = false
+		result.Errors = append(result.Errors, fmt.Sprintf("material remaining (%d%%) is below minimum threshold (%d%%)", currentTray.Remain, minPercent))
+	} else if currentTray.Remain < 20 {
+		// Add warning for low material even if above threshold
+		result.Warnings = append(result.Warnings, fmt.Sprintf("material low: %d%% remaining", currentTray.Remain))
+	}
+
+	return result
+}
+
+// captureMaterialSnapshot creates a snapshot of the current AMS state for a job.
+func (s *PrintJobService) captureMaterialSnapshot(ams *model.AMSState) *model.MaterialSnapshot {
+	if ams == nil {
+		return nil
+	}
+
+	snapshot := &model.MaterialSnapshot{
+		CapturedAt: time.Now(),
+		AMSState:   ams,
+	}
+
+	// Find and record the currently selected tray info
+	if ams.CurrentTray == "255" && ams.ExternalSpool != nil {
+		snapshot.SelectedTray = 255
+		snapshot.MaterialType = ams.ExternalSpool.MaterialType
+		snapshot.Color = ams.ExternalSpool.Color
+		snapshot.RemainPercent = ams.ExternalSpool.Remain
+		snapshot.Brand = ams.ExternalSpool.Brand
+	} else if ams.CurrentTray != "" {
+		for _, unit := range ams.Units {
+			for _, tray := range unit.Trays {
+				globalID := unit.ID*4 + tray.ID
+				if fmt.Sprintf("%d", globalID) == ams.CurrentTray {
+					snapshot.SelectedTray = globalID
+					snapshot.MaterialType = tray.MaterialType
+					snapshot.Color = tray.Color
+					snapshot.RemainPercent = tray.Remain
+					snapshot.Brand = tray.Brand
+					break
+				}
+			}
+		}
+	}
+
+	return snapshot
+}
+
+// PreflightCheckResult contains the result of a preflight validation.
+type PreflightCheckResult struct {
+	Ready      bool                     `json:"ready"`
+	Validation *model.MaterialValidation `json:"validation,omitempty"`
+	AMSState   *model.AMSState          `json:"ams_state,omitempty"`
+	Warnings   []string                  `json:"warnings,omitempty"`
+	Errors     []string                  `json:"errors,omitempty"`
+}
+
+// PreflightCheck validates a job is ready to start.
+// Returns current AMS state, validation results, and any warnings/errors.
+func (s *PrintJobService) PreflightCheck(ctx context.Context, jobID uuid.UUID) (*PreflightCheckResult, error) {
+	job, err := s.repo.GetByID(ctx, jobID)
+	if err != nil {
+		return nil, err
+	}
+	if job == nil {
+		return nil, fmt.Errorf("job not found")
+	}
+
+	result := &PreflightCheckResult{Ready: true}
+
+	// Check job state
+	if job.Status.IsTerminal() {
+		result.Ready = false
+		result.Errors = append(result.Errors, fmt.Sprintf("job is in terminal state: %s", job.Status))
+		return result, nil
+	}
+
+	// Check resource assignment
+	if job.NeedsAssignment() {
+		result.Ready = false
+		result.Errors = append(result.Errors, "job needs printer and spool assignment")
+		return result, nil
+	}
+
+	// Get printer
+	printerData, err := s.printerRepo.GetByID(ctx, *job.PrinterID)
+	if err != nil || printerData == nil {
+		result.Ready = false
+		result.Errors = append(result.Errors, "printer not found")
+		return result, nil
+	}
+
+	// Get printer state including AMS
+	printerState, _ := s.printerMgr.GetState(*job.PrinterID)
+	if printerState == nil {
+		result.Warnings = append(result.Warnings, "printer state unavailable")
+		return result, nil
+	}
+
+	// Include AMS state in result
+	result.AMSState = printerState.AMS
+
+	// Validate material if AMS available
+	if printerState.AMS != nil {
+		validation := s.ValidateMaterial(printerState.AMS, printerData.MinMaterialPercent)
+		result.Validation = validation
+		result.Warnings = append(result.Warnings, validation.Warnings...)
+		result.Errors = append(result.Errors, validation.Errors...)
+		if !validation.Valid {
+			result.Ready = false
+		}
+	}
+
+	return result, nil
+}
+
+// AssignResources assigns a printer and spool to a job.
+func (s *PrintJobService) AssignResources(ctx context.Context, jobID, printerID, spoolID uuid.UUID) error {
+	job, err := s.repo.GetByID(ctx, jobID)
+	if err != nil {
+		return err
+	}
+	if job == nil {
+		return fmt.Errorf("job not found")
+	}
+
+	if job.Status.IsTerminal() {
+		return fmt.Errorf("cannot assign resources to job in %s status", job.Status)
+	}
+
+	// Verify printer exists
+	printer, err := s.printerRepo.GetByID(ctx, printerID)
+	if err != nil {
+		return fmt.Errorf("failed to get printer: %w", err)
+	}
+	if printer == nil {
+		return fmt.Errorf("printer not found")
+	}
+
+	// Verify spool exists
+	spool, err := s.spoolRepo.GetByID(ctx, spoolID)
+	if err != nil {
+		return fmt.Errorf("failed to get spool: %w", err)
+	}
+	if spool == nil {
+		return fmt.Errorf("spool not found")
+	}
+
+	// Assign resources
+	job.PrinterID = &printerID
+	job.MaterialSpoolID = &spoolID
+
+	if err := s.repo.Update(ctx, job); err != nil {
+		return fmt.Errorf("failed to update job: %w", err)
+	}
+
+	// Record assignment event
+	assignedStatus := model.PrintJobStatusAssigned
+	event := model.NewJobEvent(job.ID, model.JobEventAssigned, &assignedStatus).
+		WithPrinter(printerID).
+		WithActor(model.ActorSystem, "resource_assignment")
+	if err := s.repo.AppendEvent(ctx, event); err != nil {
+		return fmt.Errorf("failed to record assignment: %w", err)
+	}
+
+	return nil
+}
+
+// ListByProject retrieves print jobs for a project.
+func (s *PrintJobService) ListByProject(ctx context.Context, projectID uuid.UUID) ([]model.PrintJob, error) {
+	return s.repo.ListByProject(ctx, projectID)
+}
+
+// RecordPrintingStarted records that the printer has begun printing (called by printer callbacks).
+func (s *PrintJobService) RecordPrintingStarted(ctx context.Context, id uuid.UUID) error {
+	job, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	if job == nil {
+		return fmt.Errorf("job not found")
+	}
+
+	printingStatus := model.PrintJobStatusPrinting
+	event := model.NewJobEvent(job.ID, model.JobEventStarted, &printingStatus).
+		WithActor(model.ActorPrinter, "")
+	if job.PrinterID != nil {
+		event = event.WithPrinter(*job.PrinterID).
+			WithActor(model.ActorPrinter, job.PrinterID.String())
+	}
+
+	if err := s.repo.AppendEvent(ctx, event); err != nil {
+		return fmt.Errorf("failed to record printing started: %w", err)
+	}
+
+	// Update started_at if not already set
+	if job.StartedAt == nil {
+		now := time.Now()
+		job.StartedAt = &now
+		s.repo.Update(ctx, job)
+	}
+
+	s.hub.Broadcast(realtime.Event{
+		Type: "job_printing",
+		Data: job,
+	})
+
+	return nil
+}
+
+// RecordProgress records a progress update for a job (called by printer callbacks).
+func (s *PrintJobService) RecordProgress(ctx context.Context, id uuid.UUID, progress float64) error {
+	event := model.NewJobEvent(id, model.JobEventProgress, nil).
+		WithProgress(progress).
+		WithActor(model.ActorPrinter, "")
+
+	return s.repo.AppendEvent(ctx, event)
+}
+
+// Pause pauses a print job and records the event.
 func (s *PrintJobService) Pause(ctx context.Context, id uuid.UUID) error {
 	job, err := s.repo.GetByID(ctx, id)
 	if err != nil {
@@ -477,14 +1098,37 @@ func (s *PrintJobService) Pause(ctx context.Context, id uuid.UUID) error {
 		return fmt.Errorf("job not found")
 	}
 
-	if err := s.printerMgr.PauseJob(job.PrinterID); err != nil {
+	if job.Status != model.PrintJobStatusPrinting {
+		return fmt.Errorf("can only pause printing jobs, current status: %s", job.Status)
+	}
+
+	if job.PrinterID == nil {
+		return fmt.Errorf("job has no assigned printer")
+	}
+
+	if err := s.printerMgr.PauseJob(*job.PrinterID); err != nil {
 		return err
 	}
+
+	// Record paused event
+	pausedStatus := model.PrintJobStatusPaused
+	event := model.NewJobEvent(job.ID, model.JobEventPaused, &pausedStatus).
+		WithPrinter(*job.PrinterID).
+		WithActor(model.ActorUser, "")
+
+	if err := s.repo.AppendEvent(ctx, event); err != nil {
+		return fmt.Errorf("failed to record pause: %w", err)
+	}
+
+	s.hub.Broadcast(realtime.Event{
+		Type: "job_paused",
+		Data: job,
+	})
 
 	return nil
 }
 
-// Resume resumes a paused print job.
+// Resume resumes a paused print job and records the event.
 func (s *PrintJobService) Resume(ctx context.Context, id uuid.UUID) error {
 	job, err := s.repo.GetByID(ctx, id)
 	if err != nil {
@@ -494,14 +1138,37 @@ func (s *PrintJobService) Resume(ctx context.Context, id uuid.UUID) error {
 		return fmt.Errorf("job not found")
 	}
 
-	if err := s.printerMgr.ResumeJob(job.PrinterID); err != nil {
+	if job.Status != model.PrintJobStatusPaused {
+		return fmt.Errorf("can only resume paused jobs, current status: %s", job.Status)
+	}
+
+	if job.PrinterID == nil {
+		return fmt.Errorf("job has no assigned printer")
+	}
+
+	if err := s.printerMgr.ResumeJob(*job.PrinterID); err != nil {
 		return err
 	}
+
+	// Record resumed event (goes back to printing status)
+	printingStatus := model.PrintJobStatusPrinting
+	event := model.NewJobEvent(job.ID, model.JobEventResumed, &printingStatus).
+		WithPrinter(*job.PrinterID).
+		WithActor(model.ActorUser, "")
+
+	if err := s.repo.AppendEvent(ctx, event); err != nil {
+		return fmt.Errorf("failed to record resume: %w", err)
+	}
+
+	s.hub.Broadcast(realtime.Event{
+		Type: "job_resumed",
+		Data: job,
+	})
 
 	return nil
 }
 
-// Cancel cancels a print job.
+// Cancel cancels a print job and records the event.
 func (s *PrintJobService) Cancel(ctx context.Context, id uuid.UUID) error {
 	job, err := s.repo.GetByID(ctx, id)
 	if err != nil {
@@ -511,21 +1178,50 @@ func (s *PrintJobService) Cancel(ctx context.Context, id uuid.UUID) error {
 		return fmt.Errorf("job not found")
 	}
 
-	if err := s.printerMgr.CancelJob(job.PrinterID); err != nil {
-		return err
+	if job.Status.IsTerminal() {
+		return fmt.Errorf("cannot cancel job in %s status", job.Status)
 	}
 
-	job.Status = model.PrintJobStatusCancelled
-	return s.repo.Update(ctx, job)
+	// Try to cancel on printer (may fail if not connected, but we still record cancellation)
+	if job.PrinterID != nil {
+		s.printerMgr.CancelJob(*job.PrinterID)
+	}
+
+	// Record cancelled event
+	cancelledStatus := model.PrintJobStatusCancelled
+	event := model.NewJobEvent(job.ID, model.JobEventCancelled, &cancelledStatus).
+		WithActor(model.ActorUser, "")
+	if job.PrinterID != nil {
+		event = event.WithPrinter(*job.PrinterID)
+	}
+
+	if err := s.repo.AppendEvent(ctx, event); err != nil {
+		return fmt.Errorf("failed to record cancellation: %w", err)
+	}
+
+	// Update completed_at
+	now := time.Now()
+	job.CompletedAt = &now
+	failureCategory := model.FailureUserCancelled
+	job.FailureCategory = &failureCategory
+	s.repo.Update(ctx, job)
+
+	s.hub.Broadcast(realtime.Event{
+		Type: "job_cancelled",
+		Data: job,
+	})
+
+	return nil
 }
 
-// Update updates a print job (for outcome logging).
+// Update updates denormalized fields on a print job.
+// NOTE: For status changes, use the specific methods (Start, Pause, Cancel, RecordOutcome).
 func (s *PrintJobService) Update(ctx context.Context, j *model.PrintJob) error {
 	return s.repo.Update(ctx, j)
 }
 
 // RecordOutcome records the outcome of a completed print job.
-// It updates the job status, records the outcome, and deducts material from the spool.
+// It records the completion/failure event, deducts material from the spool, and calculates costs.
 func (s *PrintJobService) RecordOutcome(ctx context.Context, id uuid.UUID, outcome *model.PrintOutcome) error {
 	job, err := s.repo.GetByID(ctx, id)
 	if err != nil {
@@ -535,19 +1231,25 @@ func (s *PrintJobService) RecordOutcome(ctx context.Context, id uuid.UUID, outco
 		return fmt.Errorf("job not found")
 	}
 
-	// Get the spool and material to calculate cost
-	spool, err := s.spoolRepo.GetByID(ctx, job.MaterialSpoolID)
-	if err != nil {
-		return fmt.Errorf("failed to get spool: %w", err)
+	// Get the spool and material to calculate cost (if assigned)
+	var spool *model.MaterialSpool
+	var material *model.Material
+	if job.MaterialSpoolID != nil {
+		spool, err = s.spoolRepo.GetByID(ctx, *job.MaterialSpoolID)
+		if err != nil {
+			return fmt.Errorf("failed to get spool: %w", err)
+		}
 	}
-	if spool == nil {
+	if spool == nil && job.MaterialSpoolID != nil {
 		return fmt.Errorf("spool not found")
 	}
 
-	// Get material for cost calculation
-	material, err := s.materialRepo.GetByID(ctx, spool.MaterialID)
-	if err != nil {
-		return fmt.Errorf("failed to get material: %w", err)
+	// Get material for cost calculation (if spool is assigned)
+	if spool != nil {
+		material, err = s.materialRepo.GetByID(ctx, spool.MaterialID)
+		if err != nil {
+			return fmt.Errorf("failed to get material: %w", err)
+		}
 	}
 
 	// Calculate material cost: (grams / 1000) * cost_per_kg
@@ -556,7 +1258,7 @@ func (s *PrintJobService) RecordOutcome(ctx context.Context, id uuid.UUID, outco
 	}
 
 	// Update spool remaining weight if material was used
-	if outcome.MaterialUsed > 0 {
+	if outcome.MaterialUsed > 0 && spool != nil {
 		newWeight := spool.RemainingWeight - outcome.MaterialUsed
 		if newWeight < 0 {
 			newWeight = 0
@@ -575,12 +1277,357 @@ func (s *PrintJobService) RecordOutcome(ctx context.Context, id uuid.UUID, outco
 		}
 	}
 
-	// Update job with outcome
+	// Record the completion/failure event
+	now := time.Now()
+	var eventType model.JobEventType
+	var status model.PrintJobStatus
+	var errorCode, errorMessage string
+
+	if outcome.Success {
+		eventType = model.JobEventCompleted
+		status = model.PrintJobStatusCompleted
+	} else {
+		eventType = model.JobEventFailed
+		status = model.PrintJobStatusFailed
+		errorCode = "PRINT_FAILED"
+		errorMessage = outcome.FailureReason
+	}
+
+	event := model.NewJobEvent(job.ID, eventType, &status).
+		WithActor(model.ActorSystem, "outcome_recorder")
+	if !outcome.Success {
+		event = event.WithError(errorCode, errorMessage)
+	}
+	if job.Progress > 0 {
+		event = event.WithProgress(job.Progress)
+	}
+
+	// Add outcome data to metadata
+	event.Metadata = map[string]interface{}{
+		"material_used_grams": outcome.MaterialUsed,
+		"material_cost":       outcome.MaterialCost,
+		"quality_rating":      outcome.QualityRating,
+		"actual_time":         outcome.ActualTime,
+	}
+
+	if err := s.repo.AppendEvent(ctx, event); err != nil {
+		return fmt.Errorf("failed to record outcome event: %w", err)
+	}
+
+	// Update job with outcome data
+	job.CompletedAt = &now
+	job.Outcome = outcome
+	job.MaterialUsedGrams = &outcome.MaterialUsed
+	costCents := int(outcome.MaterialCost * 100)
+	job.CostCents = &costCents
+	if outcome.ActualTime != nil {
+		job.ActualSeconds = outcome.ActualTime
+	}
+
+	if err := s.repo.Update(ctx, job); err != nil {
+		return fmt.Errorf("failed to update job: %w", err)
+	}
+
+	// Broadcast the completed event
+	wsEventType := "job_completed"
+	if !outcome.Success {
+		wsEventType = "job_failed"
+	}
+	s.hub.Broadcast(realtime.Event{
+		Type: wsEventType,
+		Data: job,
+	})
+
+	// Check if all project jobs are now terminal (for auto-completing projects)
+	if job.ProjectID != nil && outcome.Success {
+		s.checkProjectCompletion(ctx, *job.ProjectID)
+	}
+
+	return nil
+}
+
+// checkProjectCompletion checks if all jobs in a project are terminal and updates project status.
+func (s *PrintJobService) checkProjectCompletion(ctx context.Context, projectID uuid.UUID) {
+	stats, err := s.repo.GetProjectJobStats(ctx, projectID)
+	if err != nil {
+		slog.Error("failed to get project job stats", "project_id", projectID, "error", err)
+		return
+	}
+
+	// If all jobs are in terminal state and at least one completed successfully
+	terminalCount := stats.Completed + stats.Failed + stats.Cancelled
+	if terminalCount == stats.Total && stats.Completed > 0 {
+		// All jobs done - update project status to completed
+		project, err := s.projectRepo.GetByID(ctx, projectID)
+		if err != nil || project == nil {
+			slog.Error("failed to get project for completion check", "project_id", projectID, "error", err)
+			return
+		}
+
+		if project.Status == model.ProjectStatusActive {
+			project.Status = model.ProjectStatusCompleted
+			if err := s.projectRepo.Update(ctx, project); err != nil {
+				slog.Error("failed to update project status", "project_id", projectID, "error", err)
+				return
+			}
+
+			s.hub.Broadcast(realtime.Event{
+				Type: "project_completed",
+				Data: project,
+			})
+		}
+	}
+}
+
+// RetryRequest contains parameters for retrying a failed job.
+type RetryRequest struct {
+	PrinterID       *uuid.UUID       // Optional: use different printer
+	MaterialSpoolID *uuid.UUID       // Optional: use different spool
+	FailureCategory *model.FailureCategory // Classify why the original failed
+	Notes           string           // Notes for the retry
+}
+
+// Retry creates a new job from a failed job, linking them in a retry chain.
+func (s *PrintJobService) Retry(ctx context.Context, id uuid.UUID, req *RetryRequest) (*model.PrintJob, error) {
+	originalJob, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get original job: %w", err)
+	}
+	if originalJob == nil {
+		return nil, fmt.Errorf("job not found")
+	}
+
+	// Only failed jobs can be retried
+	if originalJob.Status != model.PrintJobStatusFailed && originalJob.Status != model.PrintJobStatusCancelled {
+		return nil, fmt.Errorf("can only retry failed or cancelled jobs, current status: %s", originalJob.Status)
+	}
+
+	// Update the original job's failure category if provided
+	if req != nil && req.FailureCategory != nil {
+		originalJob.FailureCategory = req.FailureCategory
+		s.repo.Update(ctx, originalJob)
+	}
+
+	// Create new job as retry
+	newJob := &model.PrintJob{
+		DesignID:         originalJob.DesignID,
+		PrinterID:        originalJob.PrinterID,
+		MaterialSpoolID:  originalJob.MaterialSpoolID,
+		ProjectID:        originalJob.ProjectID,
+		Notes:            originalJob.Notes,
+		RecipeID:         originalJob.RecipeID,
+		EstimatedSeconds: originalJob.EstimatedSeconds,
+		AttemptNumber:    originalJob.AttemptNumber + 1,
+		ParentJobID:      &originalJob.ID,
+	}
+
+	// Override with retry request values
+	if req != nil {
+		if req.PrinterID != nil {
+			newJob.PrinterID = req.PrinterID
+		}
+		if req.MaterialSpoolID != nil {
+			newJob.MaterialSpoolID = req.MaterialSpoolID
+		}
+		if req.Notes != "" {
+			newJob.Notes = fmt.Sprintf("%s\n[Retry] %s", originalJob.Notes, req.Notes)
+		}
+	}
+
+	if err := s.repo.Create(ctx, newJob); err != nil {
+		return nil, fmt.Errorf("failed to create retry job: %w", err)
+	}
+
+	// Record retried event on original job
+	retriedEvent := model.NewJobEvent(originalJob.ID, model.JobEventRetried, nil).
+		WithActor(model.ActorUser, "").
+		WithMetadata(map[string]interface{}{
+			"retry_job_id": newJob.ID.String(),
+		})
+	s.repo.AppendEvent(ctx, retriedEvent)
+
+	s.hub.Broadcast(realtime.Event{
+		Type: "job_retried",
+		Data: map[string]interface{}{
+			"original_job": originalJob,
+			"new_job":      newJob,
+		},
+	})
+
+	return newJob, nil
+}
+
+// RecordFailure records a failure for a job (called by printer callbacks or error handlers).
+func (s *PrintJobService) RecordFailure(ctx context.Context, id uuid.UUID, category model.FailureCategory, errorCode, errorMessage string) error {
+	job, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	if job == nil {
+		return fmt.Errorf("job not found")
+	}
+
+	if job.Status.IsTerminal() {
+		return fmt.Errorf("job already in terminal status: %s", job.Status)
+	}
+
+	// Record failed event
+	failedStatus := model.PrintJobStatusFailed
+	event := model.NewJobEvent(job.ID, model.JobEventFailed, &failedStatus).
+		WithError(errorCode, errorMessage).
+		WithActor(model.ActorPrinter, job.PrinterID.String())
+
+	if err := s.repo.AppendEvent(ctx, event); err != nil {
+		return fmt.Errorf("failed to record failure: %w", err)
+	}
+
+	// Update job with failure info
 	now := time.Now()
 	job.CompletedAt = &now
-	job.Status = model.PrintJobStatusCompleted
-	if !outcome.Success {
-		job.Status = model.PrintJobStatusFailed
+	job.FailureCategory = &category
+	s.repo.Update(ctx, job)
+
+	s.hub.Broadcast(realtime.Event{
+		Type: "job_failed",
+		Data: job,
+	})
+
+	// Check if all project jobs are now terminal
+	if job.ProjectID != nil {
+		s.checkProjectCompletion(ctx, *job.ProjectID)
+	}
+
+	return nil
+}
+
+// Init registers the printer status change callback to auto-detect job failures.
+// Call this after services are created to enable automatic failure detection.
+func (s *PrintJobService) Init() {
+	s.printerMgr.OnStatusChange(s.handlePrinterStatusChange)
+	slog.Info("PrintJobService: registered for printer status changes")
+}
+
+// handlePrinterStatusChange is called when any printer's status changes.
+// It auto-detects job failures when a printer transitions to error state.
+func (s *PrintJobService) handlePrinterStatusChange(newState *model.PrinterState, oldState *model.PrinterState) {
+	if newState == nil {
+		return
+	}
+
+	ctx := context.Background()
+
+	// Detect failure: printer went from printing to error
+	wasPrinting := oldState != nil && oldState.Status == model.PrinterStatusPrinting
+	isError := newState.Status == model.PrinterStatusError
+
+	if wasPrinting && isError {
+		slog.Warn("printer failure detected", "printer_id", newState.PrinterID, "old_status", oldState.Status, "new_status", newState.Status)
+
+		// Find active job for this printer
+		job, err := s.GetActiveJobForPrinter(ctx, newState.PrinterID)
+		if err != nil {
+			slog.Error("failed to find active job for failed printer", "printer_id", newState.PrinterID, "error", err)
+			return
+		}
+		if job == nil {
+			slog.Debug("no active job found for failed printer", "printer_id", newState.PrinterID)
+			return
+		}
+
+		// Auto-record the failure
+		category := model.FailureUnknown
+		errorCode := "PRINTER_ERROR"
+		errorMessage := "Printer reported error during print"
+
+		if err := s.RecordFailure(ctx, job.ID, category, errorCode, errorMessage); err != nil {
+			slog.Error("failed to auto-record job failure", "job_id", job.ID, "error", err)
+		} else {
+			slog.Info("auto-recorded job failure", "job_id", job.ID, "printer_id", newState.PrinterID)
+		}
+	}
+}
+
+// GetActiveJobForPrinter finds the currently active (printing/paused) job for a printer.
+func (s *PrintJobService) GetActiveJobForPrinter(ctx context.Context, printerID uuid.UUID) (*model.PrintJob, error) {
+	// Get jobs for this printer that are in active states
+	printingStatus := model.PrintJobStatusPrinting
+	jobs, err := s.repo.List(ctx, &printerID, &printingStatus)
+	if err != nil {
+		return nil, err
+	}
+	if len(jobs) > 0 {
+		return &jobs[0], nil
+	}
+
+	// Also check paused status
+	pausedStatus := model.PrintJobStatusPaused
+	jobs, err = s.repo.List(ctx, &printerID, &pausedStatus)
+	if err != nil {
+		return nil, err
+	}
+	if len(jobs) > 0 {
+		return &jobs[0], nil
+	}
+
+	// Check uploaded status (job sent but not confirmed printing yet)
+	uploadedStatus := model.PrintJobStatusUploaded
+	jobs, err = s.repo.List(ctx, &printerID, &uploadedStatus)
+	if err != nil {
+		return nil, err
+	}
+	if len(jobs) > 0 {
+		return &jobs[0], nil
+	}
+
+	return nil, nil
+}
+
+// MarkAsScrap marks a failed job as scrap (no retry intended).
+// This is a user action to acknowledge the failure and move on.
+type ScrapRequest struct {
+	FailureCategory model.FailureCategory `json:"failure_category"`
+	Notes           string                `json:"notes"`
+}
+
+func (s *PrintJobService) MarkAsScrap(ctx context.Context, id uuid.UUID, req *ScrapRequest) error {
+	job, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	if job == nil {
+		return fmt.Errorf("job not found")
+	}
+
+	// Job must be in failed state to mark as scrap
+	if job.Status != model.PrintJobStatusFailed {
+		return fmt.Errorf("can only mark failed jobs as scrap, current status: %s", job.Status)
+	}
+
+	// Update job with scrap info
+	if req != nil && req.FailureCategory != "" {
+		job.FailureCategory = &req.FailureCategory
+	}
+	if req != nil && req.Notes != "" {
+		if job.Notes != "" {
+			job.Notes = job.Notes + "\n[Marked as Scrap] " + req.Notes
+		} else {
+			job.Notes = "[Marked as Scrap] " + req.Notes
+		}
+	} else {
+		if job.Notes != "" {
+			job.Notes = job.Notes + "\n[Marked as Scrap]"
+		} else {
+			job.Notes = "[Marked as Scrap]"
+		}
+	}
+
+	// Record outcome as failed
+	outcome := &model.PrintOutcome{
+		Success:       false,
+		FailureReason: "Marked as scrap by user",
+	}
+	if req != nil && req.Notes != "" {
+		outcome.Notes = req.Notes
 	}
 	job.Outcome = outcome
 
@@ -588,13 +1635,8 @@ func (s *PrintJobService) RecordOutcome(ctx context.Context, id uuid.UUID, outco
 		return fmt.Errorf("failed to update job: %w", err)
 	}
 
-	// Broadcast the completed event
-	eventType := "job_completed"
-	if !outcome.Success {
-		eventType = "job_failed"
-	}
 	s.hub.Broadcast(realtime.Event{
-		Type: eventType,
+		Type: "job_updated",
 		Data: job,
 	})
 
@@ -1216,19 +2258,21 @@ func (s *TemplateService) CreateProjectFromTemplate(ctx context.Context, templat
 			// Create print job for each part quantity
 			for j := 0; j < td.Quantity; j++ {
 				job := &model.PrintJob{
-					DesignID: td.DesignID,
-					Status:   model.PrintJobStatusQueued,
-					Notes:    fmt.Sprintf("Part %d/%d for order", i+1, totalParts),
+					DesignID:  td.DesignID,
+					ProjectID: &project.ID,
+					RecipeID:  &templateID,
+					Status:    model.PrintJobStatusQueued,
+					Notes:     fmt.Sprintf("Part %d/%d for order", i+1, totalParts),
 				}
 
 				// Assign preferred printer if specified and not allowing any printer
 				if template.PreferredPrinterID != nil && !template.AllowAnyPrinter {
-					job.PrinterID = *template.PreferredPrinterID
+					job.PrinterID = template.PreferredPrinterID
 				}
 
 				// Assign material spool if specified in options
 				if opts.MaterialSpoolID != nil {
-					job.MaterialSpoolID = *opts.MaterialSpoolID
+					job.MaterialSpoolID = opts.MaterialSpoolID
 				}
 
 				if err := s.printJobRepo.Create(ctx, job); err != nil {
@@ -1468,6 +2512,9 @@ func (s *TemplateService) FindCompatibleSpools(ctx context.Context, recipeID uui
 // DefaultHourlyRateCents is the default machine time cost per hour in cents.
 const DefaultHourlyRateCents = 500 // $5.00/hour
 
+// DefaultLaborRateCents is the default manual labor cost per hour in cents.
+const DefaultLaborRateCents = 1500 // $15.00/hour
+
 // CalculateRecipeCost calculates the cost breakdown for a recipe.
 func (s *TemplateService) CalculateRecipeCost(ctx context.Context, recipeID uuid.UUID) (*model.RecipeCostEstimate, error) {
 	template, err := s.GetByIDWithMaterials(ctx, recipeID)
@@ -1491,6 +2538,9 @@ func (s *TemplateService) CalculateRecipeCost(ctx context.Context, recipeID uuid
 	estimate := &model.RecipeCostEstimate{
 		EstimatedPrintTime: template.EstimatedPrintSeconds,
 		HourlyRateCents:    DefaultHourlyRateCents,
+		LaborRateCents:     DefaultLaborRateCents,
+		LaborMinutes:       template.LaborMinutes,
+		SalePriceCents:     template.SalePriceCents,
 	}
 
 	// Calculate material costs
@@ -1533,13 +2583,26 @@ func (s *TemplateService) CalculateRecipeCost(ctx context.Context, recipeID uuid
 		})
 	}
 
-	// Calculate time cost
+	// Calculate time cost (machine time)
 	if template.EstimatedPrintSeconds > 0 {
 		hours := float64(template.EstimatedPrintSeconds) / 3600.0
 		estimate.TimeCostCents = int(hours * float64(DefaultHourlyRateCents))
 	}
 
-	estimate.TotalCostCents = estimate.MaterialCostCents + estimate.TimeCostCents
+	// Calculate labor cost (manual labor time)
+	if template.LaborMinutes > 0 {
+		hours := float64(template.LaborMinutes) / 60.0
+		estimate.LaborCostCents = int(hours * float64(DefaultLaborRateCents))
+	}
+
+	// Total cost = material + machine time + labor
+	estimate.TotalCostCents = estimate.MaterialCostCents + estimate.TimeCostCents + estimate.LaborCostCents
+
+	// Calculate gross margin if sale price is set
+	if template.SalePriceCents > 0 {
+		estimate.GrossMarginCents = template.SalePriceCents - estimate.TotalCostCents
+		estimate.GrossMarginPercent = float64(estimate.GrossMarginCents) / float64(template.SalePriceCents) * 100.0
+	}
 
 	return estimate, nil
 }
