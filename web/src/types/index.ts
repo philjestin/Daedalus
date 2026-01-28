@@ -35,6 +35,7 @@ export interface ProjectSummary {
   total_fees_cents: number
   net_revenue_cents: number
   sales_count: number
+  unit_cost_cents: number
   total_cost_cents: number
   printer_time_cost_cents: number
   material_cost_cents: number
@@ -49,6 +50,8 @@ export interface ProjectSummary {
   success_rate: number
   total_material_grams: number
   estimated_material_cost_cents: number
+  estimated_material_grams: number
+  estimated_print_seconds: number
   supply_cost_cents: number
 }
 
@@ -760,6 +763,11 @@ export interface ProjectSales {
   net_cents: number
   count: number
   avg_cents: number
+  unit_cost_cents: number
+  total_cogs_cents: number
+  profit_cents: number
+  estimated_print_seconds: number
+  total_print_seconds: number
   first_sale: string
   last_sale: string
 }

@@ -33,6 +33,7 @@ import { designsApi, printJobsApi, projectsApi, partsApi, suppliesApi, materials
 import { cn, getStatusBadge, formatBytes, formatRelativeTime } from '../lib/utils'
 import { FailureModal } from '../components/FailureModal'
 import { ExpandableJobEvents } from '../components/JobEventTimeline'
+import { Tooltip } from '../components/Tooltip'
 import type { Design, Part, ProjectStatus, Material, PrintJob, ProjectSummary, ProjectSupply } from '../types'
 
 export default function ProjectDetail() {
@@ -203,6 +204,11 @@ export default function ProjectDetail() {
           )}
         </div>
       </div>
+
+      {/* Project Quick Stats */}
+      {projectSummary && (
+        <ProjectQuickStats summary={projectSummary} />
+      )}
 
       {/* Tab Navigation */}
       <div className="flex items-center gap-4 border-b border-surface-800 mb-4">
@@ -1215,6 +1221,79 @@ function PrintHistoryTab({
   )
 }
 
+// Quick Stats Bar (above tabs)
+function ProjectQuickStats({ summary }: { summary: ProjectSummary }) {
+  const formatCents = (cents: number) => {
+    const negative = cents < 0
+    const abs = Math.abs(cents)
+    return `${negative ? '-' : ''}$${(abs / 100).toFixed(2)}`
+  }
+
+  const formatTime = (seconds: number) => {
+    if (seconds <= 0) return '-'
+    const hours = Math.floor(seconds / 3600)
+    const mins = Math.floor((seconds % 3600) / 60)
+    if (hours > 0) return `${hours}h ${mins}m`
+    return `${mins}m`
+  }
+
+  const printSeconds = summary.total_print_seconds > 0
+    ? summary.total_print_seconds
+    : summary.estimated_print_seconds
+  const materialGrams = summary.total_material_grams > 0
+    ? summary.total_material_grams
+    : summary.estimated_material_grams
+  const avgProfit = summary.sales_count > 0
+    ? Math.round(summary.gross_profit_cents / summary.sales_count)
+    : 0
+
+  return (
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+      <div className="flex items-center gap-3 px-4 py-3 rounded-lg bg-surface-800/50 border border-surface-700">
+        <Timer className="h-5 w-5 text-blue-400 shrink-0" />
+        <div className="min-w-0">
+          <div className="text-xs text-surface-500">Print Time</div>
+          <div className="text-sm font-semibold text-surface-100 truncate">
+            {formatTime(printSeconds)}
+          </div>
+        </div>
+      </div>
+      <div className="flex items-center gap-3 px-4 py-3 rounded-lg bg-surface-800/50 border border-surface-700">
+        <DollarSign className="h-5 w-5 text-amber-400 shrink-0" />
+        <div className="min-w-0">
+          <div className="text-xs text-surface-500">Unit Cost</div>
+          <div className="text-sm font-semibold text-surface-100 truncate">
+            {formatCents(summary.unit_cost_cents)}
+          </div>
+        </div>
+      </div>
+      <div className="flex items-center gap-3 px-4 py-3 rounded-lg bg-surface-800/50 border border-surface-700">
+        <Scale className="h-5 w-5 text-purple-400 shrink-0" />
+        <div className="min-w-0">
+          <div className="text-xs text-surface-500">Material</div>
+          <div className="text-sm font-semibold text-surface-100 truncate">
+            {materialGrams > 0 ? `${materialGrams.toFixed(0)}g` : '-'}
+          </div>
+        </div>
+      </div>
+      <div className="flex items-center gap-3 px-4 py-3 rounded-lg bg-surface-800/50 border border-surface-700">
+        <TrendingUp className="h-5 w-5 text-emerald-400 shrink-0" />
+        <div className="min-w-0">
+          <div className="text-xs text-surface-500">Avg Profit / Sale</div>
+          <div className={cn(
+            'text-sm font-semibold truncate',
+            summary.sales_count > 0
+              ? avgProfit >= 0 ? 'text-emerald-400' : 'text-red-400'
+              : 'text-surface-500'
+          )}>
+            {summary.sales_count > 0 ? formatCents(avgProfit) : '-'}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // Project Analytics Tab
 function ProjectAnalyticsTab({ summary }: { summary?: ProjectSummary }) {
   if (!summary) {
@@ -1255,7 +1334,10 @@ function ProjectAnalyticsTab({ summary }: { summary?: ProjectSummary }) {
         </h3>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="card p-4">
-            <div className="text-sm text-surface-500 mb-1">Gross Revenue</div>
+            <div className="flex items-center gap-1.5 text-sm text-surface-500 mb-1">
+              Gross Revenue
+              <Tooltip text="Total amount collected from all sales of this project before any deductions." />
+            </div>
             <div className="text-2xl font-semibold text-surface-100">
               {formatCents(summary.total_revenue_cents)}
             </div>
@@ -1266,19 +1348,28 @@ function ProjectAnalyticsTab({ summary }: { summary?: ProjectSummary }) {
             )}
           </div>
           <div className="card p-4">
-            <div className="text-sm text-surface-500 mb-1">Fees</div>
+            <div className="flex items-center gap-1.5 text-sm text-surface-500 mb-1">
+              Fees
+              <Tooltip text="Marketplace and payment processing fees deducted from sales (e.g. Etsy fees, PayPal fees)." />
+            </div>
             <div className="text-2xl font-semibold text-red-400">
               {formatCents(summary.total_fees_cents)}
             </div>
           </div>
           <div className="card p-4">
-            <div className="text-sm text-surface-500 mb-1">Net Revenue</div>
+            <div className="flex items-center gap-1.5 text-sm text-surface-500 mb-1">
+              Net Revenue
+              <Tooltip text="Gross revenue minus fees. The actual amount received after marketplace and payment deductions." />
+            </div>
             <div className="text-2xl font-semibold text-surface-100">
               {formatCents(summary.net_revenue_cents)}
             </div>
           </div>
           <div className="card p-4">
-            <div className="text-sm text-surface-500 mb-1">Gross Profit</div>
+            <div className="flex items-center gap-1.5 text-sm text-surface-500 mb-1">
+              Gross Profit
+              <Tooltip text="Net revenue minus total cost of goods sold (COGS). This is the profit after accounting for all production costs and fees." />
+            </div>
             <div className={cn(
               'text-2xl font-semibold',
               summary.gross_profit_cents >= 0 ? 'text-emerald-400' : 'text-red-400'
@@ -1302,19 +1393,43 @@ function ProjectAnalyticsTab({ summary }: { summary?: ProjectSummary }) {
         </h3>
         <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
           <div className="card p-4">
-            <div className="text-sm text-surface-500 mb-1">Total Cost</div>
-            <div className="text-2xl font-semibold text-surface-100">
-              {formatCents(summary.total_cost_cents)}
+            <div className="flex items-center gap-1.5 text-sm text-surface-500 mb-1">
+              Unit Cost
+              <Tooltip text="Total cost to produce one unit of this project, including printer time, material, and supplies." />
             </div>
+            <div className="text-2xl font-semibold text-surface-100">
+              {formatCents(summary.unit_cost_cents)}
+            </div>
+            <div className="text-xs text-surface-500 mt-1">per unit produced</div>
           </div>
+          {summary.sales_count > 1 && (
+            <div className="card p-4">
+              <div className="flex items-center gap-1.5 text-sm text-surface-500 mb-1">
+                Total COGS
+                <Tooltip text="Cost of Goods Sold. Unit cost multiplied by the number of units sold. Represents total production cost for all sales." />
+              </div>
+              <div className="text-2xl font-semibold text-red-400">
+                {formatCents(summary.total_cost_cents)}
+              </div>
+              <div className="text-xs text-surface-500 mt-1">
+                {summary.sales_count} units sold
+              </div>
+            </div>
+          )}
           <div className="card p-4">
-            <div className="text-sm text-surface-500 mb-1">Printer Time</div>
+            <div className="flex items-center gap-1.5 text-sm text-surface-500 mb-1">
+              Printer Time
+              <Tooltip text="Cost of printer usage based on each printer's hourly rate multiplied by actual print time from completed jobs." />
+            </div>
             <div className="text-2xl font-semibold text-surface-100">
               {formatCents(summary.printer_time_cost_cents)}
             </div>
           </div>
           <div className="card p-4">
-            <div className="text-sm text-surface-500 mb-1">Material (Actual)</div>
+            <div className="flex items-center gap-1.5 text-sm text-surface-500 mb-1">
+              Material (Actual)
+              <Tooltip text="Actual filament cost recorded when print jobs complete, calculated from material used and spool cost per kg." />
+            </div>
             <div className="text-2xl font-semibold text-surface-100">
               {formatCents(summary.material_cost_cents)}
             </div>
@@ -1326,7 +1441,10 @@ function ProjectAnalyticsTab({ summary }: { summary?: ProjectSummary }) {
           </div>
           {summary.estimated_material_cost_cents > 0 && (
             <div className="card p-4">
-              <div className="text-sm text-surface-500 mb-1">Est. Material</div>
+              <div className="flex items-center gap-1.5 text-sm text-surface-500 mb-1">
+                Est. Material
+                <Tooltip text="Estimated material cost calculated from slice profile weight data at a default rate of $19.99/kg. Used when actual costs aren't available." />
+              </div>
               <div className="text-2xl font-semibold text-amber-400">
                 {formatCents(summary.estimated_material_cost_cents)}
               </div>
@@ -1335,7 +1453,10 @@ function ProjectAnalyticsTab({ summary }: { summary?: ProjectSummary }) {
           )}
           {summary.supply_cost_cents > 0 && (
             <div className="card p-4">
-              <div className="text-sm text-surface-500 mb-1">Supplies</div>
+              <div className="flex items-center gap-1.5 text-sm text-surface-500 mb-1">
+                Supplies
+                <Tooltip text="Total cost of non-printed items added to this project's bill of materials (e.g. hardware, wiring, packaging)." />
+              </div>
               <div className="text-2xl font-semibold text-surface-100">
                 {formatCents(summary.supply_cost_cents)}
               </div>
@@ -1353,19 +1474,31 @@ function ProjectAnalyticsTab({ summary }: { summary?: ProjectSummary }) {
         </h3>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="card p-4">
-            <div className="text-sm text-surface-500 mb-1">Total Print Time</div>
-            <div className="text-2xl font-semibold text-surface-100">
-              {formatSeconds(summary.total_print_seconds)}
+            <div className="flex items-center gap-1.5 text-sm text-surface-500 mb-1">
+              Total Print Time
+              <Tooltip text="Combined print time across all jobs. Uses actual time from completed jobs, or estimated time from slice profiles if no jobs have run." />
             </div>
+            <div className="text-2xl font-semibold text-surface-100">
+              {formatSeconds(summary.total_print_seconds || summary.estimated_print_seconds)}
+            </div>
+            {summary.total_print_seconds <= 0 && summary.estimated_print_seconds > 0 && (
+              <div className="text-xs text-surface-500 mt-1">estimated from slices</div>
+            )}
           </div>
           <div className="card p-4">
-            <div className="text-sm text-surface-500 mb-1">Avg Print Time</div>
+            <div className="flex items-center gap-1.5 text-sm text-surface-500 mb-1">
+              Avg Print Time
+              <Tooltip text="Average print time per completed job. Calculated from actual completed print job durations." />
+            </div>
             <div className="text-2xl font-semibold text-surface-100">
               {formatSeconds(summary.avg_print_seconds)}
             </div>
           </div>
           <div className="card p-4">
-            <div className="text-sm text-surface-500 mb-1">Success Rate</div>
+            <div className="flex items-center gap-1.5 text-sm text-surface-500 mb-1">
+              Success Rate
+              <Tooltip text="Percentage of print jobs that completed successfully out of all completed and failed jobs." />
+            </div>
             <div className={cn(
               'text-2xl font-semibold',
               summary.success_rate >= 90 ? 'text-emerald-400' :
@@ -1378,7 +1511,10 @@ function ProjectAnalyticsTab({ summary }: { summary?: ProjectSummary }) {
             </div>
           </div>
           <div className="card p-4">
-            <div className="text-sm text-surface-500 mb-1">Profit / Hour</div>
+            <div className="flex items-center gap-1.5 text-sm text-surface-500 mb-1">
+              Profit / Hour
+              <Tooltip text="Gross profit divided by total print hours. Measures how efficiently this project converts printer time into profit." />
+            </div>
             <div className={cn(
               'text-2xl font-semibold',
               summary.profit_per_hour_cents >= 0 ? 'text-emerald-400' : 'text-red-400'

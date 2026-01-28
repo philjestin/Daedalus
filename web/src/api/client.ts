@@ -492,6 +492,7 @@ export interface FinancialSummary {
   total_fees_cents: number
   total_material_cost: number
   total_material_used_grams: number
+  total_cogs_cents: number
   net_profit_cents: number
   confirmed_expense_count: number
   pending_expense_count: number

@@ -36,6 +36,14 @@ const channelConfig: Record<SalesChannel, { icon: React.ElementType; color: stri
 
 const formatCents = (cents: number) => `$${(cents / 100).toFixed(2)}`
 
+const formatTime = (seconds: number) => {
+  if (!seconds || seconds <= 0) return '-'
+  const hours = Math.floor(seconds / 3600)
+  const mins = Math.floor((seconds % 3600) / 60)
+  if (hours > 0) return `${hours}h ${mins}m`
+  return `${mins}m`
+}
+
 const toCents = (val: string) => Math.round(parseFloat(val || '0') * 100)
 const fromCents = (cents: number) => (cents / 100).toFixed(2)
 
@@ -64,10 +72,12 @@ export default function Sales() {
   const totals = useMemo(() => {
     const totalGross = sales.reduce((sum, s) => sum + s.gross_cents, 0)
     const totalNet = sales.reduce((sum, s) => sum + s.net_cents, 0)
+    const totalCOGS = projectSales.reduce((sum, p) => sum + (p.total_cogs_cents || 0), 0)
+    const totalProfit = totalNet - totalCOGS
     const count = sales.length
     const avgOrder = count > 0 ? Math.round(totalGross / count) : 0
-    return { totalGross, totalNet, count, avgOrder }
-  }, [sales])
+    return { totalGross, totalNet, totalCOGS, totalProfit, count, avgOrder }
+  }, [sales, projectSales])
 
   const openAdd = () => {
     setEditingSale(null)
@@ -97,33 +107,43 @@ export default function Sales() {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
         <div className="card p-4">
-          <div className="text-sm text-surface-500 mb-1">Total Revenue</div>
+          <div className="text-sm text-surface-500 mb-1">Gross Revenue</div>
           <div className="text-2xl font-semibold text-emerald-400">
             {formatCents(totals.totalGross)}
           </div>
         </div>
         <div className="card p-4">
+          <div className="text-sm text-surface-500 mb-1">Net Revenue</div>
+          <div className="text-2xl font-semibold text-surface-100">
+            {formatCents(totals.totalNet)}
+          </div>
+          <div className="text-xs text-surface-500 mt-1">after fees</div>
+        </div>
+        <div className="card p-4">
+          <div className="text-sm text-surface-500 mb-1">Total COGS</div>
+          <div className="text-2xl font-semibold text-red-400">
+            {formatCents(totals.totalCOGS)}
+          </div>
+          <div className="text-xs text-surface-500 mt-1">materials + printing + supplies</div>
+        </div>
+        <div className="card p-4">
           <div className="text-sm text-surface-500 mb-1">Net Profit</div>
           <div className={cn(
             'text-2xl font-semibold',
-            totals.totalNet >= 0 ? 'text-emerald-400' : 'text-red-400'
+            totals.totalProfit >= 0 ? 'text-emerald-400' : 'text-red-400'
           )}>
-            {formatCents(totals.totalNet)}
+            {formatCents(totals.totalProfit)}
           </div>
+          <div className="text-xs text-surface-500 mt-1">revenue - fees - COGS</div>
         </div>
         <div className="card p-4">
-          <div className="text-sm text-surface-500 mb-1">Sale Count</div>
+          <div className="text-sm text-surface-500 mb-1">Sales</div>
           <div className="text-2xl font-semibold text-blue-400">
             {totals.count}
           </div>
-        </div>
-        <div className="card p-4">
-          <div className="text-sm text-surface-500 mb-1">Avg Order Value</div>
-          <div className="text-2xl font-semibold text-surface-100">
-            {formatCents(totals.avgOrder)}
-          </div>
+          <div className="text-xs text-surface-500 mt-1">avg {formatCents(totals.avgOrder)}</div>
         </div>
       </div>
 
@@ -192,29 +212,53 @@ export default function Sales() {
                     <th className="pb-2 font-medium">Project</th>
                     <th className="pb-2 font-medium text-right">Units</th>
                     <th className="pb-2 font-medium text-right">Revenue</th>
-                    <th className="pb-2 font-medium text-right">Avg Price</th>
+                    <th className="pb-2 font-medium text-right">Unit Cost</th>
+                    <th className="pb-2 font-medium text-right">COGS</th>
+                    <th className="pb-2 font-medium text-right">Print Time</th>
+                    <th className="pb-2 font-medium text-right">Profit</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {projectSales.map((p) => (
-                    <tr key={p.project_id || p.project_name} className="border-b border-surface-800">
-                      <td className="py-2.5 text-surface-100 font-medium">{p.project_name}</td>
-                      <td className="py-2.5 text-right text-surface-300">{p.count}</td>
-                      <td className="py-2.5 text-right text-emerald-400 font-medium">{formatCents(p.gross_cents)}</td>
-                      <td className="py-2.5 text-right text-surface-300">{formatCents(p.avg_cents)}</td>
-                    </tr>
-                  ))}
+                  {projectSales.map((p) => {
+                    const printSeconds = (p.total_print_seconds || 0) > 0
+                      ? p.total_print_seconds
+                      : (p.estimated_print_seconds || 0)
+                    return (
+                      <tr key={p.project_id || p.project_name} className="border-b border-surface-800">
+                        <td className="py-2.5 text-surface-100 font-medium">{p.project_name}</td>
+                        <td className="py-2.5 text-right text-surface-300">{p.count}</td>
+                        <td className="py-2.5 text-right text-emerald-400 font-medium">{formatCents(p.gross_cents)}</td>
+                        <td className="py-2.5 text-right text-surface-300">{formatCents(p.unit_cost_cents || 0)}</td>
+                        <td className="py-2.5 text-right text-red-400">{formatCents(p.total_cogs_cents || 0)}</td>
+                        <td className="py-2.5 text-right text-surface-300">{formatTime(printSeconds)}</td>
+                        <td className={cn(
+                          'py-2.5 text-right font-medium',
+                          (p.profit_cents || 0) >= 0 ? 'text-emerald-400' : 'text-red-400'
+                        )}>
+                          {formatCents(p.profit_cents || 0)}
+                        </td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
                 <tfoot>
                   <tr className="text-surface-100 font-semibold">
                     <td className="pt-3">Total</td>
                     <td className="pt-3 text-right">{projectSales.reduce((s, p) => s + p.count, 0)}</td>
                     <td className="pt-3 text-right text-emerald-400">{formatCents(projectSales.reduce((s, p) => s + p.gross_cents, 0))}</td>
+                    <td className="pt-3 text-right">-</td>
+                    <td className="pt-3 text-right text-red-400">{formatCents(projectSales.reduce((s, p) => s + (p.total_cogs_cents || 0), 0))}</td>
                     <td className="pt-3 text-right">
-                      {formatCents(
-                        projectSales.reduce((s, p) => s + p.gross_cents, 0) /
-                        Math.max(projectSales.reduce((s, p) => s + p.count, 0), 1)
-                      )}
+                      {formatTime(projectSales.reduce((s, p) => {
+                        const t = (p.total_print_seconds || 0) > 0 ? p.total_print_seconds : (p.estimated_print_seconds || 0)
+                        return s + t
+                      }, 0))}
+                    </td>
+                    <td className={cn(
+                      'pt-3 text-right',
+                      projectSales.reduce((s, p) => s + (p.profit_cents || 0), 0) >= 0 ? 'text-emerald-400' : 'text-red-400'
+                    )}>
+                      {formatCents(projectSales.reduce((s, p) => s + (p.profit_cents || 0), 0))}
                     </td>
                   </tr>
                 </tfoot>

@@ -302,7 +302,7 @@ export default function Dashboard() {
                 {(financials.total_material_used_grams / 1000).toFixed(2)} kg
               </div>
               <div className="text-xs text-surface-500 mt-1">
-                {formatCents(Math.round(financials.total_material_cost * 100))} cost
+                {formatCents(Math.round(financials.total_material_cost * 100))} material cost
               </div>
             </div>
 
@@ -326,7 +326,7 @@ export default function Dashboard() {
                 {formatCents(financials.net_profit_cents)}
               </div>
               <div className="text-xs text-surface-500 mt-1">
-                {financials.successful_print_count}/{financials.completed_print_count} prints successful
+                {formatCents(financials.total_cogs_cents)} COGS
               </div>
             </div>
           </div>

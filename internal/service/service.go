@@ -59,7 +59,7 @@ type ServicesConfig struct {
 
 // NewServices creates all service instances.
 func NewServices(repos *repository.Repositories, store storage.Storage, printerMgr *printer.Manager, hub *realtime.Hub) *Services {
-	return &Services{
+	services := &Services{
 		Projects:  &ProjectService{repo: repos.Projects, printJobRepo: repos.PrintJobs, printerRepo: repos.Printers, spoolRepo: repos.Spools, templateRepo: repos.Templates, designRepo: repos.Designs, saleRepo: repos.Sales, partRepo: repos.Parts, supplyRepo: repos.ProjectSupplies, printerMgr: printerMgr, hub: hub, storage: store},
 		Parts:     &PartService{repo: repos.Parts},
 		Designs:   &DesignService{repo: repos.Designs, fileRepo: repos.Files, storage: store},
@@ -78,6 +78,9 @@ func NewServices(repos *repository.Repositories, store storage.Storage, printerM
 		Settings:        &SettingsService{repo: repos.Settings},
 		ProjectSupplies: &ProjectSupplyService{repo: repos.ProjectSupplies, materialRepo: repos.Materials},
 	}
+	// Wire cross-service dependency (StatsService needs ProjectService for cost lookups)
+	services.Stats.projectService = services.Projects
+	return services
 }
 
 // NewServicesWithEtsy creates all service instances including Etsy integration.
@@ -218,7 +221,7 @@ func (s *ProjectService) GetProjectSummary(ctx context.Context, projectID uuid.U
 		summary.AvgPrintSeconds = summary.TotalPrintSeconds / summary.CompletedCount
 	}
 
-	// Estimated material cost from slice profiles
+	// Estimated material cost, grams, and print time from slice profiles
 	if s.partRepo != nil && s.designRepo != nil {
 		parts, err := s.partRepo.ListByProject(ctx, projectID)
 		if err == nil {
@@ -231,11 +234,17 @@ func (s *ProjectService) GetProjectSummary(ctx context.Context, projectID uuid.U
 				latest := designs[0]
 				if latest.SliceProfile != nil {
 					var profile model.SliceProfileData
-					if json.Unmarshal(latest.SliceProfile, &profile) == nil && profile.WeightGrams > 0 {
-						// Default cost: $19.99/kg
-						costPerKg := 19.99
-						costCents := int(profile.WeightGrams / 1000.0 * costPerKg * 100)
-						summary.EstimatedMaterialCostCents += costCents * part.Quantity
+					if json.Unmarshal(latest.SliceProfile, &profile) == nil {
+						if profile.WeightGrams > 0 {
+							// Default cost: $19.99/kg
+							costPerKg := 19.99
+							costCents := int(profile.WeightGrams / 1000.0 * costPerKg * 100)
+							summary.EstimatedMaterialCostCents += costCents * part.Quantity
+							summary.EstimatedMaterialGrams += profile.WeightGrams * float64(part.Quantity)
+						}
+						if profile.PrintTimeSeconds > 0 {
+							summary.EstimatedPrintSeconds += profile.PrintTimeSeconds * part.Quantity
+						}
 					}
 				}
 			}
@@ -254,6 +263,14 @@ func (s *ProjectService) GetProjectSummary(ctx context.Context, projectID uuid.U
 
 	// Include estimated material and supply costs in total
 	summary.TotalCostCents += summary.EstimatedMaterialCostCents + summary.SupplyCostCents
+
+	// UnitCostCents is the per-unit cost of production
+	summary.UnitCostCents = summary.TotalCostCents
+
+	// TotalCostCents is total COGS: per-unit cost × number of sales
+	if summary.SalesCount > 1 {
+		summary.TotalCostCents = summary.UnitCostCents * summary.SalesCount
+	}
 
 	summary.GrossProfitCents = summary.NetRevenueCents - summary.TotalCostCents
 	if summary.NetRevenueCents > 0 {
@@ -2708,6 +2725,7 @@ type FinancialSummary struct {
 	TotalFeesCents         int     `json:"total_fees_cents"`
 	TotalMaterialCost      float64 `json:"total_material_cost"`
 	TotalMaterialUsedGrams float64 `json:"total_material_used_grams"`
+	TotalCOGSCents         int     `json:"total_cogs_cents"`
 	NetProfitCents         int     `json:"net_profit_cents"`
 	ConfirmedExpenseCount  int     `json:"confirmed_expense_count"`
 	PendingExpenseCount    int     `json:"pending_expense_count"`
@@ -2718,9 +2736,10 @@ type FinancialSummary struct {
 
 // StatsService handles financial statistics and aggregations.
 type StatsService struct {
-	expenseRepo  *repository.ExpenseRepository
-	saleRepo     *repository.SaleRepository
-	printJobRepo *repository.PrintJobRepository
+	expenseRepo    *repository.ExpenseRepository
+	saleRepo       *repository.SaleRepository
+	printJobRepo   *repository.PrintJobRepository
+	projectService *ProjectService
 }
 
 // GetFinancialSummary returns aggregated financial data.
@@ -2767,17 +2786,37 @@ func (s *StatsService) GetFinancialSummary(ctx context.Context) (*FinancialSumma
 	for _, job := range jobs {
 		summary.CompletedPrintCount++
 		if job.Outcome != nil {
-			summary.TotalMaterialUsedGrams += job.Outcome.MaterialUsed
-			summary.TotalMaterialCost += job.Outcome.MaterialCost
 			if job.Outcome.Success {
 				summary.SuccessfulPrintCount++
 			}
 		}
 	}
 
-	// Calculate net profit: sales net - expenses - material cost (already in spool cost)
-	materialCostCents := int(summary.TotalMaterialCost * 100)
-	summary.NetProfitCents = summary.TotalSalesNetCents - summary.TotalExpensesCents - materialCostCents
+	// Aggregate material and cost data from sales-linked project summaries
+	if s.projectService != nil {
+		projectIDs := make(map[uuid.UUID]bool)
+		for _, sale := range sales {
+			if sale.ProjectID != nil {
+				projectIDs[*sale.ProjectID] = true
+			}
+		}
+
+		for pid := range projectIDs {
+			ps, err := s.projectService.GetProjectSummary(ctx, pid)
+			if err != nil || ps == nil {
+				continue
+			}
+			// Material grams: actual from jobs + estimated from slice profiles
+			summary.TotalMaterialUsedGrams += ps.TotalMaterialGrams + ps.EstimatedMaterialGrams
+			// Material cost: actual from jobs + estimated from profiles
+			summary.TotalMaterialCost += float64(ps.MaterialCostCents+ps.EstimatedMaterialCostCents) / 100.0
+			// Total COGS includes material + printer time + supplies (already × sales count)
+			summary.TotalCOGSCents += ps.TotalCostCents
+		}
+	}
+
+	// Net profit: sales net revenue - total COGS
+	summary.NetProfitCents = summary.TotalSalesNetCents - summary.TotalCOGSCents
 
 	return summary, nil
 }
@@ -2916,14 +2955,19 @@ func (s *StatsService) GetSalesByChannel(ctx context.Context, period string) ([]
 
 // ProjectSales represents aggregated sales data for a project.
 type ProjectSales struct {
-	ProjectID   string `json:"project_id"`
-	ProjectName string `json:"project_name"`
-	GrossCents  int    `json:"gross_cents"`
-	NetCents    int    `json:"net_cents"`
-	Count       int    `json:"count"`
-	AvgCents    int    `json:"avg_cents"`
-	FirstSale   string `json:"first_sale"`
-	LastSale    string `json:"last_sale"`
+	ProjectID            string `json:"project_id"`
+	ProjectName          string `json:"project_name"`
+	GrossCents           int    `json:"gross_cents"`
+	NetCents             int    `json:"net_cents"`
+	Count                int    `json:"count"`
+	AvgCents             int    `json:"avg_cents"`
+	UnitCostCents        int    `json:"unit_cost_cents"`
+	TotalCOGS            int    `json:"total_cogs_cents"`
+	ProfitCents          int    `json:"profit_cents"`
+	EstimatedPrintSeconds int   `json:"estimated_print_seconds"`
+	TotalPrintSeconds    int    `json:"total_print_seconds"`
+	FirstSale            string `json:"first_sale"`
+	LastSale             string `json:"last_sale"`
 }
 
 // GetSalesByProject returns sales aggregated by project.
@@ -2935,7 +2979,7 @@ func (s *StatsService) GetSalesByProject(ctx context.Context) ([]ProjectSales, e
 
 	result := make([]ProjectSales, len(rows))
 	for i, r := range rows {
-		result[i] = ProjectSales{
+		ps := ProjectSales{
 			ProjectID:   r.ProjectID,
 			ProjectName: r.ProjectName,
 			GrossCents:  r.GrossCents,
@@ -2945,6 +2989,23 @@ func (s *StatsService) GetSalesByProject(ctx context.Context) ([]ProjectSales, e
 			FirstSale:   r.FirstSale,
 			LastSale:    r.LastSale,
 		}
+
+		// Enrich with cost data from project summary
+		if s.projectService != nil && r.ProjectID != "" {
+			projectID, err := uuid.Parse(r.ProjectID)
+			if err == nil {
+				summary, err := s.projectService.GetProjectSummary(ctx, projectID)
+				if err == nil && summary != nil {
+					ps.UnitCostCents = summary.UnitCostCents
+					ps.TotalCOGS = summary.TotalCostCents
+					ps.ProfitCents = ps.NetCents - ps.TotalCOGS
+					ps.EstimatedPrintSeconds = summary.EstimatedPrintSeconds
+					ps.TotalPrintSeconds = summary.TotalPrintSeconds
+				}
+			}
+		}
+
+		result[i] = ps
 	}
 	return result, nil
 }

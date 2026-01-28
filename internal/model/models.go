@@ -46,8 +46,9 @@ type ProjectSummary struct {
 	NetRevenueCents   int `json:"net_revenue_cents"`
 	SalesCount        int `json:"sales_count"`
 
-	// Cost breakdown (from completed jobs)
-	TotalCostCents        int `json:"total_cost_cents"`
+	// Cost breakdown
+	UnitCostCents         int `json:"unit_cost_cents"`          // cost to produce one unit
+	TotalCostCents        int `json:"total_cost_cents"`         // unit_cost × max(sales_count, 1)
 	PrinterTimeCostCents  int `json:"printer_time_cost_cents"`
 	MaterialCostCents     int `json:"material_cost_cents"`
 
@@ -69,9 +70,11 @@ type ProjectSummary struct {
 	// Material
 	TotalMaterialGrams float64 `json:"total_material_grams"`
 
-	// Estimated costs (from slice profiles and supplies)
-	EstimatedMaterialCostCents int `json:"estimated_material_cost_cents"`
-	SupplyCostCents            int `json:"supply_cost_cents"`
+	// Estimated values (from slice profiles and supplies)
+	EstimatedMaterialCostCents int     `json:"estimated_material_cost_cents"`
+	EstimatedMaterialGrams     float64 `json:"estimated_material_grams"`
+	EstimatedPrintSeconds      int     `json:"estimated_print_seconds"`
+	SupplyCostCents            int     `json:"supply_cost_cents"`
 }
 
 // ProjectSupply represents a non-printed purchased item in a project's bill of materials.
