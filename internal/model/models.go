@@ -37,6 +37,39 @@ type Project struct {
 	UpdatedAt       time.Time     `json:"updated_at"`
 }
 
+// ProjectSummary is a derived analytics object for a project.
+// All fields are computed from jobs and sales — never stored.
+type ProjectSummary struct {
+	// Revenue (from Sales linked to this project)
+	TotalRevenueCents int `json:"total_revenue_cents"`
+	TotalFeesCents    int `json:"total_fees_cents"`
+	NetRevenueCents   int `json:"net_revenue_cents"`
+	SalesCount        int `json:"sales_count"`
+
+	// Cost breakdown (from completed jobs)
+	TotalCostCents        int `json:"total_cost_cents"`
+	PrinterTimeCostCents  int `json:"printer_time_cost_cents"`
+	MaterialCostCents     int `json:"material_cost_cents"`
+
+	// Profit
+	GrossProfitCents   int     `json:"gross_profit_cents"`
+	GrossMarginPercent float64 `json:"gross_margin_percent"`
+
+	// Print time
+	TotalPrintSeconds    int     `json:"total_print_seconds"`
+	AvgPrintSeconds      int     `json:"avg_print_seconds"`
+	ProfitPerHourCents   int     `json:"profit_per_hour_cents"`
+
+	// Performance
+	JobCount     int     `json:"job_count"`
+	CompletedCount int   `json:"completed_count"`
+	FailedCount  int     `json:"failed_count"`
+	SuccessRate  float64 `json:"success_rate"`
+
+	// Material
+	TotalMaterialGrams float64 `json:"total_material_grams"`
+}
+
 // PrintProfile represents a symbolic slicer profile.
 type PrintProfile string
 
@@ -249,6 +282,7 @@ type Printer struct {
 	Location          string         `json:"location"`
 	Notes             string         `json:"notes"`
 	MinMaterialPercent int           `json:"min_material_percent"` // Minimum % before warning (default 10)
+	CostPerHourCents  int            `json:"cost_per_hour_cents"`  // Hourly cost in cents (e.g. 150 = $1.50/hr)
 	CreatedAt         time.Time      `json:"created_at"`
 	UpdatedAt         time.Time      `json:"updated_at"`
 }
@@ -264,6 +298,57 @@ type PrinterState struct {
 	NozzleTemp  float64       `json:"nozzle_temp,omitempty"`
 	AMS         *AMSState     `json:"ams,omitempty"`
 	UpdatedAt   time.Time     `json:"updated_at"`
+
+	// Target temperatures
+	BedTargetTemp    float64 `json:"bed_target_temp,omitempty"`
+	NozzleTargetTemp float64 `json:"nozzle_target_temp,omitempty"`
+	ChamberTemp      float64 `json:"chamber_temp,omitempty"`
+
+	// Layers
+	LayerNum      int `json:"layer_num,omitempty"`
+	TotalLayerNum int `json:"total_layer_num,omitempty"`
+
+	// Fan speeds (0-100%)
+	CoolingFanSpeed  int `json:"cooling_fan_speed,omitempty"`
+	AuxFanSpeed      int `json:"aux_fan_speed,omitempty"`
+	ChamberFanSpeed  int `json:"chamber_fan_speed,omitempty"`
+	HeatbreakFanSpeed int `json:"heatbreak_fan_speed,omitempty"`
+
+	// Speed
+	SpeedPercent   int `json:"speed_percent,omitempty"`
+	SpeedLevel     int `json:"speed_level,omitempty"`     // 1=silent, 2=standard, 3=sport, 4=ludicrous
+	PrintRealSpeed int `json:"print_real_speed,omitempty"`
+
+	// Network
+	WiFiSignal string `json:"wifi_signal,omitempty"`
+
+	// Nozzle info
+	NozzleDiameter string `json:"nozzle_diameter,omitempty"`
+	NozzleType     string `json:"nozzle_type,omitempty"`
+
+	// Diagnostics
+	HMSErrors []HMSError  `json:"hms_errors,omitempty"`
+	Lights    []LightState `json:"lights,omitempty"`
+
+	// Timing / Job
+	GcodeStartTime string `json:"gcode_start_time,omitempty"`
+	SubtaskID      string `json:"subtask_id,omitempty"`
+	TaskID         string `json:"task_id,omitempty"`
+	PrintType      string `json:"print_type,omitempty"`
+}
+
+// HMSError represents a Health Management System error from the printer.
+type HMSError struct {
+	Attr     int `json:"attr"`
+	Code     int `json:"code"`
+	Module   int `json:"module"`
+	Severity int `json:"severity"`
+}
+
+// LightState represents the state of a printer light.
+type LightState struct {
+	Node string `json:"node"`
+	Mode string `json:"mode"`
 }
 
 // AMSState represents the complete AMS (Automatic Material System) state.
@@ -445,8 +530,10 @@ type PrintJob struct {
 	ActualSeconds    *int `json:"actual_seconds,omitempty"`
 
 	// Cost tracking
-	MaterialUsedGrams *float64 `json:"material_used_grams,omitempty"`
-	CostCents         *int     `json:"cost_cents,omitempty"`
+	MaterialUsedGrams    *float64 `json:"material_used_grams,omitempty"`
+	CostCents            *int     `json:"cost_cents,omitempty"`             // Total cost (printer time + material)
+	PrinterTimeCostCents *int     `json:"printer_time_cost_cents,omitempty"` // Snapshot: printer hourly rate * actual hours
+	MaterialCostCents    *int     `json:"material_cost_cents,omitempty"`     // Snapshot: material cost at completion
 
 	// Material snapshot (AMS state captured at job start)
 	MaterialSnapshot *MaterialSnapshot `json:"material_snapshot,omitempty"`

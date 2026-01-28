@@ -14,16 +14,23 @@ import {
   Star,
   History,
   Clock,
-  RefreshCw
+  RefreshCw,
+  BarChart3,
+  DollarSign,
+  TrendingUp,
+  Timer,
+  ExternalLink,
+  X
 } from 'lucide-react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useProject, useParts, useCreatePart, useUpdateProject } from '../hooks/useProjects'
 import { usePrinters, usePrinterStates } from '../hooks/usePrinters'
 import { useSpoolsWithMaterials } from '../hooks/useMaterials'
-import { designsApi, printJobsApi } from '../api/client'
+import { designsApi, printJobsApi, projectsApi } from '../api/client'
 import { cn, getStatusBadge, formatBytes, formatRelativeTime } from '../lib/utils'
 import { FailureModal } from '../components/FailureModal'
-import type { Design, Part, ProjectStatus, Material, PrintJob } from '../types'
+import { ExpandableJobEvents } from '../components/JobEventTimeline'
+import type { Design, Part, ProjectStatus, Material, PrintJob, ProjectSummary } from '../types'
 
 export default function ProjectDetail() {
   const { id } = useParams<{ id: string }>()
@@ -43,12 +50,20 @@ export default function ProjectDetail() {
   const [showSendToPrinter, setShowSendToPrinter] = useState<Design | null>(null)
   const [showOutcomeCapture, setShowOutcomeCapture] = useState<PrintJob | null>(null)
   const [showFailureModal, setShowFailureModal] = useState<PrintJob | null>(null)
-  const [activeTab, setActiveTab] = useState<'parts' | 'history'>('parts')
+  const [activeTab, setActiveTab] = useState<'parts' | 'history' | 'analytics'>('parts')
+  const [partFile, setPartFile] = useState<File | null>(null)
+  const [partFileNotes, setPartFileNotes] = useState('')
+
+  const { data: projectSummary } = useQuery({
+    queryKey: ['project-summary', id],
+    queryFn: () => projectsApi.getSummary(id!),
+    enabled: !!id,
+  })
 
   const handleAddPart = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     const formData = new FormData(e.currentTarget)
-    
+
     await createPart.mutateAsync({
       projectId: id!,
       data: {
@@ -56,9 +71,13 @@ export default function ProjectDetail() {
         description: formData.get('description') as string,
         quantity: parseInt(formData.get('quantity') as string) || 1,
       },
+      file: partFile || undefined,
+      notes: partFileNotes || undefined,
     })
-    
+
     setShowAddPart(false)
+    setPartFile(null)
+    setPartFileNotes('')
   }
 
   const handleStatusChange = async (status: ProjectStatus) => {
@@ -208,6 +227,18 @@ export default function ProjectDetail() {
           <History className="h-4 w-4" />
           Print History
         </button>
+        <button
+          onClick={() => setActiveTab('analytics')}
+          className={cn(
+            'flex items-center gap-2 px-4 py-2 border-b-2 -mb-px transition-colors',
+            activeTab === 'analytics'
+              ? 'border-accent-500 text-accent-400'
+              : 'border-transparent text-surface-400 hover:text-surface-200'
+          )}
+        >
+          <BarChart3 className="h-4 w-4" />
+          Analytics
+        </button>
       </div>
 
       {/* Parts Tab */}
@@ -264,11 +295,17 @@ export default function ProjectDetail() {
       {/* History Tab */}
       {activeTab === 'history' && (
         <PrintHistoryTab
+          projectId={id!}
           parts={parts}
           printers={printers}
           onRecordOutcome={(job) => setShowOutcomeCapture(job)}
           onHandleFailure={(job) => setShowFailureModal(job)}
         />
+      )}
+
+      {/* Analytics Tab */}
+      {activeTab === 'analytics' && (
+        <ProjectAnalyticsTab summary={projectSummary} />
       )}
 
       {/* Add Part Modal */}
@@ -312,11 +349,69 @@ export default function ProjectDetail() {
                   className="input w-24"
                 />
               </div>
+              <div>
+                <label className="block text-sm font-medium text-surface-300 mb-2">
+                  Design File (optional)
+                </label>
+                <div
+                  className={cn(
+                    'border-2 border-dashed rounded-lg p-6 text-center transition-colors',
+                    partFile ? 'border-accent-500 bg-accent-500/5' : 'border-surface-700 hover:border-surface-600'
+                  )}
+                >
+                  <input
+                    type="file"
+                    accept=".stl,.3mf,.gcode"
+                    onChange={(e) => setPartFile(e.target.files?.[0] || null)}
+                    className="hidden"
+                    id="part-file-upload"
+                  />
+                  <label htmlFor="part-file-upload" className="cursor-pointer">
+                    {partFile ? (
+                      <div>
+                        <FileCode className="h-8 w-8 mx-auto mb-1 text-accent-500" />
+                        <p className="text-surface-100 font-medium text-sm">{partFile.name}</p>
+                        <p className="text-surface-500 text-xs">{formatBytes(partFile.size)}</p>
+                      </div>
+                    ) : (
+                      <div>
+                        <Upload className="h-8 w-8 mx-auto mb-1 text-surface-500" />
+                        <p className="text-surface-400 text-sm">Attach a design file</p>
+                        <p className="text-surface-500 text-xs">STL, 3MF, or GCODE</p>
+                      </div>
+                    )}
+                  </label>
+                  {partFile && (
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); setPartFile(null); setPartFileNotes('') }}
+                      className="mt-2 text-xs text-surface-400 hover:text-surface-200 flex items-center gap-1 mx-auto"
+                    >
+                      <X className="h-3 w-3" />
+                      Remove
+                    </button>
+                  )}
+                </div>
+              </div>
+              {partFile && (
+                <div>
+                  <label className="block text-sm font-medium text-surface-300 mb-1">
+                    File Notes
+                  </label>
+                  <textarea
+                    value={partFileNotes}
+                    onChange={(e) => setPartFileNotes(e.target.value)}
+                    rows={2}
+                    className="input resize-none"
+                    placeholder="Optional notes about this design"
+                  />
+                </div>
+              )}
             </div>
             <div className="flex justify-end gap-3 mt-6">
               <button
                 type="button"
-                onClick={() => setShowAddPart(false)}
+                onClick={() => { setShowAddPart(false); setPartFile(null); setPartFileNotes('') }}
                 className="btn btn-ghost"
               >
                 Cancel
@@ -461,13 +556,29 @@ function PartCard({
                     </div>
                   </div>
                 </div>
-                <button
-                  onClick={() => onSendToPrinter(design)}
-                  className="btn btn-primary text-xs py-1.5 px-3"
-                >
-                  <Play className="h-3.5 w-3.5 mr-1" />
-                  Print
-                </button>
+                <div className="flex items-center gap-2">
+                  {design.file_type === '3mf' && (
+                    <button
+                      onClick={() => {
+                        designsApi.openExternal(design.id, 'BambuStudio').catch((err) => {
+                          alert('Failed to open Bambu Studio: ' + err.message)
+                        })
+                      }}
+                      className="btn btn-ghost text-xs py-1.5 px-3"
+                      title="Open in Bambu Studio"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5 mr-1" />
+                      Bambu Studio
+                    </button>
+                  )}
+                  <button
+                    onClick={() => onSendToPrinter(design)}
+                    className="btn btn-primary text-xs py-1.5 px-3"
+                  >
+                    <Play className="h-3.5 w-3.5 mr-1" />
+                    Print
+                  </button>
+                </div>
               </div>
             ))}
           </div>
@@ -479,16 +590,25 @@ function PartCard({
 
 // Print History Tab Component
 function PrintHistoryTab({
+  projectId,
   parts,
   printers,
   onRecordOutcome,
   onHandleFailure,
 }: {
+  projectId: string
   parts: Part[]
   printers: { id: string; name: string }[]
   onRecordOutcome: (job: PrintJob) => void
   onHandleFailure: (job: PrintJob) => void
 }) {
+  // Server-side job stats
+  const { data: jobStats } = useQuery({
+    queryKey: ['project-job-stats', projectId],
+    queryFn: () => projectsApi.getJobStats(projectId),
+    enabled: !!projectId,
+  })
+
   // Get all designs from all parts
   const designQueries = parts.map((part) =>
     // eslint-disable-next-line react-hooks/rules-of-hooks
@@ -552,7 +672,7 @@ function PrintHistoryTab({
     )
   }
 
-  // Calculate totals
+  // Use server-side stats when available, fallback to client-side
   const totalMaterialUsed = allJobs.reduce(
     (sum, job) => sum + (job.outcome?.material_used || 0),
     0
@@ -561,30 +681,35 @@ function PrintHistoryTab({
     (sum, job) => sum + (job.outcome?.material_cost || 0),
     0
   )
-  const successfulJobs = allJobs.filter(
-    (job) => job.outcome?.success === true
-  ).length
-  const failedJobs = allJobs.filter(
-    (job) => job.outcome?.success === false || job.status === 'failed'
-  ).length
+
+  const statsTotal = jobStats?.total ?? allJobs.length
+  const statsCompleted = jobStats?.completed ?? allJobs.filter((j) => j.outcome?.success === true).length
+  const statsFailed = jobStats?.failed ?? allJobs.filter((j) => j.outcome?.success === false || j.status === 'failed').length
+  const statsPrinting = jobStats?.printing ?? allJobs.filter((j) => j.status === 'printing').length
+  const statsQueued = jobStats?.queued ?? 0
 
   return (
     <div className="space-y-4">
-      {/* Cost Summary */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* Stats Summary */}
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         <div className="card p-4">
           <div className="text-sm text-surface-500 mb-1">Total Prints</div>
           <div className="text-2xl font-semibold text-surface-100">
-            {allJobs.length}
+            {statsTotal}
           </div>
         </div>
         <div className="card p-4">
           <div className="text-sm text-surface-500 mb-1">Success Rate</div>
           <div className="text-2xl font-semibold text-emerald-400">
-            {allJobs.length > 0
-              ? Math.round((successfulJobs / (successfulJobs + failedJobs || 1)) * 100)
-              : 0}
-            %
+            {(statsCompleted + statsFailed) > 0
+              ? Math.round((statsCompleted / (statsCompleted + statsFailed)) * 100)
+              : 0}%
+          </div>
+        </div>
+        <div className="card p-4">
+          <div className="text-sm text-surface-500 mb-1">Active</div>
+          <div className="text-2xl font-semibold text-blue-400">
+            {statsPrinting}{statsQueued > 0 && <span className="text-sm text-surface-400 ml-1">+{statsQueued} queued</span>}
           </div>
         </div>
         <div className="card p-4">
@@ -608,121 +733,285 @@ function PrintHistoryTab({
         const printer = job.printer_id ? printerMap[job.printer_id] : undefined
 
         return (
-          <div
-            key={job.id}
-            className="card p-4 flex items-center justify-between"
-          >
-            <div className="flex items-center gap-4">
-              <div
-                className={cn(
-                  'w-10 h-10 rounded-lg flex items-center justify-center',
-                  job.status === 'completed' && job.outcome?.success
-                    ? 'bg-emerald-500/20 text-emerald-400'
-                    : job.status === 'failed' || (job.outcome && !job.outcome.success)
-                    ? 'bg-red-500/20 text-red-400'
-                    : job.status === 'printing'
-                    ? 'bg-blue-500/20 text-blue-400'
-                    : 'bg-surface-700 text-surface-400'
-                )}
-              >
-                {job.status === 'completed' && job.outcome?.success ? (
-                  <CheckCircle className="h-5 w-5" />
-                ) : job.status === 'failed' ||
-                  (job.outcome && !job.outcome.success) ? (
-                  <XCircle className="h-5 w-5" />
-                ) : job.status === 'printing' ? (
-                  <Printer className="h-5 w-5" />
-                ) : (
-                  <Clock className="h-5 w-5" />
-                )}
-              </div>
-
-              <div>
-                <div className="font-medium text-surface-100">
-                  {design?.file_name || 'Unknown design'}
-                </div>
-                <div className="text-sm text-surface-500 flex items-center gap-2">
-                  <span>{printer?.name || 'Unknown printer'}</span>
-                  <span>•</span>
-                  <span>{formatRelativeTime(job.created_at)}</span>
-                  {job.started_at && (
-                    <>
-                      <span>•</span>
-                      <span>{formatDuration(job.started_at, job.completed_at)}</span>
-                    </>
+          <div key={job.id} className="card p-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div
+                  className={cn(
+                    'w-10 h-10 rounded-lg flex items-center justify-center',
+                    job.status === 'completed' && job.outcome?.success
+                      ? 'bg-emerald-500/20 text-emerald-400'
+                      : job.status === 'failed' || (job.outcome && !job.outcome.success)
+                      ? 'bg-red-500/20 text-red-400'
+                      : job.status === 'printing'
+                      ? 'bg-blue-500/20 text-blue-400'
+                      : 'bg-surface-700 text-surface-400'
+                  )}
+                >
+                  {job.status === 'completed' && job.outcome?.success ? (
+                    <CheckCircle className="h-5 w-5" />
+                  ) : job.status === 'failed' ||
+                    (job.outcome && !job.outcome.success) ? (
+                    <XCircle className="h-5 w-5" />
+                  ) : job.status === 'printing' ? (
+                    <Printer className="h-5 w-5" />
+                  ) : (
+                    <Clock className="h-5 w-5" />
                   )}
                 </div>
+
+                <div>
+                  <div className="font-medium text-surface-100">
+                    {design?.file_name || 'Unknown design'}
+                  </div>
+                  <div className="text-sm text-surface-500 flex items-center gap-2">
+                    <span>{printer?.name || 'Unknown printer'}</span>
+                    <span>·</span>
+                    <span>{formatRelativeTime(job.created_at)}</span>
+                    {job.started_at && (
+                      <>
+                        <span>·</span>
+                        <span>{formatDuration(job.started_at, job.completed_at)}</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3">
+                {job.outcome && (
+                  <div className="text-right text-sm">
+                    <div className="text-surface-300">
+                      {job.outcome.material_used.toFixed(1)}g used
+                      {job.outcome.material_cost > 0 && (
+                        <span className="text-emerald-400 ml-2">
+                          ${job.outcome.material_cost.toFixed(2)}
+                        </span>
+                      )}
+                    </div>
+                    {job.outcome.quality_rating && (
+                      <div className="flex items-center gap-0.5 justify-end">
+                        {[1, 2, 3, 4, 5].map((star) => (
+                          <Star
+                            key={star}
+                            className={cn(
+                              'h-3 w-3',
+                              star <= job.outcome!.quality_rating!
+                                ? 'fill-amber-400 text-amber-400'
+                                : 'text-surface-600'
+                            )}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <span
+                  className={cn(
+                    'badge',
+                    getStatusBadge(
+                      job.outcome?.success === false ? 'failed' : job.status
+                    )
+                  )}
+                >
+                  {job.outcome?.success === false
+                    ? 'failed'
+                    : job.status === 'completed' && job.outcome?.success
+                    ? 'success'
+                    : job.status}
+                </span>
+
+                {/* Handle Failure button for failed jobs without outcome */}
+                {job.status === 'failed' && !job.outcome && (
+                  <button
+                    onClick={() => onHandleFailure(job)}
+                    className="btn btn-primary text-xs py-1 px-2 flex items-center gap-1"
+                  >
+                    <RefreshCw className="h-3 w-3" />
+                    Handle Failure
+                  </button>
+                )}
+
+                {/* Record Outcome button for completed jobs without outcome */}
+                {job.status === 'completed' && !job.outcome && (
+                  <button
+                    onClick={() => onRecordOutcome(job)}
+                    className="btn btn-secondary text-xs py-1 px-2"
+                  >
+                    Record Outcome
+                  </button>
+                )}
               </div>
             </div>
 
-            <div className="flex items-center gap-3">
-              {job.outcome && (
-                <div className="text-right text-sm">
-                  <div className="text-surface-300">
-                    {job.outcome.material_used.toFixed(1)}g used
-                    {job.outcome.material_cost > 0 && (
-                      <span className="text-emerald-400 ml-2">
-                        ${job.outcome.material_cost.toFixed(2)}
-                      </span>
-                    )}
-                  </div>
-                  {job.outcome.quality_rating && (
-                    <div className="flex items-center gap-0.5 justify-end">
-                      {[1, 2, 3, 4, 5].map((star) => (
-                        <Star
-                          key={star}
-                          className={cn(
-                            'h-3 w-3',
-                            star <= job.outcome!.quality_rating!
-                              ? 'fill-amber-400 text-amber-400'
-                              : 'text-surface-600'
-                          )}
-                        />
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              <span
-                className={cn(
-                  'badge',
-                  getStatusBadge(
-                    job.outcome?.success === false ? 'failed' : job.status
-                  )
-                )}
-              >
-                {job.outcome?.success === false
-                  ? 'failed'
-                  : job.status === 'completed' && job.outcome?.success
-                  ? 'success'
-                  : job.status}
-              </span>
-
-              {/* Handle Failure button for failed jobs without outcome */}
-              {job.status === 'failed' && !job.outcome && (
-                <button
-                  onClick={() => onHandleFailure(job)}
-                  className="btn btn-primary text-xs py-1 px-2 flex items-center gap-1"
-                >
-                  <RefreshCw className="h-3 w-3" />
-                  Handle Failure
-                </button>
-              )}
-
-              {/* Record Outcome button for completed jobs without outcome */}
-              {job.status === 'completed' && !job.outcome && (
-                <button
-                  onClick={() => onRecordOutcome(job)}
-                  className="btn btn-secondary text-xs py-1 px-2"
-                >
-                  Record Outcome
-                </button>
-              )}
+            {/* Expandable event timeline */}
+            <div className="mt-3 pt-3 border-t border-surface-800">
+              <ExpandableJobEvents jobId={job.id} />
             </div>
           </div>
         )
       })}
+      </div>
+    </div>
+  )
+}
+
+// Project Analytics Tab
+function ProjectAnalyticsTab({ summary }: { summary?: ProjectSummary }) {
+  if (!summary) {
+    return (
+      <div className="card p-8 text-center">
+        <BarChart3 className="h-12 w-12 mx-auto mb-3 text-surface-600" />
+        <h3 className="text-lg font-medium text-surface-300 mb-2">
+          No analytics yet
+        </h3>
+        <p className="text-surface-500">
+          Complete some print jobs and record sales to see project analytics
+        </p>
+      </div>
+    )
+  }
+
+  const formatCents = (cents: number) => {
+    const negative = cents < 0
+    const abs = Math.abs(cents)
+    return `${negative ? '-' : ''}$${(abs / 100).toFixed(2)}`
+  }
+
+  const formatSeconds = (seconds: number) => {
+    if (seconds <= 0) return '-'
+    const hours = Math.floor(seconds / 3600)
+    const mins = Math.floor((seconds % 3600) / 60)
+    if (hours > 0) return `${hours}h ${mins}m`
+    return `${mins}m`
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Revenue Section */}
+      <div>
+        <h3 className="text-sm font-medium text-surface-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+          <DollarSign className="h-4 w-4" />
+          Revenue
+        </h3>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="card p-4">
+            <div className="text-sm text-surface-500 mb-1">Gross Revenue</div>
+            <div className="text-2xl font-semibold text-surface-100">
+              {formatCents(summary.total_revenue_cents)}
+            </div>
+            {summary.sales_count > 0 && (
+              <div className="text-xs text-surface-500 mt-1">
+                {summary.sales_count} sale{summary.sales_count !== 1 ? 's' : ''}
+              </div>
+            )}
+          </div>
+          <div className="card p-4">
+            <div className="text-sm text-surface-500 mb-1">Fees</div>
+            <div className="text-2xl font-semibold text-red-400">
+              {formatCents(summary.total_fees_cents)}
+            </div>
+          </div>
+          <div className="card p-4">
+            <div className="text-sm text-surface-500 mb-1">Net Revenue</div>
+            <div className="text-2xl font-semibold text-surface-100">
+              {formatCents(summary.net_revenue_cents)}
+            </div>
+          </div>
+          <div className="card p-4">
+            <div className="text-sm text-surface-500 mb-1">Gross Profit</div>
+            <div className={cn(
+              'text-2xl font-semibold',
+              summary.gross_profit_cents >= 0 ? 'text-emerald-400' : 'text-red-400'
+            )}>
+              {formatCents(summary.gross_profit_cents)}
+            </div>
+            {summary.gross_margin_percent > 0 && (
+              <div className="text-xs text-surface-500 mt-1">
+                {summary.gross_margin_percent.toFixed(1)}% margin
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Cost Breakdown */}
+      <div>
+        <h3 className="text-sm font-medium text-surface-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+          <TrendingUp className="h-4 w-4" />
+          Cost Breakdown
+        </h3>
+        <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="card p-4">
+            <div className="text-sm text-surface-500 mb-1">Total Cost</div>
+            <div className="text-2xl font-semibold text-surface-100">
+              {formatCents(summary.total_cost_cents)}
+            </div>
+          </div>
+          <div className="card p-4">
+            <div className="text-sm text-surface-500 mb-1">Printer Time</div>
+            <div className="text-2xl font-semibold text-surface-100">
+              {formatCents(summary.printer_time_cost_cents)}
+            </div>
+          </div>
+          <div className="card p-4">
+            <div className="text-sm text-surface-500 mb-1">Material</div>
+            <div className="text-2xl font-semibold text-surface-100">
+              {formatCents(summary.material_cost_cents)}
+            </div>
+            {summary.total_material_grams > 0 && (
+              <div className="text-xs text-surface-500 mt-1">
+                {summary.total_material_grams.toFixed(0)}g used
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Performance */}
+      <div>
+        <h3 className="text-sm font-medium text-surface-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+          <Timer className="h-4 w-4" />
+          Performance
+        </h3>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="card p-4">
+            <div className="text-sm text-surface-500 mb-1">Total Print Time</div>
+            <div className="text-2xl font-semibold text-surface-100">
+              {formatSeconds(summary.total_print_seconds)}
+            </div>
+          </div>
+          <div className="card p-4">
+            <div className="text-sm text-surface-500 mb-1">Avg Print Time</div>
+            <div className="text-2xl font-semibold text-surface-100">
+              {formatSeconds(summary.avg_print_seconds)}
+            </div>
+          </div>
+          <div className="card p-4">
+            <div className="text-sm text-surface-500 mb-1">Success Rate</div>
+            <div className={cn(
+              'text-2xl font-semibold',
+              summary.success_rate >= 90 ? 'text-emerald-400' :
+              summary.success_rate >= 70 ? 'text-amber-400' : 'text-red-400'
+            )}>
+              {summary.success_rate.toFixed(0)}%
+            </div>
+            <div className="text-xs text-surface-500 mt-1">
+              {summary.completed_count}/{summary.job_count} jobs
+            </div>
+          </div>
+          <div className="card p-4">
+            <div className="text-sm text-surface-500 mb-1">Profit / Hour</div>
+            <div className={cn(
+              'text-2xl font-semibold',
+              summary.profit_per_hour_cents >= 0 ? 'text-emerald-400' : 'text-red-400'
+            )}>
+              {formatCents(summary.profit_per_hour_cents)}
+            </div>
+            <div className="text-xs text-surface-500 mt-1">per print hour</div>
+          </div>
+        </div>
       </div>
     </div>
   )

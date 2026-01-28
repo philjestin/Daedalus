@@ -94,19 +94,20 @@ func NewRouterWithConfig(services *service.Services, hub *realtime.Hub, config R
 				// Project pipeline endpoints
 				r.Get("/jobs", projectHandler.ListJobs)
 				r.Get("/job-stats", projectHandler.GetJobStats)
+				r.Get("/summary", projectHandler.GetProjectSummary)
 				r.Post("/start-production", projectHandler.StartProduction)
 				r.Post("/ready-to-ship", projectHandler.MarkReadyToShip)
 				r.Post("/ship", projectHandler.Ship)
 
 				// Parts nested under project
-				partHandler := &PartHandler{service: services.Parts}
+				partHandler := &PartHandler{service: services.Parts, designService: services.Designs}
 				r.Get("/parts", partHandler.ListByProject)
 				r.Post("/parts", partHandler.Create)
 			})
 		})
 
 		// Parts
-		partHandler := &PartHandler{service: services.Parts}
+		partHandler := &PartHandler{service: services.Parts, designService: services.Designs}
 		r.Route("/parts/{id}", func(r chi.Router) {
 			r.Get("/", partHandler.Get)
 			r.Patch("/", partHandler.Update)
@@ -125,6 +126,7 @@ func NewRouterWithConfig(services *service.Services, hub *realtime.Hub, config R
 			r.Get("/", designHandler.Get)
 			r.Get("/download", designHandler.Download)
 			r.Get("/print-jobs", printJobByDesignHandler.ListByDesign)
+			r.Post("/open-external", designHandler.OpenExternal)
 		})
 
 		// Printers
@@ -139,6 +141,8 @@ func NewRouterWithConfig(services *service.Services, hub *realtime.Hub, config R
 				r.Patch("/", printerHandler.Update)
 				r.Delete("/", printerHandler.Delete)
 				r.Get("/state", printerHandler.GetState)
+				r.Get("/jobs", printerHandler.ListJobs)
+				r.Get("/stats", printerHandler.GetJobStats)
 			})
 		})
 
@@ -198,6 +202,7 @@ func NewRouterWithConfig(services *service.Services, hub *realtime.Hub, config R
 			r.Route("/{id}", func(r chi.Router) {
 				r.Get("/", expenseHandler.Get)
 				r.Post("/confirm", expenseHandler.Confirm)
+				r.Post("/retry", expenseHandler.Retry)
 				r.Delete("/", expenseHandler.Delete)
 			})
 		})
@@ -214,9 +219,24 @@ func NewRouterWithConfig(services *service.Services, hub *realtime.Hub, config R
 			})
 		})
 
+		// Settings
+		settingsHandler := &SettingsHandler{service: services.Settings}
+		r.Route("/settings", func(r chi.Router) {
+			r.Get("/", settingsHandler.List)
+			r.Route("/{key}", func(r chi.Router) {
+				r.Get("/", settingsHandler.Get)
+				r.Put("/", settingsHandler.Set)
+				r.Delete("/", settingsHandler.Delete)
+			})
+		})
+
 		// Stats
 		statsHandler := &StatsHandler{service: services.Stats}
 		r.Get("/stats/financial", statsHandler.GetFinancialSummary)
+		r.Get("/stats/time-series", statsHandler.GetTimeSeries)
+		r.Get("/stats/expenses-by-category", statsHandler.GetExpensesByCategory)
+		r.Get("/stats/sales-by-channel", statsHandler.GetSalesByChannel)
+		r.Get("/stats/sales-by-project", statsHandler.GetSalesByProject)
 
 		// Templates (Recipes)
 		templateHandler := &TemplateHandler{service: services.Templates}

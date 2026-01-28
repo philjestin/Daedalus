@@ -49,6 +49,7 @@ CREATE TABLE IF NOT EXISTS printers (
     location TEXT DEFAULT '',
     notes TEXT DEFAULT '',
     min_material_percent INTEGER DEFAULT 10,
+    cost_per_hour_cents INTEGER DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -520,6 +521,13 @@ CREATE TABLE IF NOT EXISTS recipe_materials (
 );
 
 CREATE INDEX IF NOT EXISTS idx_recipe_materials_recipe ON recipe_materials(recipe_id);
+
+-- Settings (key-value store for app configuration)
+CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
 
 -- Bambu Cloud authentication storage
 CREATE TABLE IF NOT EXISTS bambu_cloud_auth (

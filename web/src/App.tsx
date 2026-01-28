@@ -6,8 +6,10 @@ import ProjectDetail from './pages/ProjectDetail'
 import Templates from './pages/Templates'
 import TemplateDetail from './pages/TemplateDetail'
 import Printers from './pages/Printers'
+import PrinterDetail from './pages/PrinterDetail'
 import Materials from './pages/Materials'
 import Expenses from './pages/Expenses'
+import Sales from './pages/Sales'
 import Settings from './pages/Settings'
 import EtsyOrders from './pages/EtsyOrders'
 import EtsyListings from './pages/EtsyListings'
@@ -32,8 +34,10 @@ function App() {
         <Route path="/templates" element={<Templates />} />
         <Route path="/templates/:id" element={<TemplateDetail />} />
         <Route path="/printers" element={<Printers />} />
+        <Route path="/printers/:id" element={<PrinterDetail />} />
         <Route path="/materials" element={<Materials />} />
         <Route path="/expenses" element={<Expenses />} />
+        <Route path="/sales" element={<Sales />} />
         <Route path="/etsy/orders" element={<EtsyOrders />} />
         <Route path="/etsy/listings" element={<EtsyListings />} />
         <Route path="/settings" element={<Settings />} />

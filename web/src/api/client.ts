@@ -76,6 +76,9 @@ export const projectsApi = {
   getJobStats: (id: string) =>
     fetchApi<import('../types').JobStats>(`/projects/${id}/job-stats`),
 
+  getSummary: (id: string) =>
+    fetchApi<import('../types').ProjectSummary>(`/projects/${id}/summary`),
+
   startProduction: (id: string) =>
     fetchApi<import('../types').StartProductionResult>(`/projects/${id}/start-production`, {
       method: 'POST',
@@ -113,8 +116,38 @@ export const partsApi = {
       body: JSON.stringify(data),
     }),
   
-  delete: (id: string) => 
+  delete: (id: string) =>
     fetchApi<void>(`/parts/${id}`, { method: 'DELETE' }),
+
+  createWithFile: async (
+    projectId: string,
+    data: Partial<import('../types').Part>,
+    file?: File,
+    notes?: string
+  ) => {
+    if (!file) {
+      return partsApi.create(projectId, data)
+    }
+
+    const formData = new FormData()
+    if (data.name) formData.append('name', data.name)
+    if (data.description) formData.append('description', data.description)
+    formData.append('quantity', String(data.quantity || 1))
+    formData.append('file', file)
+    if (notes) formData.append('notes', notes)
+
+    const response = await fetch(`${API_URL}/api/projects/${projectId}/parts`, {
+      method: 'POST',
+      body: formData,
+    })
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: 'Upload failed' }))
+      throw new Error(error.error)
+    }
+
+    return response.json()
+  },
 }
 
 // Designs API
@@ -147,6 +180,12 @@ export const designsApi = {
 
   listPrintJobs: (designId: string) =>
     fetchApi<import('../types').PrintJob[]>(`/designs/${designId}/print-jobs`),
+
+  openExternal: (id: string, app?: string) =>
+    fetchApi<{ status: string }>(`/designs/${id}/open-external`, {
+      method: 'POST',
+      body: JSON.stringify({ app: app || '' }),
+    }),
 }
 
 // Discovered printer from network scan
@@ -186,11 +225,17 @@ export const printersApi = {
   delete: (id: string) => 
     fetchApi<void>(`/printers/${id}`, { method: 'DELETE' }),
   
-  getState: (id: string) => 
+  getState: (id: string) =>
     fetchApi<import('../types').PrinterState>(`/printers/${id}/state`),
-  
-  getAllStates: () => 
+
+  getAllStates: () =>
     fetchApi<Record<string, import('../types').PrinterState>>('/printers/states'),
+
+  getJobs: (id: string) =>
+    fetchApi<import('../types').PrintJob[]>(`/printers/${id}/jobs`),
+
+  getStats: (id: string) =>
+    fetchApi<import('../types').JobStats>(`/printers/${id}/stats`),
   
   // Discover printers on local network
   discover: async () => {
@@ -359,8 +404,37 @@ export const expensesApi = {
       body: JSON.stringify({ items }),
     }),
 
+  retry: (id: string) =>
+    fetchApi<import('../types').Expense>(`/expenses/${id}/retry`, {
+      method: 'POST',
+    }),
+
   delete: (id: string) =>
     fetchApi<void>(`/expenses/${id}`, { method: 'DELETE' }),
+}
+
+// Settings API
+export interface AppSetting {
+  key: string
+  value: string
+  updated_at: string
+}
+
+export const settingsApi = {
+  list: () =>
+    fetchApi<AppSetting[]>('/settings'),
+
+  get: (key: string) =>
+    fetchApi<AppSetting>(`/settings/${key}`),
+
+  set: (key: string, value: string) =>
+    fetchApi<{ status: string }>(`/settings/${key}`, {
+      method: 'PUT',
+      body: JSON.stringify({ value }),
+    }),
+
+  delete: (key: string) =>
+    fetchApi<void>(`/settings/${key}`, { method: 'DELETE' }),
 }
 
 // Sales API
@@ -409,6 +483,18 @@ export interface FinancialSummary {
 export const statsApi = {
   getFinancialSummary: () =>
     fetchApi<FinancialSummary>('/stats/financial'),
+
+  getTimeSeries: (period: string) =>
+    fetchApi<import('../types').TimeSeriesData>(`/stats/time-series?period=${period}`),
+
+  getExpensesByCategory: (period: string) =>
+    fetchApi<import('../types').CategoryBreakdown[]>(`/stats/expenses-by-category?period=${period}`),
+
+  getSalesByChannel: (period: string) =>
+    fetchApi<import('../types').ChannelBreakdown[]>(`/stats/sales-by-channel?period=${period}`),
+
+  getSalesByProject: () =>
+    fetchApi<import('../types').ProjectSales[]>('/stats/sales-by-project'),
 }
 
 // Templates (Recipes) API

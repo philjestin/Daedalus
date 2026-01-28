@@ -10,7 +10,9 @@ import {
   Eye,
   DollarSign,
   Package,
-  X
+  X,
+  RotateCcw,
+  Loader2
 } from 'lucide-react'
 import { expensesApi } from '../api/client'
 import { useMaterials } from '../hooks/useMaterials'
@@ -30,6 +32,13 @@ export default function Expenses() {
 
   const deleteExpense = useMutation({
     mutationFn: (id: string) => expensesApi.delete(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['expenses'] })
+    },
+  })
+
+  const retryExpense = useMutation({
+    mutationFn: (id: string) => expensesApi.retry(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['expenses'] })
     },
@@ -130,23 +139,27 @@ export default function Expenses() {
                     'w-10 h-10 rounded-lg flex items-center justify-center',
                     expense.status === 'confirmed'
                       ? 'bg-emerald-500/20 text-emerald-400'
-                      : expense.status === 'pending'
+                      : expense.status === 'rejected'
+                      ? 'bg-red-500/20 text-red-400'
+                      : expense.vendor
                       ? 'bg-amber-500/20 text-amber-400'
-                      : 'bg-red-500/20 text-red-400'
+                      : 'bg-blue-500/20 text-blue-400'
                   )}
                 >
                   {expense.status === 'confirmed' ? (
                     <CheckCircle className="h-5 w-5" />
-                  ) : expense.status === 'pending' ? (
+                  ) : expense.status === 'rejected' ? (
+                    <AlertTriangle className="h-5 w-5" />
+                  ) : expense.vendor ? (
                     <Clock className="h-5 w-5" />
                   ) : (
-                    <AlertTriangle className="h-5 w-5" />
+                    <Loader2 className="h-5 w-5 animate-spin" />
                   )}
                 </div>
 
                 <div>
                   <div className="font-medium text-surface-100">
-                    {expense.vendor || 'Processing...'}
+                    {expense.vendor || (expense.status === 'rejected' ? 'Parse Failed' : 'Processing...')}
                   </div>
                   <div className="text-sm text-surface-500 flex items-center gap-2">
                     <span>{formatRelativeTime(expense.occurred_at)}</span>
@@ -172,6 +185,11 @@ export default function Expenses() {
                       </>
                     )}
                   </div>
+                  {expense.status === 'rejected' && expense.notes && (
+                    <div className="text-xs text-red-400 mt-1 max-w-md truncate">
+                      {expense.notes}
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -193,6 +211,20 @@ export default function Expenses() {
                     >
                       <Eye className="h-3 w-3 mr-1" />
                       Review
+                    </button>
+                  )}
+                  {(expense.status === 'rejected' || (expense.status === 'pending' && !expense.vendor)) && (
+                    <button
+                      onClick={() => retryExpense.mutate(expense.id)}
+                      disabled={retryExpense.isPending}
+                      className="btn btn-secondary text-xs py-1 px-2"
+                    >
+                      {retryExpense.isPending ? (
+                        <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                      ) : (
+                        <RotateCcw className="h-3 w-3 mr-1" />
+                      )}
+                      Retry
                     </button>
                   )}
                   <button
@@ -247,16 +279,19 @@ function ReceiptUploadModal({
   const [file, setFile] = useState<File | null>(null)
   const [uploading, setUploading] = useState(false)
   const [dragOver, setDragOver] = useState(false)
+  const [uploadError, setUploadError] = useState<string | null>(null)
 
   const handleUpload = async () => {
     if (!file) return
 
     setUploading(true)
+    setUploadError(null)
     try {
       await expensesApi.uploadReceipt(file)
       onSuccess()
     } catch (err) {
-      console.error('Upload failed:', err)
+      const msg = err instanceof Error ? err.message : 'Upload failed'
+      setUploadError(msg)
     } finally {
       setUploading(false)
     }
@@ -336,6 +371,12 @@ function ReceiptUploadModal({
           AI will automatically extract vendor, items, and totals from your receipt.
           Filament purchases can be added to your spool inventory.
         </p>
+
+        {uploadError && (
+          <div className="mt-4 p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
+            {uploadError}
+          </div>
+        )}
 
         <div className="flex justify-end gap-3 mt-6">
           <button onClick={onClose} className="btn btn-ghost">

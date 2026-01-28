@@ -75,6 +75,7 @@ func RunMigrations(db *sql.DB) error {
 	// SQLite doesn't support ADD COLUMN IF NOT EXISTS, so we ignore errors.
 	alterStatements := []string{
 		`ALTER TABLE printers ADD COLUMN serial_number TEXT DEFAULT ''`,
+		`ALTER TABLE printers ADD COLUMN cost_per_hour_cents INTEGER DEFAULT 0`,
 	}
 	for _, stmt := range alterStatements {
 		db.Exec(stmt) // Ignore error if column already exists

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import {
   Plus,
   Printer as PrinterIcon,
@@ -81,11 +82,14 @@ export default function Printers() {
 
   const handleAddCloudDevice = async (devId: string) => {
     setAddingCloudDevice(devId)
+    setCloudError('')
     try {
       await bambuCloudApi.addDevice(devId)
       setAddedCloudDevices(prev => new Set(prev).add(devId))
       refetch()
     } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to add device'
+      setCloudError(msg)
       console.error('Failed to add cloud device:', err)
     } finally {
       setAddingCloudDevice(null)
@@ -267,7 +271,7 @@ export default function Printers() {
           {printers.map((printer) => {
             const state = printerStates[printer.id]
             return (
-              <div key={printer.id} className="card p-5">
+              <Link key={printer.id} to={`/printers/${printer.id}`} className="card p-5 block hover:border-surface-600 transition-colors">
                 <div className="flex items-start justify-between mb-4">
                   <div className="flex items-center gap-3">
                     <div className={cn(
@@ -295,7 +299,7 @@ export default function Printers() {
                     </div>
                   </div>
                   {confirmDelete === printer.id ? (
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-1" onClick={(e) => { e.preventDefault(); e.stopPropagation() }}>
                       <button
                         onClick={() => setConfirmDelete(null)}
                         className="text-xs text-surface-500 hover:text-surface-300 px-1.5 py-0.5"
@@ -311,7 +315,7 @@ export default function Printers() {
                     </div>
                   ) : (
                     <button
-                      onClick={() => handleDelete(printer.id)}
+                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleDelete(printer.id) }}
                       className="p-1.5 rounded hover:bg-surface-800 text-surface-500 hover:text-red-400 transition-colors"
                     >
                       <Trash2 className="h-4 w-4" />
@@ -336,7 +340,7 @@ export default function Printers() {
                         <span className="text-surface-300">{state.progress.toFixed(1)}%</span>
                       </div>
                       <div className="h-2 bg-surface-800 rounded-full overflow-hidden">
-                        <div 
+                        <div
                           className="h-full bg-emerald-500 transition-all"
                           style={{ width: `${state.progress}%` }}
                         />
@@ -374,14 +378,14 @@ export default function Printers() {
                     ) : (
                       <Wifi className={cn(
                         'h-4 w-4',
-                        state?.status && state.status !== 'offline' 
-                          ? 'text-emerald-400' 
+                        state?.status && state.status !== 'offline'
+                          ? 'text-emerald-400'
                           : 'text-surface-500'
                       )} />
                     )}
                     <span className="text-surface-500">
-                      {printer.connection_type === 'manual' 
-                        ? 'Manual' 
+                      {printer.connection_type === 'manual'
+                        ? 'Manual'
                         : printer.connection_type.replace('_', ' ')}
                     </span>
                   </div>
@@ -393,7 +397,7 @@ export default function Printers() {
                     </div>
                   )}
                 </div>
-              </div>
+              </Link>
             )
           })}
         </div>

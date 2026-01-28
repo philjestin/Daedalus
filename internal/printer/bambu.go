@@ -243,15 +243,13 @@ func (c *BambuClient) handleMessage(client mqtt.Client, msg mqtt.Message) {
 
 	// Check for print status in the message
 	if payload.Print != nil {
-		state := c.parsePrintStatus(payload.Print)
-		if state != nil {
-			c.mu.Lock()
-			c.lastState = state
-			c.mu.Unlock()
+		c.mu.Lock()
+		state := c.mergePrintStatus(payload.Print)
+		c.lastState = state
+		c.mu.Unlock()
 
-			if c.statusCallback != nil {
-				c.statusCallback(state)
-			}
+		if c.statusCallback != nil {
+			c.statusCallback(state)
 		}
 	}
 }
@@ -496,36 +494,82 @@ func (c *BambuClient) GetLiveView() (io.ReadCloser, error) {
 	return nil, fmt.Errorf("live view not yet implemented")
 }
 
-// parsePrintStatus converts Bambu print status to PrinterState.
-func (c *BambuClient) parsePrintStatus(print *BambuPrintStatus) *model.PrinterState {
+// mergePrintStatus merges incoming Bambu print data into the existing state.
+// Bambu sends partial MQTT updates — a message may contain only temperatures,
+// only progress, or only gcode_state. We must preserve fields from prior
+// messages rather than resetting them to zero values.
+// Caller must hold c.mu.
+// bambuFanToPercent converts Bambu's 0-15 fan speed scale to 0-100%.
+func bambuFanToPercent(raw int) int {
+	if raw <= 0 {
+		return 0
+	}
+	if raw >= 15 {
+		return 100
+	}
+	return (raw * 100) / 15
+}
+
+func (c *BambuClient) mergePrintStatus(print *BambuPrintStatus) *model.PrinterState {
+	// Start from a copy of the existing state
 	state := &model.PrinterState{
-		PrinterID: c.printerID,
-		UpdatedAt: time.Now(),
+		PrinterID:         c.printerID,
+		Status:            c.lastState.Status,
+		Progress:          c.lastState.Progress,
+		CurrentFile:       c.lastState.CurrentFile,
+		TimeLeft:          c.lastState.TimeLeft,
+		BedTemp:           c.lastState.BedTemp,
+		NozzleTemp:        c.lastState.NozzleTemp,
+		AMS:               c.lastState.AMS,
+		UpdatedAt:         time.Now(),
+		BedTargetTemp:     c.lastState.BedTargetTemp,
+		NozzleTargetTemp:  c.lastState.NozzleTargetTemp,
+		ChamberTemp:       c.lastState.ChamberTemp,
+		LayerNum:          c.lastState.LayerNum,
+		TotalLayerNum:     c.lastState.TotalLayerNum,
+		CoolingFanSpeed:   c.lastState.CoolingFanSpeed,
+		AuxFanSpeed:       c.lastState.AuxFanSpeed,
+		ChamberFanSpeed:   c.lastState.ChamberFanSpeed,
+		HeatbreakFanSpeed: c.lastState.HeatbreakFanSpeed,
+		SpeedPercent:      c.lastState.SpeedPercent,
+		SpeedLevel:        c.lastState.SpeedLevel,
+		PrintRealSpeed:    c.lastState.PrintRealSpeed,
+		WiFiSignal:        c.lastState.WiFiSignal,
+		NozzleDiameter:    c.lastState.NozzleDiameter,
+		NozzleType:        c.lastState.NozzleType,
+		HMSErrors:         c.lastState.HMSErrors,
+		Lights:            c.lastState.Lights,
+		GcodeStartTime:    c.lastState.GcodeStartTime,
+		SubtaskID:         c.lastState.SubtaskID,
+		TaskID:            c.lastState.TaskID,
+		PrintType:         c.lastState.PrintType,
 	}
 
-	// Map Bambu gcode_state to our status
-	switch print.GcodeState {
-	case "IDLE":
-		state.Status = model.PrinterStatusIdle
-	case "RUNNING", "PREPARE":
-		state.Status = model.PrinterStatusPrinting
-	case "PAUSE":
-		state.Status = model.PrinterStatusPaused
-	case "FINISH":
-		state.Status = model.PrinterStatusIdle
-	case "FAILED":
-		state.Status = model.PrinterStatusError
-	default:
-		// Check stg_cur for more specific states
-		if print.StgCur > 0 && print.StgCur < 255 {
-			state.Status = model.PrinterStatusPrinting
-		} else {
+	// Only update status when gcode_state is actually present
+	if print.GcodeState != "" {
+		switch print.GcodeState {
+		case "IDLE":
 			state.Status = model.PrinterStatusIdle
+		case "RUNNING", "PREPARE":
+			state.Status = model.PrinterStatusPrinting
+		case "PAUSE":
+			state.Status = model.PrinterStatusPaused
+		case "FINISH":
+			state.Status = model.PrinterStatusIdle
+		case "FAILED":
+			state.Status = model.PrinterStatusError
 		}
+	} else if print.StgCur > 0 && print.StgCur < 255 {
+		// No gcode_state but stg_cur indicates activity
+		state.Status = model.PrinterStatusPrinting
 	}
 
-	// Progress
-	if print.MCPercent > 0 {
+	// Progress — MCPercent 0 is valid (just started), but we only
+	// overwrite when the field was actually in the JSON. Since Go
+	// can't distinguish 0 from absent with plain int, we update
+	// whenever gcode_state is present (full status push) or
+	// MCPercent > 0.
+	if print.MCPercent > 0 || print.GcodeState != "" {
 		state.Progress = float64(print.MCPercent)
 	}
 
@@ -539,14 +583,118 @@ func (c *BambuClient) parsePrintStatus(print *BambuPrintStatus) *model.PrinterSt
 	// Time remaining (in minutes from Bambu)
 	if print.MCRemainingTime > 0 {
 		state.TimeLeft = print.MCRemainingTime * 60 // Convert to seconds
+	} else if print.GcodeState == "IDLE" || print.GcodeState == "FINISH" {
+		state.TimeLeft = 0
 	}
 
-	// Temperatures
+	// Temperatures — always update when present (non-zero)
 	if print.BedTargetTemper > 0 || print.BedTemper > 0 {
 		state.BedTemp = print.BedTemper
 	}
 	if print.NozzleTargetTemper > 0 || print.NozzleTemper > 0 {
 		state.NozzleTemp = print.NozzleTemper
+	}
+
+	// Target temperatures
+	if print.BedTargetTemper > 0 || print.GcodeState != "" {
+		state.BedTargetTemp = print.BedTargetTemper
+	}
+	if print.NozzleTargetTemper > 0 || print.GcodeState != "" {
+		state.NozzleTargetTemp = print.NozzleTargetTemper
+	}
+	if print.ChamberTemper > 0 || print.GcodeState != "" {
+		state.ChamberTemp = print.ChamberTemper
+	}
+
+	// Layers
+	if print.LayerNum > 0 || print.GcodeState != "" {
+		state.LayerNum = print.LayerNum
+	}
+	if print.TotalLayerNum > 0 || print.GcodeState != "" {
+		state.TotalLayerNum = print.TotalLayerNum
+	}
+
+	// Fan speeds (Bambu uses 0-15 scale)
+	if print.CoolingFanSpeed > 0 || print.GcodeState != "" {
+		state.CoolingFanSpeed = bambuFanToPercent(print.CoolingFanSpeed)
+	}
+	if print.BigFan1Speed > 0 || print.GcodeState != "" {
+		state.AuxFanSpeed = bambuFanToPercent(print.BigFan1Speed)
+	}
+	if print.BigFan2Speed > 0 || print.GcodeState != "" {
+		state.ChamberFanSpeed = bambuFanToPercent(print.BigFan2Speed)
+	}
+	if print.HeatbreakFanSpeed > 0 || print.GcodeState != "" {
+		state.HeatbreakFanSpeed = bambuFanToPercent(print.HeatbreakFanSpeed)
+	}
+
+	// Speed
+	if print.SpeedMag > 0 || print.GcodeState != "" {
+		state.SpeedPercent = print.SpeedMag
+	}
+	if print.SpeedLevel > 0 || print.GcodeState != "" {
+		state.SpeedLevel = print.SpeedLevel
+	}
+	if print.PrintRealSpeed > 0 {
+		state.PrintRealSpeed = print.PrintRealSpeed
+	}
+
+	// Network
+	if print.WiFiSignal != "" {
+		state.WiFiSignal = print.WiFiSignal
+	}
+
+	// Nozzle info
+	if print.NozzleDiameter != "" {
+		state.NozzleDiameter = print.NozzleDiameter
+	}
+	if print.NozzleType != "" {
+		state.NozzleType = print.NozzleType
+	}
+
+	// HMS errors
+	if print.HMS != nil {
+		state.HMSErrors = make([]model.HMSError, len(print.HMS))
+		for i, h := range print.HMS {
+			state.HMSErrors[i] = model.HMSError{
+				Attr:     h.Attr,
+				Code:     h.Code,
+				Module:   h.Module,
+				Severity: h.Severity,
+			}
+		}
+	}
+
+	// Lights
+	if print.LightsReport != nil {
+		state.Lights = make([]model.LightState, len(print.LightsReport))
+		for i, l := range print.LightsReport {
+			state.Lights[i] = model.LightState{
+				Node: l.Node,
+				Mode: l.Mode,
+			}
+		}
+	}
+
+	// Timing / Job IDs
+	if print.PrintStartTime != "" {
+		state.GcodeStartTime = print.PrintStartTime
+	}
+	if print.SubtaskID != "" {
+		state.SubtaskID = print.SubtaskID
+	}
+	if print.TaskID != "" {
+		state.TaskID = print.TaskID
+	}
+	if print.PrintType != "" {
+		state.PrintType = print.PrintType
+	}
+
+	// Clear layer/time when idle or finished
+	if print.GcodeState == "IDLE" || print.GcodeState == "FINISH" {
+		state.LayerNum = 0
+		state.TotalLayerNum = 0
+		state.TimeLeft = 0
 	}
 
 	// Parse AMS state

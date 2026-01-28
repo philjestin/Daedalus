@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Store, ExternalLink, RefreshCw, Unplug, AlertCircle, CheckCircle2 } from 'lucide-react'
-import { etsyApi } from '../api/client'
+import { Store, ExternalLink, RefreshCw, Unplug, AlertCircle, CheckCircle2, Key, Eye, EyeOff, Save } from 'lucide-react'
+import { etsyApi, settingsApi } from '../api/client'
 import type { EtsyIntegration } from '../types'
 
 export default function Settings() {
@@ -12,6 +12,13 @@ export default function Settings() {
   const [disconnecting, setDisconnecting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
+
+  // API Key settings
+  const [anthropicKey, setAnthropicKey] = useState('')
+  const [anthropicKeyMasked, setAnthropicKeyMasked] = useState('')
+  const [showAnthropicKey, setShowAnthropicKey] = useState(false)
+  const [savingKey, setSavingKey] = useState(false)
+  const [keyLoaded, setKeyLoaded] = useState(false)
 
   // Check for OAuth callback results
   useEffect(() => {
@@ -29,9 +36,10 @@ export default function Settings() {
     }
   }, [searchParams, setSearchParams])
 
-  // Load Etsy status
+  // Load Etsy status and API key settings
   useEffect(() => {
     loadEtsyStatus()
+    loadApiKeys()
   }, [])
 
   const loadEtsyStatus = async () => {
@@ -44,6 +52,39 @@ export default function Settings() {
       setError('Failed to load Etsy integration status')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const loadApiKeys = async () => {
+    try {
+      const setting = await settingsApi.get('anthropic_api_key')
+      setAnthropicKeyMasked(setting.value)
+      setKeyLoaded(true)
+    } catch {
+      // Key not set yet — that's fine
+      setKeyLoaded(true)
+    }
+  }
+
+  const handleSaveAnthropicKey = async () => {
+    if (!anthropicKey.trim()) return
+
+    try {
+      setSavingKey(true)
+      setError(null)
+      await settingsApi.set('anthropic_api_key', anthropicKey.trim())
+      setSuccessMessage('Anthropic API key saved')
+      setAnthropicKeyMasked(
+        anthropicKey.trim().length > 8
+          ? anthropicKey.trim().slice(0, 4) + '...' + anthropicKey.trim().slice(-4)
+          : '****'
+      )
+      setAnthropicKey('')
+      setShowAnthropicKey(false)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save API key')
+    } finally {
+      setSavingKey(false)
     }
   }
 
@@ -126,6 +167,79 @@ export default function Settings() {
             </button>
           </div>
         )}
+
+        {/* API Keys Card */}
+        <div className="bg-surface-900/50 border border-surface-800 rounded-xl p-6 mb-6">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="p-2 bg-purple-500/10 rounded-lg">
+              <Key className="h-6 w-6 text-purple-400" />
+            </div>
+            <div>
+              <h2 className="text-lg font-semibold text-surface-100">API Keys</h2>
+              <p className="text-sm text-surface-400">
+                Configure API keys for AI-powered features
+              </p>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            {/* Anthropic API Key */}
+            <div>
+              <label className="block text-sm font-medium text-surface-300 mb-2">
+                Anthropic API Key
+              </label>
+              <p className="text-xs text-surface-500 mb-2">
+                Required for AI receipt parsing. Get your key at{' '}
+                <a
+                  href="https://console.anthropic.com/settings/keys"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-accent-400 hover:underline"
+                >
+                  console.anthropic.com
+                </a>
+              </p>
+
+              {keyLoaded && anthropicKeyMasked && !anthropicKey && (
+                <div className="flex items-center gap-2 mb-2">
+                  <CheckCircle2 className="h-4 w-4 text-green-400" />
+                  <span className="text-sm text-green-300">Key configured: {anthropicKeyMasked}</span>
+                </div>
+              )}
+
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <input
+                    type={showAnthropicKey ? 'text' : 'password'}
+                    value={anthropicKey}
+                    onChange={(e) => setAnthropicKey(e.target.value)}
+                    placeholder={anthropicKeyMasked ? 'Enter new key to update...' : 'sk-ant-...'}
+                    className="w-full bg-surface-800 border border-surface-700 rounded-lg px-3 py-2 text-sm text-surface-100 placeholder-surface-500 focus:outline-none focus:ring-2 focus:ring-accent-500 focus:border-transparent pr-10"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowAnthropicKey(!showAnthropicKey)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-surface-400 hover:text-surface-300"
+                  >
+                    {showAnthropicKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+                <button
+                  onClick={handleSaveAnthropicKey}
+                  disabled={!anthropicKey.trim() || savingKey}
+                  className="flex items-center gap-2 px-4 py-2 bg-accent-600 hover:bg-accent-700 text-white font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                >
+                  {savingKey ? (
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Save className="h-4 w-4" />
+                  )}
+                  Save
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
 
         {/* Etsy Integration Card */}
         <div className="bg-surface-900/50 border border-surface-800 rounded-xl p-6">

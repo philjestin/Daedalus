@@ -66,15 +66,16 @@ export function useParts(projectId: string) {
   })
 }
 
-// Create a new part.
+// Create a new part, optionally with a file attachment.
 export function useCreatePart() {
   const queryClient = useQueryClient()
-  
+
   return useMutation({
-    mutationFn: ({ projectId, data }: { projectId: string; data: Partial<Part> }) => 
-      partsApi.create(projectId, data),
+    mutationFn: ({ projectId, data, file, notes }: { projectId: string; data: Partial<Part>; file?: File; notes?: string }) =>
+      partsApi.createWithFile(projectId, data, file, notes),
     onSuccess: (_, { projectId }) => {
       queryClient.invalidateQueries({ queryKey: ['parts', projectId] })
+      queryClient.invalidateQueries({ queryKey: ['designs'] })
     },
   })
 }

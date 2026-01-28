@@ -8,6 +8,7 @@ import {
   Settings,
   Layers,
   Receipt,
+  DollarSign,
   FileStack,
   ShoppingCart,
   Store,
@@ -23,6 +24,7 @@ const navigation = [
   { name: 'Printers', href: '/printers', icon: Printer },
   { name: 'Materials', href: '/materials', icon: Package },
   { name: 'Expenses', href: '/expenses', icon: Receipt },
+  { name: 'Sales', href: '/sales', icon: DollarSign },
   { name: 'Etsy Orders', href: '/etsy/orders', icon: ShoppingCart },
   { name: 'Etsy Listings', href: '/etsy/listings', icon: Store },
 ]

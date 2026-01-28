@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { printersApi } from '../api/client'
+import { printersApi, printJobsApi } from '../api/client'
 import type { Printer } from '../types'
 
 // Fetch all printers.
@@ -77,6 +77,33 @@ export function usePrinterState(id: string) {
     enabled: !!id,
     refetchInterval: 15000, // Reduced polling - WebSocket handles real-time updates
     staleTime: 5000,
+  })
+}
+
+// Fetch print jobs for a specific printer.
+export function usePrinterJobs(id: string) {
+  return useQuery({
+    queryKey: ['printer-jobs', id],
+    queryFn: () => printersApi.getJobs(id),
+    enabled: !!id,
+  })
+}
+
+// Fetch job statistics for a specific printer.
+export function usePrinterStats(id: string) {
+  return useQuery({
+    queryKey: ['printer-stats', id],
+    queryFn: () => printersApi.getStats(id),
+    enabled: !!id,
+  })
+}
+
+// Fetch events for a specific print job.
+export function useJobEvents(jobId: string) {
+  return useQuery({
+    queryKey: ['job-events', jobId],
+    queryFn: () => printJobsApi.getEvents(jobId),
+    enabled: !!jobId,
   })
 }
 

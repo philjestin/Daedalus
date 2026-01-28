@@ -26,6 +26,7 @@ type Repositories struct {
 	Etsy       *EtsyRepository
 	Auth       *AuthRepository
 	BambuCloud *BambuCloudRepository
+	Settings   *SettingsRepository
 }
 
 // NewRepositories creates all repository instances.
@@ -45,6 +46,7 @@ func NewRepositories(db *sql.DB) *Repositories {
 		Etsy:       &EtsyRepository{db: db},
 		Auth:       &AuthRepository{db: db},
 		BambuCloud: &BambuCloudRepository{db: db},
+		Settings:   &SettingsRepository{db: db},
 	}
 }
 
@@ -323,9 +325,9 @@ func (r *PrinterRepository) Create(ctx context.Context, p *model.Printer) error 
 	buildVolumeJSON, _ := json.Marshal(p.BuildVolume)
 
 	_, err := r.db.ExecContext(ctx, `
-		INSERT INTO printers (id, name, model, manufacturer, connection_type, connection_uri, api_key, serial_number, status, build_volume, nozzle_diameter, location, notes, min_material_percent, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, p.ID, p.Name, p.Model, p.Manufacturer, p.ConnectionType, p.ConnectionURI, p.APIKey, p.SerialNumber, p.Status, buildVolumeJSON, p.NozzleDiameter, p.Location, p.Notes, p.MinMaterialPercent, p.CreatedAt, p.UpdatedAt)
+		INSERT INTO printers (id, name, model, manufacturer, connection_type, connection_uri, api_key, serial_number, status, build_volume, nozzle_diameter, location, notes, min_material_percent, cost_per_hour_cents, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, p.ID, p.Name, p.Model, p.Manufacturer, p.ConnectionType, p.ConnectionURI, p.APIKey, p.SerialNumber, p.Status, buildVolumeJSON, p.NozzleDiameter, p.Location, p.Notes, p.MinMaterialPercent, p.CostPerHourCents, p.CreatedAt, p.UpdatedAt)
 	return err
 }
 
@@ -334,9 +336,9 @@ func (r *PrinterRepository) GetByID(ctx context.Context, id uuid.UUID) (*model.P
 	var p model.Printer
 	var buildVolumeJSON []byte
 	err := scanRow(r.db.QueryRowContext(ctx, `
-		SELECT id, name, model, manufacturer, connection_type, connection_uri, api_key, serial_number, status, build_volume, nozzle_diameter, location, notes, min_material_percent, created_at, updated_at
+		SELECT id, name, model, manufacturer, connection_type, connection_uri, api_key, serial_number, status, build_volume, nozzle_diameter, location, notes, min_material_percent, cost_per_hour_cents, created_at, updated_at
 		FROM printers WHERE id = ?
-	`, id), &p.ID, &p.Name, &p.Model, &p.Manufacturer, &p.ConnectionType, &p.ConnectionURI, &p.APIKey, &p.SerialNumber, &p.Status, &buildVolumeJSON, &p.NozzleDiameter, &p.Location, &p.Notes, &p.MinMaterialPercent, &p.CreatedAt, &p.UpdatedAt)
+	`, id), &p.ID, &p.Name, &p.Model, &p.Manufacturer, &p.ConnectionType, &p.ConnectionURI, &p.APIKey, &p.SerialNumber, &p.Status, &buildVolumeJSON, &p.NozzleDiameter, &p.Location, &p.Notes, &p.MinMaterialPercent, &p.CostPerHourCents, &p.CreatedAt, &p.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -352,7 +354,7 @@ func (r *PrinterRepository) GetByID(ctx context.Context, id uuid.UUID) (*model.P
 // List retrieves all printers.
 func (r *PrinterRepository) List(ctx context.Context) ([]model.Printer, error) {
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT id, name, model, manufacturer, connection_type, connection_uri, api_key, serial_number, status, build_volume, nozzle_diameter, location, notes, min_material_percent, created_at, updated_at
+		SELECT id, name, model, manufacturer, connection_type, connection_uri, api_key, serial_number, status, build_volume, nozzle_diameter, location, notes, min_material_percent, cost_per_hour_cents, created_at, updated_at
 		FROM printers ORDER BY name ASC
 	`)
 	if err != nil {
@@ -364,7 +366,7 @@ func (r *PrinterRepository) List(ctx context.Context) ([]model.Printer, error) {
 	for rows.Next() {
 		var p model.Printer
 		var buildVolumeJSON []byte
-		if err := scanRow(rows, &p.ID, &p.Name, &p.Model, &p.Manufacturer, &p.ConnectionType, &p.ConnectionURI, &p.APIKey, &p.SerialNumber, &p.Status, &buildVolumeJSON, &p.NozzleDiameter, &p.Location, &p.Notes, &p.MinMaterialPercent, &p.CreatedAt, &p.UpdatedAt); err != nil {
+		if err := scanRow(rows, &p.ID, &p.Name, &p.Model, &p.Manufacturer, &p.ConnectionType, &p.ConnectionURI, &p.APIKey, &p.SerialNumber, &p.Status, &buildVolumeJSON, &p.NozzleDiameter, &p.Location, &p.Notes, &p.MinMaterialPercent, &p.CostPerHourCents, &p.CreatedAt, &p.UpdatedAt); err != nil {
 			return nil, err
 		}
 		if buildVolumeJSON != nil {
@@ -381,9 +383,9 @@ func (r *PrinterRepository) Update(ctx context.Context, p *model.Printer) error 
 	buildVolumeJSON, _ := json.Marshal(p.BuildVolume)
 
 	_, err := r.db.ExecContext(ctx, `
-		UPDATE printers SET name = ?, model = ?, manufacturer = ?, connection_type = ?, connection_uri = ?, api_key = ?, serial_number = ?, status = ?, build_volume = ?, nozzle_diameter = ?, location = ?, notes = ?, min_material_percent = ?, updated_at = ?
+		UPDATE printers SET name = ?, model = ?, manufacturer = ?, connection_type = ?, connection_uri = ?, api_key = ?, serial_number = ?, status = ?, build_volume = ?, nozzle_diameter = ?, location = ?, notes = ?, min_material_percent = ?, cost_per_hour_cents = ?, updated_at = ?
 		WHERE id = ?
-	`, p.Name, p.Model, p.Manufacturer, p.ConnectionType, p.ConnectionURI, p.APIKey, p.SerialNumber, p.Status, buildVolumeJSON, p.NozzleDiameter, p.Location, p.Notes, p.MinMaterialPercent, p.UpdatedAt, p.ID)
+	`, p.Name, p.Model, p.Manufacturer, p.ConnectionType, p.ConnectionURI, p.APIKey, p.SerialNumber, p.Status, buildVolumeJSON, p.NozzleDiameter, p.Location, p.Notes, p.MinMaterialPercent, p.CostPerHourCents, p.UpdatedAt, p.ID)
 	return err
 }
 
@@ -470,6 +472,31 @@ func (r *MaterialRepository) List(ctx context.Context) ([]model.Material, error)
 		materials = append(materials, m)
 	}
 	return materials, rows.Err()
+}
+
+// FindByTypeManufacturerColor finds a material matching the given type, manufacturer, and color.
+// Returns nil if no match is found.
+func (r *MaterialRepository) FindByTypeManufacturerColor(ctx context.Context, matType model.MaterialType, manufacturer, color string) (*model.Material, error) {
+	var m model.Material
+	var printTempJSON, bedTempJSON []byte
+	err := scanRow(r.db.QueryRowContext(ctx, `
+		SELECT id, name, type, manufacturer, color, color_hex, density, cost_per_kg, print_temp, bed_temp, notes, created_at, updated_at
+		FROM materials WHERE LOWER(type) = LOWER(?) AND LOWER(manufacturer) = LOWER(?) AND LOWER(color) = LOWER(?)
+		LIMIT 1
+	`, matType, manufacturer, color), &m.ID, &m.Name, &m.Type, &m.Manufacturer, &m.Color, &m.ColorHex, &m.Density, &m.CostPerKg, &printTempJSON, &bedTempJSON, &m.Notes, &m.CreatedAt, &m.UpdatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if printTempJSON != nil {
+		json.Unmarshal(printTempJSON, &m.PrintTemp)
+	}
+	if bedTempJSON != nil {
+		json.Unmarshal(bedTempJSON, &m.BedTemp)
+	}
+	return &m, nil
 }
 
 // SpoolRepository handles material spool database operations.
@@ -585,10 +612,10 @@ func (r *PrintJobRepository) GetByID(ctx context.Context, id uuid.UUID) (*model.
 	var outcomeJSON, snapshotJSON []byte
 	err := scanRow(r.db.QueryRowContext(ctx, `
 		SELECT id, design_id, printer_id, material_spool_id, project_id, status, progress, started_at, completed_at, outcome, notes, created_at,
-		       recipe_id, attempt_number, parent_job_id, failure_category, estimated_seconds, actual_seconds, material_used_grams, cost_cents, material_snapshot
+		       recipe_id, attempt_number, parent_job_id, failure_category, estimated_seconds, actual_seconds, material_used_grams, cost_cents, printer_time_cost_cents, material_cost_cents, material_snapshot
 		FROM print_jobs WHERE id = ?
 	`, id), &j.ID, &j.DesignID, &j.PrinterID, &j.MaterialSpoolID, &j.ProjectID, &j.Status, &j.Progress, &j.StartedAt, &j.CompletedAt, &outcomeJSON, &j.Notes, &j.CreatedAt,
-		&j.RecipeID, &j.AttemptNumber, &j.ParentJobID, &j.FailureCategory, &j.EstimatedSeconds, &j.ActualSeconds, &j.MaterialUsedGrams, &j.CostCents, &snapshotJSON)
+		&j.RecipeID, &j.AttemptNumber, &j.ParentJobID, &j.FailureCategory, &j.EstimatedSeconds, &j.ActualSeconds, &j.MaterialUsedGrams, &j.CostCents, &j.PrinterTimeCostCents, &j.MaterialCostCents, &snapshotJSON)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -633,7 +660,7 @@ func (r *PrintJobRepository) GetByIDWithEvents(ctx context.Context, id uuid.UUID
 // List retrieves print jobs with optional filters.
 func (r *PrintJobRepository) List(ctx context.Context, printerID *uuid.UUID, status *model.PrintJobStatus) ([]model.PrintJob, error) {
 	query := `SELECT pj.id, pj.design_id, pj.printer_id, pj.material_spool_id, pj.project_id, pj.status, pj.progress, pj.started_at, pj.completed_at, pj.outcome, pj.notes, pj.created_at,
-	                 pj.recipe_id, pj.attempt_number, pj.parent_job_id, pj.failure_category, pj.estimated_seconds, pj.actual_seconds, pj.material_used_grams, pj.cost_cents, pj.material_snapshot
+	                 pj.recipe_id, pj.attempt_number, pj.parent_job_id, pj.failure_category, pj.estimated_seconds, pj.actual_seconds, pj.material_used_grams, pj.cost_cents, pj.printer_time_cost_cents, pj.material_cost_cents, pj.material_snapshot
 	          FROM print_jobs pj WHERE 1=1`
 	args := []interface{}{}
 
@@ -658,7 +685,7 @@ func (r *PrintJobRepository) List(ctx context.Context, printerID *uuid.UUID, sta
 		var j model.PrintJob
 		var outcomeJSON, snapshotJSON []byte
 		if err := scanRow(rows, &j.ID, &j.DesignID, &j.PrinterID, &j.MaterialSpoolID, &j.ProjectID, &j.Status, &j.Progress, &j.StartedAt, &j.CompletedAt, &outcomeJSON, &j.Notes, &j.CreatedAt,
-			&j.RecipeID, &j.AttemptNumber, &j.ParentJobID, &j.FailureCategory, &j.EstimatedSeconds, &j.ActualSeconds, &j.MaterialUsedGrams, &j.CostCents, &snapshotJSON); err != nil {
+			&j.RecipeID, &j.AttemptNumber, &j.ParentJobID, &j.FailureCategory, &j.EstimatedSeconds, &j.ActualSeconds, &j.MaterialUsedGrams, &j.CostCents, &j.PrinterTimeCostCents, &j.MaterialCostCents, &snapshotJSON); err != nil {
 			return nil, err
 		}
 		if outcomeJSON != nil {
@@ -676,7 +703,7 @@ func (r *PrintJobRepository) List(ctx context.Context, printerID *uuid.UUID, sta
 func (r *PrintJobRepository) ListByDesign(ctx context.Context, designID uuid.UUID) ([]model.PrintJob, error) {
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT id, design_id, printer_id, material_spool_id, project_id, status, progress, started_at, completed_at, outcome, notes, created_at,
-		       recipe_id, attempt_number, parent_job_id, failure_category, estimated_seconds, actual_seconds, material_used_grams, cost_cents, material_snapshot
+		       recipe_id, attempt_number, parent_job_id, failure_category, estimated_seconds, actual_seconds, material_used_grams, cost_cents, printer_time_cost_cents, material_cost_cents, material_snapshot
 		FROM print_jobs WHERE design_id = ? ORDER BY created_at DESC
 	`, designID)
 	if err != nil {
@@ -689,7 +716,7 @@ func (r *PrintJobRepository) ListByDesign(ctx context.Context, designID uuid.UUI
 		var j model.PrintJob
 		var outcomeJSON, snapshotJSON []byte
 		if err := scanRow(rows, &j.ID, &j.DesignID, &j.PrinterID, &j.MaterialSpoolID, &j.ProjectID, &j.Status, &j.Progress, &j.StartedAt, &j.CompletedAt, &outcomeJSON, &j.Notes, &j.CreatedAt,
-			&j.RecipeID, &j.AttemptNumber, &j.ParentJobID, &j.FailureCategory, &j.EstimatedSeconds, &j.ActualSeconds, &j.MaterialUsedGrams, &j.CostCents, &snapshotJSON); err != nil {
+			&j.RecipeID, &j.AttemptNumber, &j.ParentJobID, &j.FailureCategory, &j.EstimatedSeconds, &j.ActualSeconds, &j.MaterialUsedGrams, &j.CostCents, &j.PrinterTimeCostCents, &j.MaterialCostCents, &snapshotJSON); err != nil {
 			return nil, err
 		}
 		if outcomeJSON != nil {
@@ -712,10 +739,10 @@ func (r *PrintJobRepository) Update(ctx context.Context, j *model.PrintJob) erro
 
 	_, err := r.db.ExecContext(ctx, `
 		UPDATE print_jobs SET printer_id = ?, material_spool_id = ?, status = ?, progress = ?, started_at = ?, completed_at = ?, outcome = ?, notes = ?,
-		       failure_category = ?, actual_seconds = ?, material_used_grams = ?, cost_cents = ?, material_snapshot = ?
+		       failure_category = ?, actual_seconds = ?, material_used_grams = ?, cost_cents = ?, printer_time_cost_cents = ?, material_cost_cents = ?, material_snapshot = ?
 		WHERE id = ?
 	`, j.PrinterID, j.MaterialSpoolID, j.Status, j.Progress, j.StartedAt, j.CompletedAt, outcomeJSON, j.Notes,
-		j.FailureCategory, j.ActualSeconds, j.MaterialUsedGrams, j.CostCents, snapshotJSON, j.ID)
+		j.FailureCategory, j.ActualSeconds, j.MaterialUsedGrams, j.CostCents, j.PrinterTimeCostCents, j.MaterialCostCents, snapshotJSON, j.ID)
 	return err
 }
 
@@ -816,11 +843,11 @@ func (r *PrintJobRepository) GetRetryChain(ctx context.Context, jobID uuid.UUID)
 	rows, err := r.db.QueryContext(ctx, `
 		WITH RECURSIVE chain AS (
 			SELECT id, design_id, printer_id, material_spool_id, project_id, status, progress, started_at, completed_at, outcome, notes, created_at,
-			       recipe_id, attempt_number, parent_job_id, failure_category, estimated_seconds, actual_seconds, material_used_grams, cost_cents, material_snapshot
+			       recipe_id, attempt_number, parent_job_id, failure_category, estimated_seconds, actual_seconds, material_used_grams, cost_cents, printer_time_cost_cents, material_cost_cents, material_snapshot
 			FROM print_jobs WHERE id = ?
 			UNION ALL
 			SELECT pj.id, pj.design_id, pj.printer_id, pj.material_spool_id, pj.project_id, pj.status, pj.progress, pj.started_at, pj.completed_at, pj.outcome, pj.notes, pj.created_at,
-			       pj.recipe_id, pj.attempt_number, pj.parent_job_id, pj.failure_category, pj.estimated_seconds, pj.actual_seconds, pj.material_used_grams, pj.cost_cents, pj.material_snapshot
+			       pj.recipe_id, pj.attempt_number, pj.parent_job_id, pj.failure_category, pj.estimated_seconds, pj.actual_seconds, pj.material_used_grams, pj.cost_cents, pj.printer_time_cost_cents, pj.material_cost_cents, pj.material_snapshot
 			FROM print_jobs pj INNER JOIN chain c ON pj.parent_job_id = c.id
 		)
 		SELECT * FROM chain ORDER BY attempt_number ASC
@@ -835,7 +862,7 @@ func (r *PrintJobRepository) GetRetryChain(ctx context.Context, jobID uuid.UUID)
 		var j model.PrintJob
 		var outcomeJSON, snapshotJSON []byte
 		if err := scanRow(rows, &j.ID, &j.DesignID, &j.PrinterID, &j.MaterialSpoolID, &j.ProjectID, &j.Status, &j.Progress, &j.StartedAt, &j.CompletedAt, &outcomeJSON, &j.Notes, &j.CreatedAt,
-			&j.RecipeID, &j.AttemptNumber, &j.ParentJobID, &j.FailureCategory, &j.EstimatedSeconds, &j.ActualSeconds, &j.MaterialUsedGrams, &j.CostCents, &snapshotJSON); err != nil {
+			&j.RecipeID, &j.AttemptNumber, &j.ParentJobID, &j.FailureCategory, &j.EstimatedSeconds, &j.ActualSeconds, &j.MaterialUsedGrams, &j.CostCents, &j.PrinterTimeCostCents, &j.MaterialCostCents, &snapshotJSON); err != nil {
 			return nil, err
 		}
 		if outcomeJSON != nil {
@@ -853,7 +880,7 @@ func (r *PrintJobRepository) GetRetryChain(ctx context.Context, jobID uuid.UUID)
 func (r *PrintJobRepository) ListByRecipe(ctx context.Context, recipeID uuid.UUID) ([]model.PrintJob, error) {
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT id, design_id, printer_id, material_spool_id, project_id, status, progress, started_at, completed_at, outcome, notes, created_at,
-		       recipe_id, attempt_number, parent_job_id, failure_category, estimated_seconds, actual_seconds, material_used_grams, cost_cents, material_snapshot
+		       recipe_id, attempt_number, parent_job_id, failure_category, estimated_seconds, actual_seconds, material_used_grams, cost_cents, printer_time_cost_cents, material_cost_cents, material_snapshot
 		FROM print_jobs WHERE recipe_id = ? ORDER BY created_at DESC
 	`, recipeID)
 	if err != nil {
@@ -866,7 +893,7 @@ func (r *PrintJobRepository) ListByRecipe(ctx context.Context, recipeID uuid.UUI
 		var j model.PrintJob
 		var outcomeJSON, snapshotJSON []byte
 		if err := scanRow(rows, &j.ID, &j.DesignID, &j.PrinterID, &j.MaterialSpoolID, &j.ProjectID, &j.Status, &j.Progress, &j.StartedAt, &j.CompletedAt, &outcomeJSON, &j.Notes, &j.CreatedAt,
-			&j.RecipeID, &j.AttemptNumber, &j.ParentJobID, &j.FailureCategory, &j.EstimatedSeconds, &j.ActualSeconds, &j.MaterialUsedGrams, &j.CostCents, &snapshotJSON); err != nil {
+			&j.RecipeID, &j.AttemptNumber, &j.ParentJobID, &j.FailureCategory, &j.EstimatedSeconds, &j.ActualSeconds, &j.MaterialUsedGrams, &j.CostCents, &j.PrinterTimeCostCents, &j.MaterialCostCents, &snapshotJSON); err != nil {
 			return nil, err
 		}
 		if outcomeJSON != nil {
@@ -884,7 +911,7 @@ func (r *PrintJobRepository) ListByRecipe(ctx context.Context, recipeID uuid.UUI
 func (r *PrintJobRepository) ListByProject(ctx context.Context, projectID uuid.UUID) ([]model.PrintJob, error) {
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT id, design_id, printer_id, material_spool_id, project_id, status, progress, started_at, completed_at, outcome, notes, created_at,
-		       recipe_id, attempt_number, parent_job_id, failure_category, estimated_seconds, actual_seconds, material_used_grams, cost_cents, material_snapshot
+		       recipe_id, attempt_number, parent_job_id, failure_category, estimated_seconds, actual_seconds, material_used_grams, cost_cents, printer_time_cost_cents, material_cost_cents, material_snapshot
 		FROM print_jobs WHERE project_id = ? ORDER BY created_at DESC
 	`, projectID)
 	if err != nil {
@@ -897,7 +924,7 @@ func (r *PrintJobRepository) ListByProject(ctx context.Context, projectID uuid.U
 		var j model.PrintJob
 		var outcomeJSON, snapshotJSON []byte
 		if err := scanRow(rows, &j.ID, &j.DesignID, &j.PrinterID, &j.MaterialSpoolID, &j.ProjectID, &j.Status, &j.Progress, &j.StartedAt, &j.CompletedAt, &outcomeJSON, &j.Notes, &j.CreatedAt,
-			&j.RecipeID, &j.AttemptNumber, &j.ParentJobID, &j.FailureCategory, &j.EstimatedSeconds, &j.ActualSeconds, &j.MaterialUsedGrams, &j.CostCents, &snapshotJSON); err != nil {
+			&j.RecipeID, &j.AttemptNumber, &j.ParentJobID, &j.FailureCategory, &j.EstimatedSeconds, &j.ActualSeconds, &j.MaterialUsedGrams, &j.CostCents, &j.PrinterTimeCostCents, &j.MaterialCostCents, &snapshotJSON); err != nil {
 			return nil, err
 		}
 		if outcomeJSON != nil {
@@ -928,6 +955,42 @@ func (r *PrintJobRepository) GetProjectJobStats(ctx context.Context, projectID u
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT status, COUNT(*) FROM print_jobs WHERE project_id = ? GROUP BY status
 	`, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var status model.PrintJobStatus
+		var count int
+		if err := scanRow(rows, &status, &count); err != nil {
+			return nil, err
+		}
+		stats.Total += count
+		switch status {
+		case model.PrintJobStatusQueued:
+			stats.Queued = count
+		case model.PrintJobStatusAssigned:
+			stats.Assigned = count
+		case model.PrintJobStatusPrinting, model.PrintJobStatusUploaded:
+			stats.Printing += count
+		case model.PrintJobStatusCompleted:
+			stats.Completed = count
+		case model.PrintJobStatusFailed:
+			stats.Failed = count
+		case model.PrintJobStatusCancelled:
+			stats.Cancelled = count
+		}
+	}
+	return stats, rows.Err()
+}
+
+// GetPrinterJobStats retrieves job statistics for a printer.
+func (r *PrintJobRepository) GetPrinterJobStats(ctx context.Context, printerID uuid.UUID) (*JobStats, error) {
+	stats := &JobStats{}
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT status, COUNT(*) FROM print_jobs WHERE printer_id = ? GROUP BY status
+	`, printerID)
 	if err != nil {
 		return nil, err
 	}
@@ -1149,6 +1212,18 @@ func (r *ExpenseRepository) UpdateItem(ctx context.Context, item *model.ExpenseI
 	return err
 }
 
+// DeleteItem deletes an expense item by ID.
+func (r *ExpenseRepository) DeleteItem(ctx context.Context, id uuid.UUID) error {
+	_, err := r.db.ExecContext(ctx, `DELETE FROM expense_items WHERE id = ?`, id)
+	return err
+}
+
+// DeleteItemsByExpenseID deletes all expense items for an expense.
+func (r *ExpenseRepository) DeleteItemsByExpenseID(ctx context.Context, expenseID uuid.UUID) error {
+	_, err := r.db.ExecContext(ctx, `DELETE FROM expense_items WHERE expense_id = ?`, expenseID)
+	return err
+}
+
 // SaleRepository handles sale database operations.
 type SaleRepository struct {
 	db *sql.DB
@@ -1237,6 +1312,186 @@ func (r *SaleRepository) GetTotalsByDateRange(ctx context.Context, start, end ti
 		FROM sales WHERE occurred_at >= ? AND occurred_at < ?
 	`, start, end), &grossCents, &netCents, &feesCents, &count)
 	return
+}
+
+// ProjectSalesRow represents aggregated sales data for a project.
+type ProjectSalesRow struct {
+	ProjectID   string
+	ProjectName string
+	GrossCents  int
+	NetCents    int
+	Count       int
+	AvgCents    int
+	FirstSale   string
+	LastSale    string
+}
+
+// GetSalesByProject returns sales aggregated by project.
+func (r *SaleRepository) GetSalesByProject(ctx context.Context) ([]ProjectSalesRow, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT
+			COALESCE(s.project_id, ''),
+			COALESCE(p.name, s.item_description),
+			COALESCE(SUM(s.gross_cents), 0),
+			COALESCE(SUM(s.net_cents), 0),
+			COUNT(*),
+			CAST(COALESCE(AVG(s.gross_cents), 0) AS INTEGER),
+			MIN(s.occurred_at),
+			MAX(s.occurred_at)
+		FROM sales s
+		LEFT JOIN projects p ON s.project_id = p.id
+		GROUP BY COALESCE(s.project_id, s.item_description)
+		ORDER BY SUM(s.gross_cents) DESC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var result []ProjectSalesRow
+	for rows.Next() {
+		var row ProjectSalesRow
+		if err := rows.Scan(&row.ProjectID, &row.ProjectName, &row.GrossCents, &row.NetCents, &row.Count, &row.AvgCents, &row.FirstSale, &row.LastSale); err != nil {
+			return nil, err
+		}
+		result = append(result, row)
+	}
+	return result, rows.Err()
+}
+
+// TimeSeriesRow represents a single data point in a time series.
+type TimeSeriesRow struct {
+	DateBucket string
+	Total      int
+}
+
+// ChannelBreakdownRow represents an aggregation by sales channel.
+type ChannelBreakdownRow struct {
+	Channel string
+	Total   int
+	Count   int
+}
+
+// GetSalesOverTime returns gross_cents grouped by date bucket.
+func (r *SaleRepository) GetSalesOverTime(ctx context.Context, since time.Time, strftimeFmt string) ([]TimeSeriesRow, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT strftime(?, occurred_at) AS bucket, COALESCE(SUM(gross_cents), 0)
+		FROM sales WHERE occurred_at >= ?
+		GROUP BY bucket ORDER BY bucket
+	`, strftimeFmt, since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var result []TimeSeriesRow
+	for rows.Next() {
+		var row TimeSeriesRow
+		if err := rows.Scan(&row.DateBucket, &row.Total); err != nil {
+			return nil, err
+		}
+		result = append(result, row)
+	}
+	return result, rows.Err()
+}
+
+// GetNetOverTime returns net_cents grouped by date bucket.
+func (r *SaleRepository) GetNetOverTime(ctx context.Context, since time.Time, strftimeFmt string) ([]TimeSeriesRow, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT strftime(?, occurred_at) AS bucket, COALESCE(SUM(net_cents), 0)
+		FROM sales WHERE occurred_at >= ?
+		GROUP BY bucket ORDER BY bucket
+	`, strftimeFmt, since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var result []TimeSeriesRow
+	for rows.Next() {
+		var row TimeSeriesRow
+		if err := rows.Scan(&row.DateBucket, &row.Total); err != nil {
+			return nil, err
+		}
+		result = append(result, row)
+	}
+	return result, rows.Err()
+}
+
+// GetSalesByChannel returns gross_cents and count grouped by channel.
+func (r *SaleRepository) GetSalesByChannel(ctx context.Context, since time.Time) ([]ChannelBreakdownRow, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT channel, COALESCE(SUM(gross_cents), 0), COUNT(*)
+		FROM sales WHERE occurred_at >= ?
+		GROUP BY channel ORDER BY SUM(gross_cents) DESC
+	`, since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var result []ChannelBreakdownRow
+	for rows.Next() {
+		var row ChannelBreakdownRow
+		if err := rows.Scan(&row.Channel, &row.Total, &row.Count); err != nil {
+			return nil, err
+		}
+		result = append(result, row)
+	}
+	return result, rows.Err()
+}
+
+// CategoryBreakdownRow represents an aggregation by expense category.
+type CategoryBreakdownRow struct {
+	Category string
+	Total    int
+	Count    int
+}
+
+// GetExpensesOverTime returns total_cents for confirmed expenses grouped by date bucket.
+func (r *ExpenseRepository) GetExpensesOverTime(ctx context.Context, since time.Time, strftimeFmt string) ([]TimeSeriesRow, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT strftime(?, occurred_at) AS bucket, COALESCE(SUM(total_cents), 0)
+		FROM expenses WHERE status = 'confirmed' AND occurred_at >= ?
+		GROUP BY bucket ORDER BY bucket
+	`, strftimeFmt, since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var result []TimeSeriesRow
+	for rows.Next() {
+		var row TimeSeriesRow
+		if err := rows.Scan(&row.DateBucket, &row.Total); err != nil {
+			return nil, err
+		}
+		result = append(result, row)
+	}
+	return result, rows.Err()
+}
+
+// GetExpensesByCategory returns total_cents and count for confirmed expenses grouped by category.
+func (r *ExpenseRepository) GetExpensesByCategory(ctx context.Context, since time.Time) ([]CategoryBreakdownRow, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT category, COALESCE(SUM(total_cents), 0), COUNT(*)
+		FROM expenses WHERE status = 'confirmed' AND occurred_at >= ?
+		GROUP BY category ORDER BY SUM(total_cents) DESC
+	`, since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var result []CategoryBreakdownRow
+	for rows.Next() {
+		var row CategoryBreakdownRow
+		if err := rows.Scan(&row.Category, &row.Total, &row.Count); err != nil {
+			return nil, err
+		}
+		result = append(result, row)
+	}
+	return result, rows.Err()
 }
 
 // TemplateRepository handles template database operations.
@@ -1641,5 +1896,69 @@ func (r *BambuCloudRepository) Get(ctx context.Context) (*model.BambuCloudAuth, 
 // Delete removes the stored Bambu Cloud auth.
 func (r *BambuCloudRepository) Delete(ctx context.Context) error {
 	_, err := r.db.ExecContext(ctx, `DELETE FROM bambu_cloud_auth`)
+	return err
+}
+
+// SettingsRepository handles settings key-value storage.
+type SettingsRepository struct {
+	db *sql.DB
+}
+
+// Setting represents a single key-value setting.
+type Setting struct {
+	Key       string    `json:"key"`
+	Value     string    `json:"value"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// Get retrieves a setting by key. Returns nil if not found.
+func (r *SettingsRepository) Get(ctx context.Context, key string) (*Setting, error) {
+	var s Setting
+	var updatedAt string
+	err := r.db.QueryRowContext(ctx, `SELECT key, value, updated_at FROM settings WHERE key = ?`, key).
+		Scan(&s.Key, &s.Value, &updatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	s.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt)
+	return &s, nil
+}
+
+// Set upserts a setting. Creates it if it doesn't exist, updates it if it does.
+func (r *SettingsRepository) Set(ctx context.Context, key, value string) error {
+	_, err := r.db.ExecContext(ctx, `
+		INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
+		ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
+	`, key, value, time.Now().UTC().Format(time.RFC3339))
+	return err
+}
+
+// List retrieves all settings.
+func (r *SettingsRepository) List(ctx context.Context) ([]Setting, error) {
+	rows, err := r.db.QueryContext(ctx, `SELECT key, value, updated_at FROM settings ORDER BY key`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var settings []Setting
+	for rows.Next() {
+		var s Setting
+		var updatedAt string
+		if err := rows.Scan(&s.Key, &s.Value, &updatedAt); err != nil {
+			return nil, err
+		}
+		s.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt)
+		settings = append(settings, s)
+	}
+	return settings, nil
+}
+
+// Delete removes a setting by key.
+func (r *SettingsRepository) Delete(ctx context.Context, key string) error {
+	_, err := r.db.ExecContext(ctx, `DELETE FROM settings WHERE key = ?`, key)
 	return err
 }

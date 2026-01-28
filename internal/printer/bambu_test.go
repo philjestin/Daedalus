@@ -14,7 +14,7 @@ func TestNewBambuClient(t *testing.T) {
 	host := "192.168.1.100"
 	accessCode := "12345678"
 
-	client := NewBambuClient(printerID, host, accessCode)
+	client := NewBambuClient(printerID, host, accessCode, "")
 
 	if client.printerID != printerID {
 		t.Errorf("expected printer ID %s, got %s", printerID, client.printerID)
@@ -30,12 +30,12 @@ func TestNewBambuClient(t *testing.T) {
 	}
 }
 
-func TestNewBambuClient_WithSerialInHost(t *testing.T) {
+func TestNewBambuClient_WithSerialNumber(t *testing.T) {
 	printerID := uuid.New()
-	host := "00M09A350100123_192.168.1.100"
+	host := "192.168.1.100"
 	accessCode := "12345678"
 
-	client := NewBambuClient(printerID, host, accessCode)
+	client := NewBambuClient(printerID, host, accessCode, "00M09A350100123")
 
 	if client.serialNumber != "00M09A350100123" {
 		t.Errorf("expected serial number '00M09A350100123', got %s", client.serialNumber)
@@ -43,7 +43,7 @@ func TestNewBambuClient_WithSerialInHost(t *testing.T) {
 }
 
 func TestSetSerialNumber(t *testing.T) {
-	client := NewBambuClient(uuid.New(), "192.168.1.100", "12345678")
+	client := NewBambuClient(uuid.New(), "192.168.1.100", "12345678", "")
 
 	client.SetSerialNumber("00M09A350100456")
 
@@ -53,7 +53,7 @@ func TestSetSerialNumber(t *testing.T) {
 }
 
 func TestParsePrintStatus_Idle(t *testing.T) {
-	client := NewBambuClient(uuid.New(), "192.168.1.100", "12345678")
+	client := NewBambuClient(uuid.New(), "192.168.1.100", "12345678", "")
 
 	printStatus := &BambuPrintStatus{
 		GcodeState:   "IDLE",
@@ -61,7 +61,7 @@ func TestParsePrintStatus_Idle(t *testing.T) {
 		NozzleTemper: 28.0,
 	}
 
-	state := client.parsePrintStatus(printStatus)
+	state := client.mergePrintStatus(printStatus)
 
 	if state.Status != model.PrinterStatusIdle {
 		t.Errorf("expected status Idle, got %s", state.Status)
@@ -75,7 +75,7 @@ func TestParsePrintStatus_Idle(t *testing.T) {
 }
 
 func TestParsePrintStatus_Printing(t *testing.T) {
-	client := NewBambuClient(uuid.New(), "192.168.1.100", "12345678")
+	client := NewBambuClient(uuid.New(), "192.168.1.100", "12345678", "")
 
 	printStatus := &BambuPrintStatus{
 		GcodeState:      "RUNNING",
@@ -88,7 +88,7 @@ func TestParsePrintStatus_Printing(t *testing.T) {
 		NozzleTargetTemper: 215.0,
 	}
 
-	state := client.parsePrintStatus(printStatus)
+	state := client.mergePrintStatus(printStatus)
 
 	if state.Status != model.PrinterStatusPrinting {
 		t.Errorf("expected status Printing, got %s", state.Status)
@@ -105,7 +105,7 @@ func TestParsePrintStatus_Printing(t *testing.T) {
 }
 
 func TestParsePrintStatus_Paused(t *testing.T) {
-	client := NewBambuClient(uuid.New(), "192.168.1.100", "12345678")
+	client := NewBambuClient(uuid.New(), "192.168.1.100", "12345678", "")
 
 	printStatus := &BambuPrintStatus{
 		GcodeState:  "PAUSE",
@@ -113,7 +113,7 @@ func TestParsePrintStatus_Paused(t *testing.T) {
 		SubtaskName: "paused_print.3mf",
 	}
 
-	state := client.parsePrintStatus(printStatus)
+	state := client.mergePrintStatus(printStatus)
 
 	if state.Status != model.PrinterStatusPaused {
 		t.Errorf("expected status Paused, got %s", state.Status)
@@ -121,14 +121,14 @@ func TestParsePrintStatus_Paused(t *testing.T) {
 }
 
 func TestParsePrintStatus_Failed(t *testing.T) {
-	client := NewBambuClient(uuid.New(), "192.168.1.100", "12345678")
+	client := NewBambuClient(uuid.New(), "192.168.1.100", "12345678", "")
 
 	printStatus := &BambuPrintStatus{
 		GcodeState: "FAILED",
 		PrintError: 1,
 	}
 
-	state := client.parsePrintStatus(printStatus)
+	state := client.mergePrintStatus(printStatus)
 
 	if state.Status != model.PrinterStatusError {
 		t.Errorf("expected status Error, got %s", state.Status)
@@ -136,14 +136,14 @@ func TestParsePrintStatus_Failed(t *testing.T) {
 }
 
 func TestParsePrintStatus_Prepare(t *testing.T) {
-	client := NewBambuClient(uuid.New(), "192.168.1.100", "12345678")
+	client := NewBambuClient(uuid.New(), "192.168.1.100", "12345678", "")
 
 	printStatus := &BambuPrintStatus{
 		GcodeState:  "PREPARE",
 		SubtaskName: "preparing_print.3mf",
 	}
 
-	state := client.parsePrintStatus(printStatus)
+	state := client.mergePrintStatus(printStatus)
 
 	if state.Status != model.PrinterStatusPrinting {
 		t.Errorf("expected status Printing (preparing), got %s", state.Status)
@@ -151,14 +151,14 @@ func TestParsePrintStatus_Prepare(t *testing.T) {
 }
 
 func TestParsePrintStatus_Finish(t *testing.T) {
-	client := NewBambuClient(uuid.New(), "192.168.1.100", "12345678")
+	client := NewBambuClient(uuid.New(), "192.168.1.100", "12345678", "")
 
 	printStatus := &BambuPrintStatus{
 		GcodeState: "FINISH",
 		MCPercent:  100,
 	}
 
-	state := client.parsePrintStatus(printStatus)
+	state := client.mergePrintStatus(printStatus)
 
 	if state.Status != model.PrinterStatusIdle {
 		t.Errorf("expected status Idle (finished), got %s", state.Status)
@@ -166,7 +166,7 @@ func TestParsePrintStatus_Finish(t *testing.T) {
 }
 
 func TestParsePrintStatus_UnknownStateWithStgCur(t *testing.T) {
-	client := NewBambuClient(uuid.New(), "192.168.1.100", "12345678")
+	client := NewBambuClient(uuid.New(), "192.168.1.100", "12345678", "")
 
 	// When GcodeState is unknown but stg_cur indicates activity
 	printStatus := &BambuPrintStatus{
@@ -174,7 +174,7 @@ func TestParsePrintStatus_UnknownStateWithStgCur(t *testing.T) {
 		StgCur:     5, // Some intermediate stage
 	}
 
-	state := client.parsePrintStatus(printStatus)
+	state := client.mergePrintStatus(printStatus)
 
 	if state.Status != model.PrinterStatusPrinting {
 		t.Errorf("expected status Printing (due to stg_cur), got %s", state.Status)
@@ -182,14 +182,14 @@ func TestParsePrintStatus_UnknownStateWithStgCur(t *testing.T) {
 }
 
 func TestParsePrintStatus_GcodeFileFallback(t *testing.T) {
-	client := NewBambuClient(uuid.New(), "192.168.1.100", "12345678")
+	client := NewBambuClient(uuid.New(), "192.168.1.100", "12345678", "")
 
 	printStatus := &BambuPrintStatus{
 		GcodeState: "RUNNING",
 		GcodeFile:  "fallback_file.gcode",
 	}
 
-	state := client.parsePrintStatus(printStatus)
+	state := client.mergePrintStatus(printStatus)
 
 	if state.CurrentFile != "fallback_file.gcode" {
 		t.Errorf("expected current file 'fallback_file.gcode', got %s", state.CurrentFile)
@@ -485,7 +485,7 @@ func TestBambuCommandSerialization_ProjectFile(t *testing.T) {
 }
 
 func TestGetStatus_ReturnsLastState(t *testing.T) {
-	client := NewBambuClient(uuid.New(), "192.168.1.100", "12345678")
+	client := NewBambuClient(uuid.New(), "192.168.1.100", "12345678", "")
 
 	// Simulate receiving a status update
 	client.lastState = &model.PrinterState{
@@ -512,7 +512,7 @@ func TestGetStatus_ReturnsLastState(t *testing.T) {
 }
 
 func TestGetStatus_ReturnsOfflineWhenNoState(t *testing.T) {
-	client := NewBambuClient(uuid.New(), "192.168.1.100", "12345678")
+	client := NewBambuClient(uuid.New(), "192.168.1.100", "12345678", "")
 	client.lastState = nil
 
 	state, err := client.GetStatus()
@@ -662,7 +662,7 @@ func TestBambuLightsReportParsing(t *testing.T) {
 
 // BenchmarkParsePrintStatus benchmarks status parsing performance.
 func BenchmarkParsePrintStatus(b *testing.B) {
-	client := NewBambuClient(uuid.New(), "192.168.1.100", "12345678")
+	client := NewBambuClient(uuid.New(), "192.168.1.100", "12345678", "")
 
 	printStatus := &BambuPrintStatus{
 		GcodeState:         "RUNNING",
@@ -679,7 +679,7 @@ func BenchmarkParsePrintStatus(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		client.parsePrintStatus(printStatus)
+		client.mergePrintStatus(printStatus)
 	}
 }
 

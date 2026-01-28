@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -38,6 +40,7 @@ type Services struct {
 	Etsy       *EtsyService
 	Auth       *AuthService
 	BambuCloud *BambuCloudService
+	Settings   *SettingsService
 }
 
 // EtsyConfig holds Etsy OAuth configuration.
@@ -55,21 +58,22 @@ type ServicesConfig struct {
 // NewServices creates all service instances.
 func NewServices(repos *repository.Repositories, store storage.Storage, printerMgr *printer.Manager, hub *realtime.Hub) *Services {
 	return &Services{
-		Projects:  &ProjectService{repo: repos.Projects, printJobRepo: repos.PrintJobs, printerRepo: repos.Printers, spoolRepo: repos.Spools, templateRepo: repos.Templates, designRepo: repos.Designs, printerMgr: printerMgr, hub: hub, storage: store},
+		Projects:  &ProjectService{repo: repos.Projects, printJobRepo: repos.PrintJobs, printerRepo: repos.Printers, spoolRepo: repos.Spools, templateRepo: repos.Templates, designRepo: repos.Designs, saleRepo: repos.Sales, printerMgr: printerMgr, hub: hub, storage: store},
 		Parts:     &PartService{repo: repos.Parts},
 		Designs:   &DesignService{repo: repos.Designs, fileRepo: repos.Files, storage: store},
-		Printers:  &PrinterService{repo: repos.Printers, manager: printerMgr, hub: hub, discovery: printer.NewDiscovery()},
+		Printers:  &PrinterService{repo: repos.Printers, printJobRepo: repos.PrintJobs, manager: printerMgr, hub: hub, discovery: printer.NewDiscovery(), bambuCloudRepo: repos.BambuCloud},
 		Materials: &MaterialService{repo: repos.Materials},
 		Spools:    &SpoolService{repo: repos.Spools},
 		PrintJobs: &PrintJobService{repo: repos.PrintJobs, printerRepo: repos.Printers, designRepo: repos.Designs, spoolRepo: repos.Spools, materialRepo: repos.Materials, projectRepo: repos.Projects, printerMgr: printerMgr, hub: hub, storage: store},
 		Files:     &FileService{repo: repos.Files, storage: store},
-		Expenses:  &ExpenseService{repo: repos.Expenses, materialRepo: repos.Materials, spoolRepo: repos.Spools, fileRepo: repos.Files, storage: store},
+		Expenses:  &ExpenseService{repo: repos.Expenses, materialRepo: repos.Materials, spoolRepo: repos.Spools, fileRepo: repos.Files, settingsRepo: repos.Settings, storage: store},
 		Sales:     &SaleService{repo: repos.Sales},
 		Stats:     &StatsService{expenseRepo: repos.Expenses, saleRepo: repos.Sales, printJobRepo: repos.PrintJobs},
 		Templates: &TemplateService{repo: repos.Templates, projectRepo: repos.Projects, partRepo: repos.Parts, designRepo: repos.Designs, printJobRepo: repos.PrintJobs, spoolRepo: repos.Spools, materialRepo: repos.Materials, printerRepo: repos.Printers},
 		Etsy:       nil, // Initialize separately with NewServicesWithEtsy
 		Auth:       nil, // Initialize separately with NewServicesWithConfig
 		BambuCloud: NewBambuCloudService(repos.BambuCloud, repos.Printers, printerMgr, bambu.NewCloudClient()),
+		Settings:   &SettingsService{repo: repos.Settings},
 	}
 }
 
@@ -100,6 +104,7 @@ type ProjectService struct {
 	spoolRepo       *repository.SpoolRepository
 	templateRepo    *repository.TemplateRepository
 	designRepo      *repository.DesignRepository
+	saleRepo        *repository.SaleRepository
 	printerMgr      *printer.Manager
 	hub             *realtime.Hub
 	storage         storage.Storage
@@ -141,6 +146,84 @@ func (s *ProjectService) GetJobStats(ctx context.Context, projectID uuid.UUID) (
 // ListJobs retrieves all print jobs for a project.
 func (s *ProjectService) ListJobs(ctx context.Context, projectID uuid.UUID) ([]model.PrintJob, error) {
 	return s.printJobRepo.ListByProject(ctx, projectID)
+}
+
+// GetProjectSummary computes a derived analytics summary for a project.
+// All values are computed from jobs and sales — nothing is stored.
+func (s *ProjectService) GetProjectSummary(ctx context.Context, projectID uuid.UUID) (*model.ProjectSummary, error) {
+	// Fetch jobs
+	jobs, err := s.printJobRepo.ListByProject(ctx, projectID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Fetch sales
+	sales, err := s.saleRepo.List(ctx, &projectID)
+	if err != nil {
+		return nil, err
+	}
+
+	summary := &model.ProjectSummary{}
+
+	// Revenue from sales
+	for _, sale := range sales {
+		summary.TotalRevenueCents += sale.GrossCents
+		summary.TotalFeesCents += sale.FeesCents
+		summary.NetRevenueCents += sale.NetCents
+		summary.SalesCount++
+	}
+
+	// Cost and performance from jobs
+	summary.JobCount = len(jobs)
+	for _, job := range jobs {
+		if job.Status == model.PrintJobStatusCompleted {
+			summary.CompletedCount++
+		}
+		if job.Status == model.PrintJobStatusFailed {
+			summary.FailedCount++
+		}
+
+		// Cost breakdown (from completed jobs with snapshots)
+		if job.PrinterTimeCostCents != nil {
+			summary.PrinterTimeCostCents += *job.PrinterTimeCostCents
+		}
+		if job.MaterialCostCents != nil {
+			summary.MaterialCostCents += *job.MaterialCostCents
+		}
+		if job.CostCents != nil {
+			summary.TotalCostCents += *job.CostCents
+		}
+
+		// Print time
+		if job.ActualSeconds != nil && *job.ActualSeconds > 0 {
+			summary.TotalPrintSeconds += *job.ActualSeconds
+		}
+
+		// Material
+		if job.MaterialUsedGrams != nil {
+			summary.TotalMaterialGrams += *job.MaterialUsedGrams
+		}
+	}
+
+	// Derived metrics
+	if summary.CompletedCount+summary.FailedCount > 0 {
+		summary.SuccessRate = float64(summary.CompletedCount) / float64(summary.CompletedCount+summary.FailedCount)
+	}
+	if summary.CompletedCount > 0 {
+		summary.AvgPrintSeconds = summary.TotalPrintSeconds / summary.CompletedCount
+	}
+
+	summary.GrossProfitCents = summary.NetRevenueCents - summary.TotalCostCents
+	if summary.NetRevenueCents > 0 {
+		summary.GrossMarginPercent = float64(summary.GrossProfitCents) / float64(summary.NetRevenueCents) * 100
+	}
+
+	if summary.TotalPrintSeconds > 0 {
+		hours := float64(summary.TotalPrintSeconds) / 3600.0
+		summary.ProfitPerHourCents = int(float64(summary.GrossProfitCents) / hours)
+	}
+
+	return summary, nil
 }
 
 // StartProductionResult contains the result of starting production.
@@ -546,12 +629,52 @@ func (s *DesignService) GetFile(ctx context.Context, id uuid.UUID) (io.ReadClose
 	return reader, design, nil
 }
 
+// OpenInExternalApp opens a design file in an external application.
+func (s *DesignService) OpenInExternalApp(ctx context.Context, id uuid.UUID, appName string) error {
+	design, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	if design == nil {
+		return fmt.Errorf("design not found")
+	}
+
+	file, err := s.fileRepo.GetByID(ctx, design.FileID)
+	if err != nil {
+		return err
+	}
+	if file == nil {
+		return fmt.Errorf("file not found")
+	}
+
+	fullPath := s.storage.GetFullPath(file.StoragePath)
+	if _, err := os.Stat(fullPath); err != nil {
+		return fmt.Errorf("file not found on disk: %w", err)
+	}
+
+	var cmd *exec.Cmd
+	if appName != "" {
+		cmd = exec.Command("open", "-a", appName, fullPath)
+	} else {
+		cmd = exec.Command("open", fullPath)
+	}
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to open application: %w: %s", err, string(output))
+	}
+
+	return nil
+}
+
 // PrinterService handles printer business logic.
 type PrinterService struct {
-	repo      *repository.PrinterRepository
-	manager   *printer.Manager
-	hub       *realtime.Hub
-	discovery *printer.Discovery
+	repo           *repository.PrinterRepository
+	printJobRepo   *repository.PrintJobRepository
+	manager        *printer.Manager
+	hub            *realtime.Hub
+	discovery      *printer.Discovery
+	bambuCloudRepo *repository.BambuCloudRepository
 }
 
 // Create creates a new printer.
@@ -602,6 +725,16 @@ func (s *PrinterService) GetAllStates(ctx context.Context) map[uuid.UUID]*model.
 	return s.manager.GetAllStates()
 }
 
+// ListJobs retrieves all print jobs for a printer.
+func (s *PrinterService) ListJobs(ctx context.Context, printerID uuid.UUID) ([]model.PrintJob, error) {
+	return s.printJobRepo.List(ctx, &printerID, nil)
+}
+
+// GetJobStats retrieves job statistics for a printer.
+func (s *PrinterService) GetJobStats(ctx context.Context, printerID uuid.UUID) (*repository.JobStats, error) {
+	return s.printJobRepo.GetPrinterJobStats(ctx, printerID)
+}
+
 // DiscoverPrinters scans the network for printers.
 func (s *PrinterService) DiscoverPrinters(ctx context.Context) ([]printer.DiscoveredPrinter, error) {
 	discovered, err := s.discovery.QuickScan(ctx)
@@ -630,6 +763,8 @@ func (s *PrinterService) DiscoverPrinters(ctx context.Context) ([]printer.Discov
 
 // ConnectAllPrinters loads all printers from the database and connects
 // non-manual printers. Called at startup to restore connections.
+// For bambu_cloud printers, credentials are refreshed from the stored
+// cloud auth so that token updates from later logins are picked up.
 func (s *PrinterService) ConnectAllPrinters(ctx context.Context) {
 	printers, err := s.repo.List(ctx)
 	if err != nil {
@@ -637,11 +772,32 @@ func (s *PrinterService) ConnectAllPrinters(ctx context.Context) {
 		return
 	}
 
+	// Load cloud auth once if any cloud printers exist
+	var cloudAuth *model.BambuCloudAuth
+	for _, p := range printers {
+		if p.ConnectionType == model.ConnectionTypeBambuCloud {
+			cloudAuth, _ = s.bambuCloudRepo.Get(ctx)
+			break
+		}
+	}
+
 	for i := range printers {
 		p := &printers[i]
 		if p.ConnectionType == model.ConnectionTypeManual {
 			continue
 		}
+
+		// For cloud printers, inject the latest auth credentials
+		if p.ConnectionType == model.ConnectionTypeBambuCloud {
+			if cloudAuth == nil {
+				slog.Warn("skipping cloud printer — no stored Bambu Cloud credentials",
+					"printer_id", p.ID, "name", p.Name)
+				continue
+			}
+			p.ConnectionURI = cloudAuth.MQTTUsername
+			p.APIKey = cloudAuth.AccessToken
+		}
+
 		slog.Info("reconnecting printer", "id", p.ID, "name", p.Name, "type", p.ConnectionType)
 		go s.manager.Connect(p)
 	}
@@ -1422,6 +1578,25 @@ func (s *PrintJobService) RecordOutcome(ctx context.Context, id uuid.UUID, outco
 		outcome.MaterialCost = (outcome.MaterialUsed / 1000.0) * material.CostPerKg
 	}
 
+	// Compute printer time cost snapshot
+	var printerTimeCostCents int
+	if job.PrinterID != nil {
+		printerObj, _ := s.printerRepo.GetByID(ctx, *job.PrinterID)
+		if printerObj != nil && printerObj.CostPerHourCents > 0 {
+			var durationSeconds int
+			if outcome.ActualTime != nil && *outcome.ActualTime > 0 {
+				durationSeconds = *outcome.ActualTime
+			} else if job.ActualSeconds != nil && *job.ActualSeconds > 0 {
+				durationSeconds = *job.ActualSeconds
+			} else if job.StartedAt != nil {
+				durationSeconds = int(time.Since(*job.StartedAt).Seconds())
+			}
+			if durationSeconds > 0 {
+				printerTimeCostCents = (durationSeconds * printerObj.CostPerHourCents) / 3600
+			}
+		}
+	}
+
 	// Update spool remaining weight if material was used
 	if outcome.MaterialUsed > 0 && spool != nil {
 		newWeight := spool.RemainingWeight - outcome.MaterialUsed
@@ -1479,12 +1654,17 @@ func (s *PrintJobService) RecordOutcome(ctx context.Context, id uuid.UUID, outco
 		return fmt.Errorf("failed to record outcome event: %w", err)
 	}
 
+	// Persist cost snapshots
+	materialCostCents := int(outcome.MaterialCost * 100)
+	totalCostCents := materialCostCents + printerTimeCostCents
+
 	// Update job with outcome data
 	job.CompletedAt = &now
 	job.Outcome = outcome
 	job.MaterialUsedGrams = &outcome.MaterialUsed
-	costCents := int(outcome.MaterialCost * 100)
-	job.CostCents = &costCents
+	job.CostCents = &totalCostCents
+	job.PrinterTimeCostCents = &printerTimeCostCents
+	job.MaterialCostCents = &materialCostCents
 	if outcome.ActualTime != nil {
 		job.ActualSeconds = outcome.ActualTime
 	}
@@ -1857,15 +2037,28 @@ type ExpenseService struct {
 	materialRepo *repository.MaterialRepository
 	spoolRepo    *repository.SpoolRepository
 	fileRepo     *repository.FileRepository
+	settingsRepo *repository.SettingsRepository
 	storage      storage.Storage
 	parser       *receipt.Parser
+}
+
+// initParser initializes the receipt parser, reading the API key from
+// the settings DB first, then falling back to the ANTHROPIC_API_KEY env var.
+func (s *ExpenseService) initParser(ctx context.Context) {
+	apiKey := os.Getenv("ANTHROPIC_API_KEY")
+	if s.settingsRepo != nil {
+		if setting, err := s.settingsRepo.Get(ctx, "anthropic_api_key"); err == nil && setting != nil && setting.Value != "" {
+			apiKey = setting.Value
+		}
+	}
+	s.parser = receipt.NewParserWithKey(apiKey)
 }
 
 // UploadReceipt uploads a receipt file and starts AI parsing.
 func (s *ExpenseService) UploadReceipt(ctx context.Context, filename string, data []byte) (*model.Expense, error) {
 	// Initialize parser lazily
 	if s.parser == nil {
-		s.parser = receipt.NewParser()
+		s.initParser(ctx)
 	}
 
 	// Store the file using Save with a bytes reader
@@ -1913,6 +2106,12 @@ func (s *ExpenseService) parseReceiptAsync(ctx context.Context, expenseID uuid.U
 	parsed, err := s.parser.ParseFromBytes(ctx, data, contentType)
 	if err != nil {
 		slog.Error("failed to parse receipt", "expense_id", expenseID, "error", err)
+		// Surface the error to the user by updating the expense record
+		if expense, getErr := s.repo.GetByID(ctx, expenseID); getErr == nil && expense != nil {
+			expense.Notes = fmt.Sprintf("Parse failed: %s", err.Error())
+			expense.Status = model.ExpenseStatusRejected
+			_ = s.repo.Update(ctx, expense)
+		}
 		return
 	}
 
@@ -1962,7 +2161,7 @@ func (s *ExpenseService) parseReceiptAsync(ctx context.Context, expenseID uuid.U
 		return
 	}
 
-	// Create expense items
+	// Create expense items and auto-create materials + spools for filament
 	for _, item := range parsed.Items {
 		expenseItem := &model.ExpenseItem{
 			ExpenseID:       expenseID,
@@ -1980,10 +2179,178 @@ func (s *ExpenseService) parseReceiptAsync(ctx context.Context, expenseID uuid.U
 
 		if err := s.repo.CreateItem(ctx, expenseItem); err != nil {
 			slog.Error("failed to create expense item", "expense_id", expenseID, "error", err)
+			continue
+		}
+
+		// Auto-create material + spools for filament items
+		if item.IsFilament && item.Filament != nil {
+			materialID, err := s.findOrCreateMaterial(ctx, item.Filament, item.UnitPriceCents)
+			if err != nil {
+				slog.Error("failed to find/create material", "expense_id", expenseID, "description", item.Description, "error", err)
+				continue
+			}
+
+			weightGrams := item.Filament.WeightGrams
+			if weightGrams == 0 {
+				weightGrams = 1000
+			}
+
+			quantity := int(item.Quantity)
+			if quantity < 1 {
+				quantity = 1
+			}
+
+			for i := 0; i < quantity; i++ {
+				spool := &model.MaterialSpool{
+					MaterialID:      materialID,
+					InitialWeight:   weightGrams,
+					RemainingWeight: weightGrams,
+					PurchaseDate:    &expense.OccurredAt,
+					PurchaseCost:    float64(item.TotalPriceCents) / 100.0 / float64(quantity),
+					Status:          model.SpoolStatusNew,
+					Notes:           fmt.Sprintf("From receipt: %s", expense.Vendor),
+				}
+
+				if err := s.spoolRepo.Create(ctx, spool); err != nil {
+					slog.Error("failed to create spool", "expense_id", expenseID, "error", err)
+					continue
+				}
+
+				if i == 0 {
+					expenseItem.MatchedSpoolID = &spool.ID
+					expenseItem.MatchedMaterialID = &materialID
+					expenseItem.ActionTaken = model.ExpenseItemActionCreatedSpool
+				}
+			}
+
+			if err := s.repo.UpdateItem(ctx, expenseItem); err != nil {
+				slog.Error("failed to update expense item", "expense_id", expenseID, "error", err)
+			}
+
+			slog.Info("auto-created material + spools", "expense_id", expenseID, "material_id", materialID, "quantity", quantity, "description", item.Description)
 		}
 	}
 
-	slog.Info("expense items created", "expense_id", expenseID, "count", len(parsed.Items))
+	// Auto-confirm the expense since materials were processed
+	expense.Status = model.ExpenseStatusConfirmed
+	if err := s.repo.Update(ctx, expense); err != nil {
+		slog.Error("failed to auto-confirm expense", "expense_id", expenseID, "error", err)
+	}
+
+	slog.Info("expense auto-confirmed", "expense_id", expenseID, "items", len(parsed.Items))
+}
+
+// findOrCreateMaterial finds an existing material matching the filament metadata,
+// or creates a new one. Returns the material ID.
+// filamentColorHex maps common filament color names to hex values.
+var filamentColorHex = map[string]string{
+	"black":          "#000000",
+	"white":          "#FFFFFF",
+	"red":            "#FF0000",
+	"blue":           "#0000FF",
+	"green":          "#008000",
+	"yellow":         "#FFFF00",
+	"orange":         "#FF8C00",
+	"purple":         "#800080",
+	"pink":           "#FF69B4",
+	"gray":           "#808080",
+	"grey":           "#808080",
+	"silver":         "#C0C0C0",
+	"gold":           "#FFD700",
+	"brown":          "#8B4513",
+	"beige":          "#F5DEB3",
+	"ivory":          "#FFFFF0",
+	"cream":          "#FFFDD0",
+	"cyan":           "#00FFFF",
+	"magenta":        "#FF00FF",
+	"teal":           "#008080",
+	"navy":           "#000080",
+	"olive":          "#808000",
+	"maroon":         "#800000",
+	"coral":          "#FF7F50",
+	"salmon":         "#FA8072",
+	"turquoise":      "#40E0D0",
+	"lavender":       "#E6E6FA",
+	"lilac":          "#C8A2C8",
+	"mint":           "#3EB489",
+	"jade":           "#00A86B",
+	"transparent":    "#E0E0E0",
+	"natural":        "#F5F0E1",
+	"matte black":    "#1A1A1A",
+	"matte white":    "#F0F0F0",
+	"charcoal":       "#36454F",
+	"dark grey":      "#555555",
+	"dark gray":      "#555555",
+	"light grey":     "#BBBBBB",
+	"light gray":     "#BBBBBB",
+	"dark blue":      "#00008B",
+	"light blue":     "#ADD8E6",
+	"sky blue":       "#87CEEB",
+	"dark green":     "#006400",
+	"light green":    "#90EE90",
+	"dark red":       "#8B0000",
+	"bambu green":    "#00AE42",
+	"jade white":     "#E8E0D8",
+	"arctic blue":    "#6CB4EE",
+}
+
+func (s *ExpenseService) findOrCreateMaterial(ctx context.Context, fm *model.FilamentMetadata, unitPriceCents int) (uuid.UUID, error) {
+	matType := model.MaterialType(strings.ToLower(fm.MaterialType))
+	manufacturer := fm.Brand
+	color := fm.Color
+
+	// Try to find existing material
+	existing, err := s.materialRepo.FindByTypeManufacturerColor(ctx, matType, manufacturer, color)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("find material: %w", err)
+	}
+	if existing != nil {
+		return existing.ID, nil
+	}
+
+	// Build a descriptive name
+	name := manufacturer
+	if name != "" {
+		name += " "
+	}
+	name += strings.ToUpper(string(matType))
+	if color != "" {
+		name += " - " + color
+	}
+
+	// Calculate cost per kg from the unit price
+	weightKg := fm.WeightGrams / 1000.0
+	if weightKg <= 0 {
+		weightKg = 1.0
+	}
+	costPerKg := float64(unitPriceCents) / 100.0 / weightKg
+
+	diameterMM := fm.DiameterMM
+	if diameterMM == 0 {
+		diameterMM = 1.75
+	}
+
+	// Resolve color hex: use AI-provided value, then fallback to color name lookup
+	colorHex := fm.ColorHex
+	if colorHex == "" && color != "" {
+		colorHex = filamentColorHex[strings.ToLower(color)]
+	}
+
+	mat := &model.Material{
+		Name:         name,
+		Type:         matType,
+		Manufacturer: manufacturer,
+		Color:        color,
+		ColorHex:     colorHex,
+		Density:      1.24, // reasonable default for PLA/PETG
+		CostPerKg:    costPerKg,
+	}
+
+	if err := s.materialRepo.Create(ctx, mat); err != nil {
+		return uuid.Nil, fmt.Errorf("create material: %w", err)
+	}
+
+	return mat.ID, nil
 }
 
 // GetByID retrieves an expense by ID with its items.
@@ -2127,6 +2494,61 @@ func (s *ExpenseService) ConfirmExpense(ctx context.Context, id uuid.UUID, req *
 	return nil
 }
 
+// RetryParse re-reads the stored receipt file and re-triggers AI parsing.
+func (s *ExpenseService) RetryParse(ctx context.Context, id uuid.UUID) (*model.Expense, error) {
+	// Re-initialize parser on retry so it picks up any new API key from settings
+	s.initParser(ctx)
+
+	expense, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if expense == nil {
+		return nil, fmt.Errorf("expense not found")
+	}
+	if expense.ReceiptFilePath == "" {
+		return nil, fmt.Errorf("no receipt file stored for this expense")
+	}
+
+	// Read the file back from storage
+	reader, err := s.storage.Get(expense.ReceiptFilePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read stored receipt: %w", err)
+	}
+	data, err := io.ReadAll(reader)
+	reader.Close()
+	if err != nil {
+		return nil, fmt.Errorf("failed to read stored receipt: %w", err)
+	}
+
+	// Delete any old expense items from a previous parse attempt
+	_ = s.repo.DeleteItemsByExpenseID(ctx, id)
+
+	// Reset expense to pending state
+	expense.Status = model.ExpenseStatusPending
+	expense.Notes = ""
+	expense.Vendor = ""
+	expense.SubtotalCents = 0
+	expense.TaxCents = 0
+	expense.ShippingCents = 0
+	expense.TotalCents = 0
+	expense.Confidence = 0
+	expense.RawOCRText = ""
+	expense.RawAIResponse = nil
+	expense.Category = model.ExpenseCategoryOther
+	if err := s.repo.Update(ctx, expense); err != nil {
+		return nil, fmt.Errorf("failed to reset expense: %w", err)
+	}
+
+	// Re-trigger parsing
+	go func() {
+		parseCtx := context.Background()
+		s.parseReceiptAsync(parseCtx, expense.ID, expense.ReceiptFilePath, data)
+	}()
+
+	return expense, nil
+}
+
 // Delete deletes an expense.
 func (s *ExpenseService) Delete(ctx context.Context, id uuid.UUID) error {
 	return s.repo.Delete(ctx, id)
@@ -2253,6 +2675,182 @@ func (s *StatsService) GetFinancialSummary(ctx context.Context) (*FinancialSumma
 	summary.NetProfitCents = summary.TotalSalesNetCents - summary.TotalExpensesCents - materialCostCents
 
 	return summary, nil
+}
+
+// TimeSeriesPoint represents a single data point in a time series.
+type TimeSeriesPoint struct {
+	Date     string `json:"date"`
+	Revenue  int    `json:"revenue"`
+	Expenses int    `json:"expenses"`
+	Profit   int    `json:"profit"`
+}
+
+// TimeSeriesData represents the full time series response.
+type TimeSeriesData struct {
+	Points []TimeSeriesPoint `json:"points"`
+	Period string            `json:"period"`
+}
+
+// CategoryBreakdown represents an expense category breakdown.
+type CategoryBreakdown struct {
+	Category string `json:"category"`
+	Total    int    `json:"total"`
+	Count    int    `json:"count"`
+}
+
+// ChannelBreakdown represents a sales channel breakdown.
+type ChannelBreakdown struct {
+	Channel string `json:"channel"`
+	Total   int    `json:"total"`
+	Count   int    `json:"count"`
+}
+
+// parsePeriod converts a period string to (since time, strftime format).
+func parsePeriod(period string) (time.Time, string) {
+	now := time.Now()
+	switch period {
+	case "90d":
+		return now.AddDate(0, 0, -90), "%Y-W%W"
+	case "12m":
+		return now.AddDate(-1, 0, 0), "%Y-%m"
+	default: // "30d"
+		return now.AddDate(0, 0, -30), "%Y-%m-%d"
+	}
+}
+
+// GetTimeSeriesData returns aligned revenue, expenses, and profit time series data.
+func (s *StatsService) GetTimeSeriesData(ctx context.Context, period string) (*TimeSeriesData, error) {
+	since, strftimeFmt := parsePeriod(period)
+
+	revenueSeries, err := s.saleRepo.GetSalesOverTime(ctx, since, strftimeFmt)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get revenue series: %w", err)
+	}
+
+	expenseSeries, err := s.expenseRepo.GetExpensesOverTime(ctx, since, strftimeFmt)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get expense series: %w", err)
+	}
+
+	// Merge into aligned date buckets
+	allDates := make(map[string]bool)
+	revenueMap := make(map[string]int)
+	expenseMap := make(map[string]int)
+
+	for _, r := range revenueSeries {
+		allDates[r.DateBucket] = true
+		revenueMap[r.DateBucket] = r.Total
+	}
+	for _, e := range expenseSeries {
+		allDates[e.DateBucket] = true
+		expenseMap[e.DateBucket] = e.Total
+	}
+
+	// Sort dates
+	dates := make([]string, 0, len(allDates))
+	for d := range allDates {
+		dates = append(dates, d)
+	}
+	sortStrings(dates)
+
+	points := make([]TimeSeriesPoint, len(dates))
+	for i, d := range dates {
+		rev := revenueMap[d]
+		exp := expenseMap[d]
+		points[i] = TimeSeriesPoint{
+			Date:     d,
+			Revenue:  rev,
+			Expenses: exp,
+			Profit:   rev - exp,
+		}
+	}
+
+	return &TimeSeriesData{
+		Points: points,
+		Period: period,
+	}, nil
+}
+
+// GetExpensesByCategory returns expense totals grouped by category.
+func (s *StatsService) GetExpensesByCategory(ctx context.Context, period string) ([]CategoryBreakdown, error) {
+	since, _ := parsePeriod(period)
+	rows, err := s.expenseRepo.GetExpensesByCategory(ctx, since)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]CategoryBreakdown, len(rows))
+	for i, r := range rows {
+		result[i] = CategoryBreakdown{
+			Category: r.Category,
+			Total:    r.Total,
+			Count:    r.Count,
+		}
+	}
+	return result, nil
+}
+
+// GetSalesByChannel returns sales totals grouped by channel.
+func (s *StatsService) GetSalesByChannel(ctx context.Context, period string) ([]ChannelBreakdown, error) {
+	since, _ := parsePeriod(period)
+	rows, err := s.saleRepo.GetSalesByChannel(ctx, since)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]ChannelBreakdown, len(rows))
+	for i, r := range rows {
+		result[i] = ChannelBreakdown{
+			Channel: r.Channel,
+			Total:   r.Total,
+			Count:   r.Count,
+		}
+	}
+	return result, nil
+}
+
+// ProjectSales represents aggregated sales data for a project.
+type ProjectSales struct {
+	ProjectID   string `json:"project_id"`
+	ProjectName string `json:"project_name"`
+	GrossCents  int    `json:"gross_cents"`
+	NetCents    int    `json:"net_cents"`
+	Count       int    `json:"count"`
+	AvgCents    int    `json:"avg_cents"`
+	FirstSale   string `json:"first_sale"`
+	LastSale    string `json:"last_sale"`
+}
+
+// GetSalesByProject returns sales aggregated by project.
+func (s *StatsService) GetSalesByProject(ctx context.Context) ([]ProjectSales, error) {
+	rows, err := s.saleRepo.GetSalesByProject(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]ProjectSales, len(rows))
+	for i, r := range rows {
+		result[i] = ProjectSales{
+			ProjectID:   r.ProjectID,
+			ProjectName: r.ProjectName,
+			GrossCents:  r.GrossCents,
+			NetCents:    r.NetCents,
+			Count:       r.Count,
+			AvgCents:    r.AvgCents,
+			FirstSale:   r.FirstSale,
+			LastSale:    r.LastSale,
+		}
+	}
+	return result, nil
+}
+
+// sortStrings sorts a slice of strings in ascending order.
+func sortStrings(s []string) {
+	for i := 1; i < len(s); i++ {
+		for j := i; j > 0 && s[j] < s[j-1]; j-- {
+			s[j], s[j-1] = s[j-1], s[j]
+		}
+	}
 }
 
 // TemplateService handles template business logic.
@@ -2772,3 +3370,27 @@ func (s *TemplateService) CalculateRecipeCost(ctx context.Context, recipeID uuid
 	return estimate, nil
 }
 
+// SettingsService handles application settings.
+type SettingsService struct {
+	repo *repository.SettingsRepository
+}
+
+// Get retrieves a setting by key.
+func (s *SettingsService) Get(ctx context.Context, key string) (*repository.Setting, error) {
+	return s.repo.Get(ctx, key)
+}
+
+// Set creates or updates a setting.
+func (s *SettingsService) Set(ctx context.Context, key, value string) error {
+	return s.repo.Set(ctx, key, value)
+}
+
+// List retrieves all settings.
+func (s *SettingsService) List(ctx context.Context) ([]repository.Setting, error) {
+	return s.repo.List(ctx)
+}
+
+// Delete removes a setting.
+func (s *SettingsService) Delete(ctx context.Context, key string) error {
+	return s.repo.Delete(ctx, key)
+}

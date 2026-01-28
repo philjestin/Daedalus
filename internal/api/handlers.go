@@ -6,6 +6,8 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strconv"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -188,6 +190,23 @@ func (h *ProjectHandler) GetJobStats(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, stats)
 }
 
+// GetProjectSummary returns derived analytics for a project.
+func (h *ProjectHandler) GetProjectSummary(w http.ResponseWriter, r *http.Request) {
+	id, err := parseUUID(r, "id")
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid project ID")
+		return
+	}
+
+	summary, err := h.service.GetProjectSummary(r.Context(), id)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusOK, summary)
+}
+
 // StartProduction auto-assigns resources and starts all queued jobs for a project.
 func (h *ProjectHandler) StartProduction(w http.ResponseWriter, r *http.Request) {
 	id, err := parseUUID(r, "id")
@@ -254,7 +273,8 @@ func (h *ProjectHandler) Ship(w http.ResponseWriter, r *http.Request) {
 
 // PartHandler handles part endpoints.
 type PartHandler struct {
-	service *service.PartService
+	service       *service.PartService
+	designService *service.DesignService
 }
 
 // ListByProject returns all parts for a project.
@@ -278,11 +298,17 @@ func (h *PartHandler) ListByProject(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, parts)
 }
 
-// Create creates a new part.
+// Create creates a new part. Supports JSON body or multipart/form-data with an optional file.
 func (h *PartHandler) Create(w http.ResponseWriter, r *http.Request) {
 	projectID, err := parseUUID(r, "id")
 	if err != nil {
 		respondError(w, http.StatusBadRequest, "invalid project ID")
+		return
+	}
+
+	ct := r.Header.Get("Content-Type")
+	if strings.HasPrefix(ct, "multipart/form-data") {
+		h.createWithFile(w, r, projectID)
 		return
 	}
 
@@ -299,6 +325,64 @@ func (h *PartHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondJSON(w, http.StatusCreated, part)
+}
+
+// createWithFile handles multipart part creation with an optional file attachment.
+func (h *PartHandler) createWithFile(w http.ResponseWriter, r *http.Request, projectID uuid.UUID) {
+	if err := r.ParseMultipartForm(100 << 20); err != nil {
+		respondError(w, http.StatusBadRequest, "failed to parse form")
+		return
+	}
+
+	quantity := 1
+	if q := r.FormValue("quantity"); q != "" {
+		if parsed, err := strconv.Atoi(q); err == nil {
+			quantity = parsed
+		}
+	}
+
+	part := model.Part{
+		ProjectID:   projectID,
+		Name:        r.FormValue("name"),
+		Description: r.FormValue("description"),
+		Quantity:    quantity,
+	}
+
+	if err := h.service.Create(r.Context(), &part); err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	// Check for optional file
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		// No file provided — return just the part
+		respondJSON(w, http.StatusCreated, part)
+		return
+	}
+	defer file.Close()
+
+	if h.designService == nil {
+		respondJSON(w, http.StatusCreated, part)
+		return
+	}
+
+	notes := r.FormValue("notes")
+	design, err := h.designService.Create(r.Context(), part.ID, header.Filename, file, notes)
+	if err != nil {
+		// Part was created but design failed — still return the part
+		slog.Error("failed to create design for new part", "error", err, "part_id", part.ID)
+		respondJSON(w, http.StatusCreated, map[string]interface{}{
+			"part":         part,
+			"design_error": err.Error(),
+		})
+		return
+	}
+
+	respondJSON(w, http.StatusCreated, map[string]interface{}{
+		"part":   part,
+		"design": design,
+	})
 }
 
 // Get returns a part by ID.
@@ -469,6 +553,33 @@ func (h *DesignHandler) Download(w http.ResponseWriter, r *http.Request) {
 	io.Copy(w, reader)
 }
 
+// OpenExternal opens a design file in an external application.
+func (h *DesignHandler) OpenExternal(w http.ResponseWriter, r *http.Request) {
+	id, err := parseUUID(r, "id")
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid design ID")
+		return
+	}
+
+	var req struct {
+		App string `json:"app"`
+	}
+	if r.Body != nil && r.ContentLength > 0 {
+		json.NewDecoder(r.Body).Decode(&req)
+	}
+
+	if err := h.service.OpenInExternalApp(r.Context(), id, req.App); err != nil {
+		if err.Error() == "design not found" || err.Error() == "file not found" {
+			respondError(w, http.StatusNotFound, err.Error())
+			return
+		}
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
 // PrinterHandler handles printer endpoints.
 type PrinterHandler struct {
 	service *service.PrinterService
@@ -616,6 +727,44 @@ func (h *PrinterHandler) Discover(w http.ResponseWriter, r *http.Request) {
 	}
 	
 	respondJSON(w, http.StatusOK, printers)
+}
+
+// ListJobs returns all print jobs for a printer.
+func (h *PrinterHandler) ListJobs(w http.ResponseWriter, r *http.Request) {
+	id, err := parseUUID(r, "id")
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid printer ID")
+		return
+	}
+
+	jobs, err := h.service.ListJobs(r.Context(), id)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	if jobs == nil {
+		jobs = []model.PrintJob{}
+	}
+
+	respondJSON(w, http.StatusOK, jobs)
+}
+
+// GetJobStats returns job statistics for a printer.
+func (h *PrinterHandler) GetJobStats(w http.ResponseWriter, r *http.Request) {
+	id, err := parseUUID(r, "id")
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid printer ID")
+		return
+	}
+
+	stats, err := h.service.GetJobStats(r.Context(), id)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusOK, stats)
 }
 
 // MaterialHandler handles material endpoints.
@@ -1291,6 +1440,27 @@ func (h *ExpenseHandler) Confirm(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, expense)
 }
 
+// Retry re-triggers AI parsing for a failed or stuck expense.
+func (h *ExpenseHandler) Retry(w http.ResponseWriter, r *http.Request) {
+	id, err := parseUUID(r, "id")
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid expense ID")
+		return
+	}
+
+	expense, err := h.service.RetryParse(r.Context(), id)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			respondError(w, http.StatusNotFound, err.Error())
+		} else {
+			respondError(w, http.StatusInternalServerError, err.Error())
+		}
+		return
+	}
+
+	respondJSON(w, http.StatusOK, expense)
+}
+
 // Delete deletes an expense.
 func (h *ExpenseHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	id, err := parseUUID(r, "id")
@@ -1433,6 +1603,77 @@ func (h *StatsHandler) GetFinancialSummary(w http.ResponseWriter, r *http.Reques
 	}
 
 	respondJSON(w, http.StatusOK, summary)
+}
+
+// GetTimeSeries returns time-series data for revenue, expenses, and profit.
+func (h *StatsHandler) GetTimeSeries(w http.ResponseWriter, r *http.Request) {
+	period := r.URL.Query().Get("period")
+	if period == "" {
+		period = "30d"
+	}
+
+	data, err := h.service.GetTimeSeriesData(r.Context(), period)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusOK, data)
+}
+
+// GetExpensesByCategory returns expense totals grouped by category.
+func (h *StatsHandler) GetExpensesByCategory(w http.ResponseWriter, r *http.Request) {
+	period := r.URL.Query().Get("period")
+	if period == "" {
+		period = "30d"
+	}
+
+	data, err := h.service.GetExpensesByCategory(r.Context(), period)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	if data == nil {
+		data = []service.CategoryBreakdown{}
+	}
+
+	respondJSON(w, http.StatusOK, data)
+}
+
+// GetSalesByChannel returns sales totals grouped by channel.
+func (h *StatsHandler) GetSalesByChannel(w http.ResponseWriter, r *http.Request) {
+	period := r.URL.Query().Get("period")
+	if period == "" {
+		period = "30d"
+	}
+
+	data, err := h.service.GetSalesByChannel(r.Context(), period)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	if data == nil {
+		data = []service.ChannelBreakdown{}
+	}
+
+	respondJSON(w, http.StatusOK, data)
+}
+
+// GetSalesByProject returns sales aggregated by project.
+func (h *StatsHandler) GetSalesByProject(w http.ResponseWriter, r *http.Request) {
+	data, err := h.service.GetSalesByProject(r.Context())
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	if data == nil {
+		data = []service.ProjectSales{}
+	}
+
+	respondJSON(w, http.StatusOK, data)
 }
 
 // TemplateHandler handles template endpoints.
@@ -1850,6 +2091,116 @@ func (h *TemplateHandler) ValidatePrinter(w http.ResponseWriter, r *http.Request
 	}
 
 	respondJSON(w, http.StatusOK, result)
+}
+
+// SettingsHandler handles settings endpoints.
+type SettingsHandler struct {
+	service *service.SettingsService
+}
+
+// List returns all settings (with sensitive values masked).
+func (h *SettingsHandler) List(w http.ResponseWriter, r *http.Request) {
+	settings, err := h.service.List(r.Context())
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	// Mask sensitive values
+	type maskedSetting struct {
+		Key       string `json:"key"`
+		Value     string `json:"value"`
+		UpdatedAt string `json:"updated_at"`
+	}
+	result := make([]maskedSetting, 0, len(settings))
+	for _, s := range settings {
+		val := s.Value
+		if isSensitiveKey(s.Key) && len(val) > 8 {
+			val = val[:4] + "..." + val[len(val)-4:]
+		}
+		result = append(result, maskedSetting{
+			Key:       s.Key,
+			Value:     val,
+			UpdatedAt: s.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		})
+	}
+
+	respondJSON(w, http.StatusOK, result)
+}
+
+// Get returns a single setting (with sensitive values masked).
+func (h *SettingsHandler) Get(w http.ResponseWriter, r *http.Request) {
+	key := chi.URLParam(r, "key")
+	if key == "" {
+		respondError(w, http.StatusBadRequest, "key is required")
+		return
+	}
+
+	setting, err := h.service.Get(r.Context(), key)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if setting == nil {
+		respondError(w, http.StatusNotFound, "setting not found")
+		return
+	}
+
+	val := setting.Value
+	if isSensitiveKey(key) && len(val) > 8 {
+		val = val[:4] + "..." + val[len(val)-4:]
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"key":        setting.Key,
+		"value":      val,
+		"updated_at": setting.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
+	})
+}
+
+// Set creates or updates a setting.
+func (h *SettingsHandler) Set(w http.ResponseWriter, r *http.Request) {
+	key := chi.URLParam(r, "key")
+	if key == "" {
+		respondError(w, http.StatusBadRequest, "key is required")
+		return
+	}
+
+	var req struct {
+		Value string `json:"value"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if err := h.service.Set(r.Context(), key, req.Value); err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// Delete removes a setting.
+func (h *SettingsHandler) Delete(w http.ResponseWriter, r *http.Request) {
+	key := chi.URLParam(r, "key")
+	if key == "" {
+		respondError(w, http.StatusBadRequest, "key is required")
+		return
+	}
+
+	if err := h.service.Delete(r.Context(), key); err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// isSensitiveKey returns true for keys that should have their values masked in GET responses.
+func isSensitiveKey(key string) bool {
+	return strings.Contains(key, "api_key") || strings.Contains(key, "secret") || strings.Contains(key, "token") || strings.Contains(key, "password")
 }
 
 // BambuCloudHandler handles Bambu Cloud integration endpoints.

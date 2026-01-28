@@ -29,6 +29,27 @@ export interface JobStats {
   cancelled: number
 }
 
+// Derived analytics for a project — computed from jobs and sales
+export interface ProjectSummary {
+  total_revenue_cents: number
+  total_fees_cents: number
+  net_revenue_cents: number
+  sales_count: number
+  total_cost_cents: number
+  printer_time_cost_cents: number
+  material_cost_cents: number
+  gross_profit_cents: number
+  gross_margin_percent: number
+  total_print_seconds: number
+  avg_print_seconds: number
+  profit_per_hour_cents: number
+  job_count: number
+  completed_count: number
+  failed_count: number
+  success_rate: number
+  total_material_grams: number
+}
+
 // Result of starting production
 export interface StartProductionResult {
   jobs_started: number
@@ -101,8 +122,21 @@ export interface Printer {
   nozzle_diameter: number
   location: string
   notes: string
+  cost_per_hour_cents: number // Hourly cost in cents (e.g. 150 = $1.50/hr)
   created_at: string
   updated_at: string
+}
+
+export interface HMSError {
+  attr: number
+  code: number
+  module: number
+  severity: number
+}
+
+export interface LightState {
+  node: string
+  mode: string
 }
 
 export interface PrinterState {
@@ -115,6 +149,43 @@ export interface PrinterState {
   nozzle_temp?: number
   ams?: AMSState
   updated_at: string
+
+  // Target temperatures
+  bed_target_temp?: number
+  nozzle_target_temp?: number
+  chamber_temp?: number
+
+  // Layers
+  layer_num?: number
+  total_layer_num?: number
+
+  // Fan speeds (0-100%)
+  cooling_fan_speed?: number
+  aux_fan_speed?: number
+  chamber_fan_speed?: number
+  heatbreak_fan_speed?: number
+
+  // Speed
+  speed_percent?: number
+  speed_level?: number       // 1=silent, 2=standard, 3=sport, 4=ludicrous
+  print_real_speed?: number
+
+  // Network
+  wifi_signal?: string
+
+  // Nozzle info
+  nozzle_diameter?: string
+  nozzle_type?: string
+
+  // Diagnostics
+  hms_errors?: HMSError[]
+  lights?: LightState[]
+
+  // Timing / Job
+  gcode_start_time?: string
+  subtask_id?: string
+  task_id?: string
+  print_type?: string
 }
 
 // AMS (Automatic Material System) types
@@ -294,7 +365,9 @@ export interface PrintJob {
   estimated_seconds?: number
   actual_seconds?: number
   material_used_grams?: number
-  cost_cents?: number
+  cost_cents?: number                  // Total cost (printer time + material)
+  printer_time_cost_cents?: number     // Snapshot: printer hourly rate * actual hours
+  material_cost_cents?: number         // Snapshot: material cost at completion
   // Material snapshot captured at job start
   material_snapshot?: MaterialSnapshot
   // Event history (when fetched with events)
@@ -623,6 +696,42 @@ export interface EtsyWebhookEvent {
   error?: string
   received_at: string
   created_at: string
+}
+
+// Analytics types
+export interface TimeSeriesPoint {
+  date: string
+  revenue: number
+  expenses: number
+  profit: number
+}
+
+export interface TimeSeriesData {
+  points: TimeSeriesPoint[]
+  period: string
+}
+
+export interface CategoryBreakdown {
+  category: string
+  total: number
+  count: number
+}
+
+export interface ChannelBreakdown {
+  channel: string
+  total: number
+  count: number
+}
+
+export interface ProjectSales {
+  project_id: string
+  project_name: string
+  gross_cents: number
+  net_cents: number
+  count: number
+  avg_cents: number
+  first_sale: string
+  last_sale: string
 }
 
 // Sync Result type
