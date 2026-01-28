@@ -48,6 +48,21 @@ export interface ProjectSummary {
   failed_count: number
   success_rate: number
   total_material_grams: number
+  estimated_material_cost_cents: number
+  supply_cost_cents: number
+}
+
+// Project supply (non-printed BOM item)
+export interface ProjectSupply {
+  id: string
+  project_id: string
+  name: string
+  unit_cost_cents: number
+  quantity: number
+  notes: string
+  material_id?: string
+  created_at: string
+  updated_at: string
 }
 
 // Result of starting production
@@ -84,6 +99,21 @@ export interface Part {
 // Design types
 export type FileType = 'stl' | '3mf' | 'gcode'
 
+export interface FilamentUsage {
+  type: string
+  color: string
+  used_grams: number
+  used_meters: number
+}
+
+export interface SliceProfile {
+  print_time_seconds: number
+  weight_grams: number
+  printer_model?: string
+  nozzle_diameter?: number
+  filaments: FilamentUsage[]
+}
+
 export interface Design {
   id: string
   part_id: string
@@ -94,7 +124,7 @@ export interface Design {
   file_size_bytes: number
   file_type: FileType
   notes: string
-  slice_profile?: Record<string, unknown>
+  slice_profile?: SliceProfile
   created_at: string
 }
 
@@ -244,7 +274,7 @@ export interface PreflightCheckResult {
 }
 
 // Material types
-export type MaterialType = 'pla' | 'petg' | 'abs' | 'asa' | 'tpu'
+export type MaterialType = 'pla' | 'petg' | 'abs' | 'asa' | 'tpu' | 'supply'
 
 export interface TempRange {
   min: number

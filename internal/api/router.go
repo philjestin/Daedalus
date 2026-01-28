@@ -103,8 +103,17 @@ func NewRouterWithConfig(services *service.Services, hub *realtime.Hub, config R
 				partHandler := &PartHandler{service: services.Parts, designService: services.Designs}
 				r.Get("/parts", partHandler.ListByProject)
 				r.Post("/parts", partHandler.Create)
+
+				// Supplies nested under project
+				supplyHandler := &ProjectSupplyHandler{service: services.ProjectSupplies}
+				r.Get("/supplies", supplyHandler.List)
+				r.Post("/supplies", supplyHandler.Create)
 			})
 		})
+
+		// Supplies (standalone delete)
+		supplyHandler := &ProjectSupplyHandler{service: services.ProjectSupplies}
+		r.Delete("/supplies/{id}", supplyHandler.Delete)
 
 		// Parts
 		partHandler := &PartHandler{service: services.Parts, designService: services.Designs}
@@ -152,6 +161,7 @@ func NewRouterWithConfig(services *service.Services, hub *realtime.Hub, config R
 			r.Get("/", materialHandler.List)
 			r.Post("/", materialHandler.Create)
 			r.Get("/{id}", materialHandler.Get)
+			r.Delete("/{id}", materialHandler.Delete)
 		})
 
 		// Spools

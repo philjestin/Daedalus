@@ -18,6 +18,7 @@ import (
 	"github.com/hyperion/printfarm/internal/model"
 	"github.com/hyperion/printfarm/internal/printer"
 	"github.com/hyperion/printfarm/internal/realtime"
+	"github.com/hyperion/printfarm/internal/threemf"
 	"github.com/hyperion/printfarm/internal/receipt"
 	"github.com/hyperion/printfarm/internal/repository"
 	"github.com/hyperion/printfarm/internal/storage"
@@ -25,22 +26,23 @@ import (
 
 // Services holds all service instances.
 type Services struct {
-	Projects   *ProjectService
-	Parts      *PartService
-	Designs    *DesignService
-	Printers   *PrinterService
-	Materials  *MaterialService
-	Spools     *SpoolService
-	PrintJobs  *PrintJobService
-	Files      *FileService
-	Expenses   *ExpenseService
-	Sales      *SaleService
-	Stats      *StatsService
-	Templates  *TemplateService
-	Etsy       *EtsyService
-	Auth       *AuthService
-	BambuCloud *BambuCloudService
-	Settings   *SettingsService
+	Projects        *ProjectService
+	Parts           *PartService
+	Designs         *DesignService
+	Printers        *PrinterService
+	Materials       *MaterialService
+	Spools          *SpoolService
+	PrintJobs       *PrintJobService
+	Files           *FileService
+	Expenses        *ExpenseService
+	Sales           *SaleService
+	Stats           *StatsService
+	Templates       *TemplateService
+	Etsy            *EtsyService
+	Auth            *AuthService
+	BambuCloud      *BambuCloudService
+	Settings        *SettingsService
+	ProjectSupplies *ProjectSupplyService
 }
 
 // EtsyConfig holds Etsy OAuth configuration.
@@ -58,7 +60,7 @@ type ServicesConfig struct {
 // NewServices creates all service instances.
 func NewServices(repos *repository.Repositories, store storage.Storage, printerMgr *printer.Manager, hub *realtime.Hub) *Services {
 	return &Services{
-		Projects:  &ProjectService{repo: repos.Projects, printJobRepo: repos.PrintJobs, printerRepo: repos.Printers, spoolRepo: repos.Spools, templateRepo: repos.Templates, designRepo: repos.Designs, saleRepo: repos.Sales, printerMgr: printerMgr, hub: hub, storage: store},
+		Projects:  &ProjectService{repo: repos.Projects, printJobRepo: repos.PrintJobs, printerRepo: repos.Printers, spoolRepo: repos.Spools, templateRepo: repos.Templates, designRepo: repos.Designs, saleRepo: repos.Sales, partRepo: repos.Parts, supplyRepo: repos.ProjectSupplies, printerMgr: printerMgr, hub: hub, storage: store},
 		Parts:     &PartService{repo: repos.Parts},
 		Designs:   &DesignService{repo: repos.Designs, fileRepo: repos.Files, storage: store},
 		Printers:  &PrinterService{repo: repos.Printers, printJobRepo: repos.PrintJobs, manager: printerMgr, hub: hub, discovery: printer.NewDiscovery(), bambuCloudRepo: repos.BambuCloud},
@@ -70,10 +72,11 @@ func NewServices(repos *repository.Repositories, store storage.Storage, printerM
 		Sales:     &SaleService{repo: repos.Sales},
 		Stats:     &StatsService{expenseRepo: repos.Expenses, saleRepo: repos.Sales, printJobRepo: repos.PrintJobs},
 		Templates: &TemplateService{repo: repos.Templates, projectRepo: repos.Projects, partRepo: repos.Parts, designRepo: repos.Designs, printJobRepo: repos.PrintJobs, spoolRepo: repos.Spools, materialRepo: repos.Materials, printerRepo: repos.Printers},
-		Etsy:       nil, // Initialize separately with NewServicesWithEtsy
-		Auth:       nil, // Initialize separately with NewServicesWithConfig
-		BambuCloud: NewBambuCloudService(repos.BambuCloud, repos.Printers, printerMgr, bambu.NewCloudClient()),
-		Settings:   &SettingsService{repo: repos.Settings},
+		Etsy:            nil, // Initialize separately with NewServicesWithEtsy
+		Auth:            nil, // Initialize separately with NewServicesWithConfig
+		BambuCloud:      NewBambuCloudService(repos.BambuCloud, repos.Printers, printerMgr, bambu.NewCloudClient()),
+		Settings:        &SettingsService{repo: repos.Settings},
+		ProjectSupplies: &ProjectSupplyService{repo: repos.ProjectSupplies, materialRepo: repos.Materials},
 	}
 }
 
@@ -105,6 +108,8 @@ type ProjectService struct {
 	templateRepo    *repository.TemplateRepository
 	designRepo      *repository.DesignRepository
 	saleRepo        *repository.SaleRepository
+	partRepo        *repository.PartRepository
+	supplyRepo      *repository.ProjectSupplyRepository
 	printerMgr      *printer.Manager
 	hub             *realtime.Hub
 	storage         storage.Storage
@@ -207,11 +212,48 @@ func (s *ProjectService) GetProjectSummary(ctx context.Context, projectID uuid.U
 
 	// Derived metrics
 	if summary.CompletedCount+summary.FailedCount > 0 {
-		summary.SuccessRate = float64(summary.CompletedCount) / float64(summary.CompletedCount+summary.FailedCount)
+		summary.SuccessRate = float64(summary.CompletedCount) / float64(summary.CompletedCount+summary.FailedCount) * 100
 	}
 	if summary.CompletedCount > 0 {
 		summary.AvgPrintSeconds = summary.TotalPrintSeconds / summary.CompletedCount
 	}
+
+	// Estimated material cost from slice profiles
+	if s.partRepo != nil && s.designRepo != nil {
+		parts, err := s.partRepo.ListByProject(ctx, projectID)
+		if err == nil {
+			for _, part := range parts {
+				designs, err := s.designRepo.ListByPart(ctx, part.ID)
+				if err != nil || len(designs) == 0 {
+					continue
+				}
+				// Latest design is first (ordered by version DESC)
+				latest := designs[0]
+				if latest.SliceProfile != nil {
+					var profile model.SliceProfileData
+					if json.Unmarshal(latest.SliceProfile, &profile) == nil && profile.WeightGrams > 0 {
+						// Default cost: $19.99/kg
+						costPerKg := 19.99
+						costCents := int(profile.WeightGrams / 1000.0 * costPerKg * 100)
+						summary.EstimatedMaterialCostCents += costCents * part.Quantity
+					}
+				}
+			}
+		}
+	}
+
+	// Supply costs
+	if s.supplyRepo != nil {
+		supplies, err := s.supplyRepo.ListByProject(ctx, projectID)
+		if err == nil {
+			for _, supply := range supplies {
+				summary.SupplyCostCents += supply.UnitCostCents * supply.Quantity
+			}
+		}
+	}
+
+	// Include estimated material and supply costs in total
+	summary.TotalCostCents += summary.EstimatedMaterialCostCents + summary.SupplyCostCents
 
 	summary.GrossProfitCents = summary.NetRevenueCents - summary.TotalCostCents
 	if summary.NetRevenueCents > 0 {
@@ -586,6 +628,17 @@ func (s *DesignService) Create(ctx context.Context, partID uuid.UUID, filename s
 		FileType:      fileType,
 		Notes:         notes,
 	}
+
+	// Extract slicer metadata from 3MF files
+	if fileType == model.FileType3MF {
+		fullPath := s.storage.GetFullPath(storagePath)
+		if profile, err := threemf.Parse(fullPath); err != nil {
+			slog.Warn("failed to parse 3MF metadata", "file", filename, "error", err)
+		} else if profile != nil {
+			design.SliceProfile = profile
+		}
+	}
+
 	if err := s.repo.Create(ctx, design); err != nil {
 		return nil, fmt.Errorf("failed to create design: %w", err)
 	}
@@ -966,6 +1019,16 @@ func (s *MaterialService) GetByID(ctx context.Context, id uuid.UUID) (*model.Mat
 // List retrieves all materials.
 func (s *MaterialService) List(ctx context.Context) ([]model.Material, error) {
 	return s.repo.List(ctx)
+}
+
+// ListByType retrieves all materials of a given type.
+func (s *MaterialService) ListByType(ctx context.Context, matType model.MaterialType) ([]model.Material, error) {
+	return s.repo.ListByType(ctx, matType)
+}
+
+// Delete removes a material by ID.
+func (s *MaterialService) Delete(ctx context.Context, id uuid.UUID) error {
+	return s.repo.Delete(ctx, id)
 }
 
 // SpoolService handles spool business logic.
@@ -2228,6 +2291,22 @@ func (s *ExpenseService) parseReceiptAsync(ctx context.Context, expenseID uuid.U
 			}
 
 			slog.Info("auto-created material + spools", "expense_id", expenseID, "material_id", materialID, "quantity", quantity, "description", item.Description)
+		} else if !item.IsFilament && item.Category != "shipping" {
+			// Auto-create supply material for non-filament, non-shipping items
+			materialID, err := s.findOrCreateSupplyMaterial(ctx, item.Description, parsed.Vendor, item.UnitPriceCents)
+			if err != nil {
+				slog.Error("failed to find/create supply material", "expense_id", expenseID, "description", item.Description, "error", err)
+				continue
+			}
+
+			expenseItem.MatchedMaterialID = &materialID
+			expenseItem.ActionTaken = model.ExpenseItemActionCreatedSupply
+
+			if err := s.repo.UpdateItem(ctx, expenseItem); err != nil {
+				slog.Error("failed to update expense item with supply material", "expense_id", expenseID, "error", err)
+			}
+
+			slog.Info("auto-created supply material", "expense_id", expenseID, "material_id", materialID, "description", item.Description)
 		}
 	}
 
@@ -2348,6 +2427,32 @@ func (s *ExpenseService) findOrCreateMaterial(ctx context.Context, fm *model.Fil
 
 	if err := s.materialRepo.Create(ctx, mat); err != nil {
 		return uuid.Nil, fmt.Errorf("create material: %w", err)
+	}
+
+	return mat.ID, nil
+}
+
+// findOrCreateSupplyMaterial finds or creates a supply-type material for non-filament receipt items.
+func (s *ExpenseService) findOrCreateSupplyMaterial(ctx context.Context, description string, vendor string, unitPriceCents int) (uuid.UUID, error) {
+	// Try to find existing supply material by type + name
+	existing, err := s.materialRepo.FindByTypeAndName(ctx, model.MaterialTypeSupply, description)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("find supply material: %w", err)
+	}
+	if existing != nil {
+		return existing.ID, nil
+	}
+
+	// Create new supply material
+	mat := &model.Material{
+		Name:         description,
+		Type:         model.MaterialTypeSupply,
+		Manufacturer: vendor,
+		CostPerKg:    float64(unitPriceCents) / 100.0, // repurposed as per-unit cost
+	}
+
+	if err := s.materialRepo.Create(ctx, mat); err != nil {
+		return uuid.Nil, fmt.Errorf("create supply material: %w", err)
 	}
 
 	return mat.ID, nil
@@ -3393,4 +3498,44 @@ func (s *SettingsService) List(ctx context.Context) ([]repository.Setting, error
 // Delete removes a setting.
 func (s *SettingsService) Delete(ctx context.Context, key string) error {
 	return s.repo.Delete(ctx, key)
+}
+
+// ProjectSupplyService handles project supply business logic.
+type ProjectSupplyService struct {
+	repo         *repository.ProjectSupplyRepository
+	materialRepo *repository.MaterialRepository
+}
+
+// Create creates a new project supply.
+func (s *ProjectSupplyService) Create(ctx context.Context, supply *model.ProjectSupply) error {
+	// If material_id is set and name is empty, auto-populate from the material
+	if supply.MaterialID != nil && *supply.MaterialID != uuid.Nil && supply.Name == "" {
+		mat, err := s.materialRepo.GetByID(ctx, *supply.MaterialID)
+		if err != nil {
+			return fmt.Errorf("failed to look up material: %w", err)
+		}
+		if mat != nil {
+			supply.Name = mat.Name
+			if supply.UnitCostCents == 0 {
+				supply.UnitCostCents = int(mat.CostPerKg * 100) // CostPerKg repurposed as per-unit $ for supplies
+			}
+		}
+	}
+	if supply.Name == "" {
+		return fmt.Errorf("supply name is required")
+	}
+	if supply.Quantity < 1 {
+		supply.Quantity = 1
+	}
+	return s.repo.Create(ctx, supply)
+}
+
+// ListByProject retrieves all supplies for a project.
+func (s *ProjectSupplyService) ListByProject(ctx context.Context, projectID uuid.UUID) ([]model.ProjectSupply, error) {
+	return s.repo.ListByProject(ctx, projectID)
+}
+
+// Delete removes a project supply.
+func (s *ProjectSupplyService) Delete(ctx context.Context, id uuid.UUID) error {
+	return s.repo.Delete(ctx, id)
 }

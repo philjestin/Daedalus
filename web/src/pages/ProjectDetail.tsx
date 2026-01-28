@@ -20,17 +20,20 @@ import {
   TrendingUp,
   Timer,
   ExternalLink,
-  X
+  X,
+  Scale,
+  Trash2,
+  ShoppingCart,
 } from 'lucide-react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useProject, useParts, useCreatePart, useUpdateProject } from '../hooks/useProjects'
 import { usePrinters, usePrinterStates } from '../hooks/usePrinters'
 import { useSpoolsWithMaterials } from '../hooks/useMaterials'
-import { designsApi, printJobsApi, projectsApi } from '../api/client'
+import { designsApi, printJobsApi, projectsApi, partsApi, suppliesApi, materialsApi } from '../api/client'
 import { cn, getStatusBadge, formatBytes, formatRelativeTime } from '../lib/utils'
 import { FailureModal } from '../components/FailureModal'
 import { ExpandableJobEvents } from '../components/JobEventTimeline'
-import type { Design, Part, ProjectStatus, Material, PrintJob, ProjectSummary } from '../types'
+import type { Design, Part, ProjectStatus, Material, PrintJob, ProjectSummary, ProjectSupply } from '../types'
 
 export default function ProjectDetail() {
   const { id } = useParams<{ id: string }>()
@@ -285,10 +288,22 @@ export default function ProjectDetail() {
                     setShowUpload(true)
                   }}
                   onSendToPrinter={(design) => setShowSendToPrinter(design)}
+                  onDelete={async () => {
+                    if (!confirm(`Delete part "${part.name}"? This cannot be undone.`)) return
+                    try {
+                      await partsApi.delete(part.id)
+                      queryClient.invalidateQueries({ queryKey: ['parts', id] })
+                    } catch (err) {
+                      console.error('Failed to delete part:', err)
+                    }
+                  }}
                 />
               ))}
             </div>
           )}
+
+          {/* Supplies Section */}
+          <SuppliesSection projectId={id!} />
         </>
       )}
 
@@ -487,15 +502,24 @@ export default function ProjectDetail() {
   )
 }
 
+function formatPrintTime(seconds: number): string {
+  const h = Math.floor(seconds / 3600)
+  const m = Math.floor((seconds % 3600) / 60)
+  if (h > 0) return `${h}h ${m}m`
+  return `${m}m`
+}
+
 // Part Card Component
-function PartCard({ 
-  part, 
+function PartCard({
+  part,
   onUpload,
   onSendToPrinter,
-}: { 
+  onDelete,
+}: {
   part: Part
   onUpload: () => void
   onSendToPrinter: (design: Design) => void
+  onDelete: () => void
 }) {
   const { data: designs = [] } = useQuery({
     queryKey: ['designs', part.id],
@@ -514,9 +538,18 @@ function PartCard({
             <p className="text-sm text-surface-500 mt-1">{part.description}</p>
           )}
         </div>
-        <span className={cn('badge', getStatusBadge(part.status))}>
-          {part.status}
-        </span>
+        <div className="flex items-center gap-2">
+          <span className={cn('badge', getStatusBadge(part.status))}>
+            {part.status}
+          </span>
+          <button
+            onClick={onDelete}
+            className="p-1.5 rounded-lg text-surface-500 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+            title="Delete part"
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
+        </div>
       </div>
 
       {/* Designs */}
@@ -554,6 +587,30 @@ function PartCard({
                     <div className="text-xs text-surface-500">
                       {formatBytes(design.file_size_bytes)} • {formatRelativeTime(design.created_at)}
                     </div>
+                    {design.slice_profile && (
+                      <div className="flex items-center gap-2 mt-1 flex-wrap">
+                        <span className="inline-flex items-center gap-1 text-xs bg-surface-700/60 text-surface-300 rounded px-1.5 py-0.5">
+                          <Scale className="h-3 w-3" />
+                          {Math.round(design.slice_profile.weight_grams)}g
+                        </span>
+                        <span className="inline-flex items-center gap-1 text-xs bg-surface-700/60 text-surface-300 rounded px-1.5 py-0.5">
+                          <Timer className="h-3 w-3" />
+                          {formatPrintTime(design.slice_profile.print_time_seconds)}
+                        </span>
+                        {design.slice_profile.filaments.map((f, i) => (
+                          <span
+                            key={i}
+                            className="inline-flex items-center gap-1.5 text-xs bg-surface-700/60 text-surface-300 rounded px-1.5 py-0.5"
+                          >
+                            <span
+                              className="inline-block h-2.5 w-2.5 rounded-full border border-surface-600"
+                              style={{ backgroundColor: f.color }}
+                            />
+                            {f.type} · {Math.round(f.used_meters)}m · {Math.round(f.used_grams)}g
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
@@ -584,6 +641,307 @@ function PartCard({
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+// Supplies Section Component
+function SuppliesSection({ projectId }: { projectId: string }) {
+  const queryClient = useQueryClient()
+  const [showAddForm, setShowAddForm] = useState(false)
+  const [addMode, setAddMode] = useState<'catalog' | 'manual'>('catalog')
+  const [selectedMaterialId, setSelectedMaterialId] = useState('')
+  const [newName, setNewName] = useState('')
+  const [newCost, setNewCost] = useState('')
+  const [newQuantity, setNewQuantity] = useState('1')
+
+  const { data: supplies = [] } = useQuery({
+    queryKey: ['project-supplies', projectId],
+    queryFn: () => suppliesApi.listByProject(projectId),
+  })
+
+  const { data: supplyMaterials = [] } = useQuery({
+    queryKey: ['materials', 'supply'],
+    queryFn: () => materialsApi.listByType('supply'),
+  })
+
+  const handleCatalogAdd = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!selectedMaterialId) return
+    try {
+      await suppliesApi.create(projectId, {
+        name: '', // auto-populated from material by backend
+        unit_cost_cents: 0, // auto-populated from material by backend
+        quantity: parseInt(newQuantity) || 1,
+        material_id: selectedMaterialId,
+      })
+      queryClient.invalidateQueries({ queryKey: ['project-supplies', projectId] })
+      queryClient.invalidateQueries({ queryKey: ['project-summary', projectId] })
+      setSelectedMaterialId('')
+      setNewQuantity('1')
+      setShowAddForm(false)
+    } catch (err) {
+      console.error('Failed to add supply from catalog:', err)
+    }
+  }
+
+  const handleManualAdd = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!newName.trim()) return
+    try {
+      await suppliesApi.create(projectId, {
+        name: newName.trim(),
+        unit_cost_cents: Math.round(parseFloat(newCost || '0') * 100),
+        quantity: parseInt(newQuantity) || 1,
+      })
+      queryClient.invalidateQueries({ queryKey: ['project-supplies', projectId] })
+      queryClient.invalidateQueries({ queryKey: ['project-summary', projectId] })
+      setNewName('')
+      setNewCost('')
+      setNewQuantity('1')
+      setShowAddForm(false)
+    } catch (err) {
+      console.error('Failed to add supply:', err)
+    }
+  }
+
+  const [confirmDeleteSupplyId, setConfirmDeleteSupplyId] = useState<string | null>(null)
+
+  const handleDelete = async (supply: ProjectSupply) => {
+    if (confirmDeleteSupplyId !== supply.id) {
+      setConfirmDeleteSupplyId(supply.id)
+      return
+    }
+    setConfirmDeleteSupplyId(null)
+    try {
+      await suppliesApi.delete(supply.id)
+      queryClient.invalidateQueries({ queryKey: ['project-supplies', projectId] })
+      queryClient.invalidateQueries({ queryKey: ['project-summary', projectId] })
+    } catch (err) {
+      console.error('Failed to delete supply:', err)
+    }
+  }
+
+  // Auto-fill cost when selecting a catalog material
+  const handleMaterialSelect = (materialId: string) => {
+    setSelectedMaterialId(materialId)
+    const mat = supplyMaterials.find((m) => m.id === materialId)
+    if (mat) {
+      setNewCost((mat.cost_per_kg).toFixed(2)) // cost_per_kg is repurposed as per-unit $ for supplies
+    }
+  }
+
+  const totalCents = supplies.reduce((sum, s) => sum + s.unit_cost_cents * s.quantity, 0)
+
+  return (
+    <div className="mt-8">
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-xl font-semibold text-surface-100 flex items-center gap-2">
+          <ShoppingCart className="h-5 w-5 text-surface-400" />
+          Supplies
+        </h2>
+        <button
+          onClick={() => setShowAddForm(!showAddForm)}
+          className="btn btn-secondary"
+        >
+          <Plus className="h-4 w-4 mr-2" />
+          Add Supply
+        </button>
+      </div>
+
+      {showAddForm && (
+        <div className="card p-4 mb-4">
+          {supplyMaterials.length > 0 && (
+            <div className="flex gap-2 mb-3">
+              <button
+                type="button"
+                onClick={() => setAddMode('catalog')}
+                className={cn(
+                  'text-xs px-3 py-1 rounded-full transition-colors',
+                  addMode === 'catalog'
+                    ? 'bg-accent-500/20 text-accent-400 border border-accent-500'
+                    : 'bg-surface-800 text-surface-400 border border-surface-700 hover:text-surface-200'
+                )}
+              >
+                From Catalog
+              </button>
+              <button
+                type="button"
+                onClick={() => setAddMode('manual')}
+                className={cn(
+                  'text-xs px-3 py-1 rounded-full transition-colors',
+                  addMode === 'manual'
+                    ? 'bg-accent-500/20 text-accent-400 border border-accent-500'
+                    : 'bg-surface-800 text-surface-400 border border-surface-700 hover:text-surface-200'
+                )}
+              >
+                Manual Entry
+              </button>
+            </div>
+          )}
+
+          {addMode === 'catalog' && supplyMaterials.length > 0 ? (
+            <form onSubmit={handleCatalogAdd}>
+              <div className="grid grid-cols-[1fr_auto_auto_auto] gap-3 items-end">
+                <div>
+                  <label className="block text-xs font-medium text-surface-400 mb-1">Supply Material</label>
+                  <select
+                    value={selectedMaterialId}
+                    onChange={(e) => handleMaterialSelect(e.target.value)}
+                    className="input"
+                    required
+                  >
+                    <option value="">Select a supply...</option>
+                    {supplyMaterials.map((mat) => (
+                      <option key={mat.id} value={mat.id}>
+                        {mat.name} {mat.manufacturer ? `(${mat.manufacturer})` : ''} — ${mat.cost_per_kg.toFixed(2)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-surface-400 mb-1">Unit Cost ($)</label>
+                  <input
+                    type="number"
+                    value={newCost}
+                    onChange={(e) => setNewCost(e.target.value)}
+                    className="input w-28"
+                    placeholder="0.00"
+                    min="0"
+                    step="0.01"
+                    readOnly
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-surface-400 mb-1">Qty</label>
+                  <input
+                    type="number"
+                    value={newQuantity}
+                    onChange={(e) => setNewQuantity(e.target.value)}
+                    className="input w-20"
+                    min="1"
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <button type="submit" className="btn btn-primary" disabled={!selectedMaterialId}>Add</button>
+                  <button type="button" onClick={() => setShowAddForm(false)} className="btn btn-ghost">
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </form>
+          ) : (
+            <form onSubmit={handleManualAdd}>
+              <div className="grid grid-cols-[1fr_auto_auto_auto] gap-3 items-end">
+                <div>
+                  <label className="block text-xs font-medium text-surface-400 mb-1">Name</label>
+                  <input
+                    type="text"
+                    value={newName}
+                    onChange={(e) => setNewName(e.target.value)}
+                    className="input"
+                    placeholder="e.g., Lamp cord, Lightbulb"
+                    autoFocus
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-surface-400 mb-1">Unit Cost ($)</label>
+                  <input
+                    type="number"
+                    value={newCost}
+                    onChange={(e) => setNewCost(e.target.value)}
+                    className="input w-28"
+                    placeholder="0.00"
+                    min="0"
+                    step="0.01"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-surface-400 mb-1">Qty</label>
+                  <input
+                    type="number"
+                    value={newQuantity}
+                    onChange={(e) => setNewQuantity(e.target.value)}
+                    className="input w-20"
+                    min="1"
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <button type="submit" className="btn btn-primary">Add</button>
+                  <button type="button" onClick={() => setShowAddForm(false)} className="btn btn-ghost">
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </form>
+          )}
+        </div>
+      )}
+
+      {supplies.length === 0 ? (
+        <div className="card p-6 text-center text-surface-500 text-sm">
+          No supplies added yet. Add non-printed items like lamp cords, lightbulbs, etc.
+        </div>
+      ) : (
+        <div className="card overflow-hidden">
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-surface-800">
+                <th className="text-left text-xs font-medium text-surface-500 uppercase px-4 py-2">Item</th>
+                <th className="text-right text-xs font-medium text-surface-500 uppercase px-4 py-2">Unit Cost</th>
+                <th className="text-right text-xs font-medium text-surface-500 uppercase px-4 py-2">Qty</th>
+                <th className="text-right text-xs font-medium text-surface-500 uppercase px-4 py-2">Total</th>
+                <th className="w-10 px-4 py-2"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {supplies.map((supply) => (
+                <tr key={supply.id} className="border-b border-surface-800/50">
+                  <td className="px-4 py-3 text-surface-200">{supply.name}</td>
+                  <td className="px-4 py-3 text-right text-surface-300">
+                    ${(supply.unit_cost_cents / 100).toFixed(2)}
+                  </td>
+                  <td className="px-4 py-3 text-right text-surface-300">{supply.quantity}</td>
+                  <td className="px-4 py-3 text-right text-surface-100 font-medium">
+                    ${((supply.unit_cost_cents * supply.quantity) / 100).toFixed(2)}
+                  </td>
+                  <td className="px-4 py-3">
+                    {confirmDeleteSupplyId === supply.id ? (
+                      <button
+                        onClick={() => handleDelete(supply)}
+                        onBlur={() => setConfirmDeleteSupplyId(null)}
+                        className="text-xs px-2 py-1 rounded bg-red-500/20 text-red-400 border border-red-500/50 hover:bg-red-500/30 transition-colors"
+                        autoFocus
+                      >
+                        Delete?
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => handleDelete(supply)}
+                        className="p-1 rounded text-surface-500 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr className="border-t border-surface-700">
+                <td colSpan={3} className="px-4 py-3 text-right text-sm font-medium text-surface-400">
+                  Total Supplies
+                </td>
+                <td className="px-4 py-3 text-right font-semibold text-surface-100">
+                  ${(totalCents / 100).toFixed(2)}
+                </td>
+                <td></td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      )}
     </div>
   )
 }
@@ -956,7 +1314,7 @@ function ProjectAnalyticsTab({ summary }: { summary?: ProjectSummary }) {
             </div>
           </div>
           <div className="card p-4">
-            <div className="text-sm text-surface-500 mb-1">Material</div>
+            <div className="text-sm text-surface-500 mb-1">Material (Actual)</div>
             <div className="text-2xl font-semibold text-surface-100">
               {formatCents(summary.material_cost_cents)}
             </div>
@@ -966,6 +1324,24 @@ function ProjectAnalyticsTab({ summary }: { summary?: ProjectSummary }) {
               </div>
             )}
           </div>
+          {summary.estimated_material_cost_cents > 0 && (
+            <div className="card p-4">
+              <div className="text-sm text-surface-500 mb-1">Est. Material</div>
+              <div className="text-2xl font-semibold text-amber-400">
+                {formatCents(summary.estimated_material_cost_cents)}
+              </div>
+              <div className="text-xs text-surface-500 mt-1">from slice profiles</div>
+            </div>
+          )}
+          {summary.supply_cost_cents > 0 && (
+            <div className="card p-4">
+              <div className="text-sm text-surface-500 mb-1">Supplies</div>
+              <div className="text-2xl font-semibold text-surface-100">
+                {formatCents(summary.supply_cost_cents)}
+              </div>
+              <div className="text-xs text-surface-500 mt-1">non-printed items</div>
+            </div>
+          )}
         </div>
       </div>
 

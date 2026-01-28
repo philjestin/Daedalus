@@ -12,41 +12,43 @@ import (
 
 // Repositories holds all repository instances.
 type Repositories struct {
-	Projects  *ProjectRepository
-	Parts     *PartRepository
-	Designs   *DesignRepository
-	Printers  *PrinterRepository
-	Materials *MaterialRepository
-	Spools    *SpoolRepository
-	PrintJobs *PrintJobRepository
-	Files     *FileRepository
-	Expenses  *ExpenseRepository
-	Sales     *SaleRepository
-	Templates *TemplateRepository
-	Etsy       *EtsyRepository
-	Auth       *AuthRepository
-	BambuCloud *BambuCloudRepository
-	Settings   *SettingsRepository
+	Projects        *ProjectRepository
+	Parts           *PartRepository
+	Designs         *DesignRepository
+	Printers        *PrinterRepository
+	Materials       *MaterialRepository
+	Spools          *SpoolRepository
+	PrintJobs       *PrintJobRepository
+	Files           *FileRepository
+	Expenses        *ExpenseRepository
+	Sales           *SaleRepository
+	Templates       *TemplateRepository
+	Etsy            *EtsyRepository
+	Auth            *AuthRepository
+	BambuCloud      *BambuCloudRepository
+	Settings        *SettingsRepository
+	ProjectSupplies *ProjectSupplyRepository
 }
 
 // NewRepositories creates all repository instances.
 func NewRepositories(db *sql.DB) *Repositories {
 	return &Repositories{
-		Projects:  &ProjectRepository{db: db},
-		Parts:     &PartRepository{db: db},
-		Designs:   &DesignRepository{db: db},
-		Printers:  &PrinterRepository{db: db},
-		Materials: &MaterialRepository{db: db},
-		Spools:    &SpoolRepository{db: db},
-		PrintJobs: &PrintJobRepository{db: db},
-		Files:     &FileRepository{db: db},
-		Expenses:  &ExpenseRepository{db: db},
-		Sales:     &SaleRepository{db: db},
-		Templates: &TemplateRepository{db: db},
-		Etsy:       &EtsyRepository{db: db},
-		Auth:       &AuthRepository{db: db},
-		BambuCloud: &BambuCloudRepository{db: db},
-		Settings:   &SettingsRepository{db: db},
+		Projects:        &ProjectRepository{db: db},
+		Parts:           &PartRepository{db: db},
+		Designs:         &DesignRepository{db: db},
+		Printers:        &PrinterRepository{db: db},
+		Materials:       &MaterialRepository{db: db},
+		Spools:          &SpoolRepository{db: db},
+		PrintJobs:       &PrintJobRepository{db: db},
+		Files:           &FileRepository{db: db},
+		Expenses:        &ExpenseRepository{db: db},
+		Sales:           &SaleRepository{db: db},
+		Templates:       &TemplateRepository{db: db},
+		Etsy:            &EtsyRepository{db: db},
+		Auth:            &AuthRepository{db: db},
+		BambuCloud:      &BambuCloudRepository{db: db},
+		Settings:        &SettingsRepository{db: db},
+		ProjectSupplies: &ProjectSupplyRepository{db: db},
 	}
 }
 
@@ -474,6 +476,34 @@ func (r *MaterialRepository) List(ctx context.Context) ([]model.Material, error)
 	return materials, rows.Err()
 }
 
+// Delete removes a material by ID, clearing any foreign key references first.
+func (r *MaterialRepository) Delete(ctx context.Context, id uuid.UUID) error {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	// Clear FK references from expense items
+	if _, err := tx.ExecContext(ctx, `UPDATE expense_items SET matched_material_id = NULL WHERE matched_material_id = ?`, id); err != nil {
+		return err
+	}
+	// Clear FK references from project supplies
+	if _, err := tx.ExecContext(ctx, `UPDATE project_supplies SET material_id = NULL WHERE material_id = ?`, id); err != nil {
+		return err
+	}
+	// Delete any spools tied to this material
+	if _, err := tx.ExecContext(ctx, `DELETE FROM material_spools WHERE material_id = ?`, id); err != nil {
+		return err
+	}
+	// Delete the material
+	if _, err := tx.ExecContext(ctx, `DELETE FROM materials WHERE id = ?`, id); err != nil {
+		return err
+	}
+
+	return tx.Commit()
+}
+
 // FindByTypeManufacturerColor finds a material matching the given type, manufacturer, and color.
 // Returns nil if no match is found.
 func (r *MaterialRepository) FindByTypeManufacturerColor(ctx context.Context, matType model.MaterialType, manufacturer, color string) (*model.Material, error) {
@@ -497,6 +527,60 @@ func (r *MaterialRepository) FindByTypeManufacturerColor(ctx context.Context, ma
 		json.Unmarshal(bedTempJSON, &m.BedTemp)
 	}
 	return &m, nil
+}
+
+// FindByTypeAndName finds a material matching the given type and name (case-insensitive).
+// Used for deduplicating supply materials.
+func (r *MaterialRepository) FindByTypeAndName(ctx context.Context, matType model.MaterialType, name string) (*model.Material, error) {
+	var m model.Material
+	var printTempJSON, bedTempJSON []byte
+	err := scanRow(r.db.QueryRowContext(ctx, `
+		SELECT id, name, type, manufacturer, color, color_hex, density, cost_per_kg, print_temp, bed_temp, notes, created_at, updated_at
+		FROM materials WHERE LOWER(type) = LOWER(?) AND LOWER(name) = LOWER(?)
+		LIMIT 1
+	`, matType, name), &m.ID, &m.Name, &m.Type, &m.Manufacturer, &m.Color, &m.ColorHex, &m.Density, &m.CostPerKg, &printTempJSON, &bedTempJSON, &m.Notes, &m.CreatedAt, &m.UpdatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if printTempJSON != nil {
+		json.Unmarshal(printTempJSON, &m.PrintTemp)
+	}
+	if bedTempJSON != nil {
+		json.Unmarshal(bedTempJSON, &m.BedTemp)
+	}
+	return &m, nil
+}
+
+// ListByType retrieves all materials of a given type, ordered by name.
+func (r *MaterialRepository) ListByType(ctx context.Context, matType model.MaterialType) ([]model.Material, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT id, name, type, manufacturer, color, color_hex, density, cost_per_kg, print_temp, bed_temp, notes, created_at, updated_at
+		FROM materials WHERE LOWER(type) = LOWER(?) ORDER BY name ASC
+	`, matType)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var materials []model.Material
+	for rows.Next() {
+		var m model.Material
+		var printTempJSON, bedTempJSON []byte
+		if err := scanRow(rows, &m.ID, &m.Name, &m.Type, &m.Manufacturer, &m.Color, &m.ColorHex, &m.Density, &m.CostPerKg, &printTempJSON, &bedTempJSON, &m.Notes, &m.CreatedAt, &m.UpdatedAt); err != nil {
+			return nil, err
+		}
+		if printTempJSON != nil {
+			json.Unmarshal(printTempJSON, &m.PrintTemp)
+		}
+		if bedTempJSON != nil {
+			json.Unmarshal(bedTempJSON, &m.BedTemp)
+		}
+		materials = append(materials, m)
+	}
+	return materials, rows.Err()
 }
 
 // SpoolRepository handles material spool database operations.
@@ -1960,5 +2044,51 @@ func (r *SettingsRepository) List(ctx context.Context) ([]Setting, error) {
 // Delete removes a setting by key.
 func (r *SettingsRepository) Delete(ctx context.Context, key string) error {
 	_, err := r.db.ExecContext(ctx, `DELETE FROM settings WHERE key = ?`, key)
+	return err
+}
+
+// ProjectSupplyRepository handles project supply database operations.
+type ProjectSupplyRepository struct {
+	db *sql.DB
+}
+
+// Create inserts a new project supply.
+func (r *ProjectSupplyRepository) Create(ctx context.Context, s *model.ProjectSupply) error {
+	s.ID = uuid.New()
+	now := time.Now()
+	s.CreatedAt = now
+	s.UpdatedAt = now
+	_, err := r.db.ExecContext(ctx, `
+		INSERT INTO project_supplies (id, project_id, name, unit_cost_cents, quantity, notes, material_id, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, s.ID, s.ProjectID, s.Name, s.UnitCostCents, s.Quantity, s.Notes, s.MaterialID, s.CreatedAt, s.UpdatedAt)
+	return err
+}
+
+// ListByProject retrieves all supplies for a project.
+func (r *ProjectSupplyRepository) ListByProject(ctx context.Context, projectID uuid.UUID) ([]model.ProjectSupply, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT id, project_id, name, unit_cost_cents, quantity, notes, material_id, created_at, updated_at
+		FROM project_supplies WHERE project_id = ? ORDER BY created_at ASC
+	`, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var supplies []model.ProjectSupply
+	for rows.Next() {
+		var s model.ProjectSupply
+		if err := scanRow(rows, &s.ID, &s.ProjectID, &s.Name, &s.UnitCostCents, &s.Quantity, &s.Notes, &s.MaterialID, &s.CreatedAt, &s.UpdatedAt); err != nil {
+			return nil, err
+		}
+		supplies = append(supplies, s)
+	}
+	return supplies, rows.Err()
+}
+
+// Delete removes a project supply by ID.
+func (r *ProjectSupplyRepository) Delete(ctx context.Context, id uuid.UUID) error {
+	_, err := r.db.ExecContext(ctx, `DELETE FROM project_supplies WHERE id = ?`, id)
 	return err
 }

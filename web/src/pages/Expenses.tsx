@@ -34,6 +34,7 @@ export default function Expenses() {
     mutationFn: (id: string) => expensesApi.delete(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['expenses'] })
+      queryClient.invalidateQueries({ queryKey: ['stats'] })
     },
   })
 

@@ -150,6 +150,21 @@ export const partsApi = {
   },
 }
 
+// Project Supplies API
+export const suppliesApi = {
+  listByProject: (projectId: string) =>
+    fetchApi<import('../types').ProjectSupply[]>(`/projects/${projectId}/supplies`),
+
+  create: (projectId: string, data: { name: string; unit_cost_cents: number; quantity: number; notes?: string; material_id?: string }) =>
+    fetchApi<import('../types').ProjectSupply>(`/projects/${projectId}/supplies`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  delete: (id: string) =>
+    fetchApi<void>(`/supplies/${id}`, { method: 'DELETE' }),
+}
+
 // Designs API
 export const designsApi = {
   listByPart: (partId: string) =>
@@ -253,17 +268,23 @@ export const printersApi = {
 
 // Materials API
 export const materialsApi = {
-  list: () => 
+  list: () =>
     fetchApi<import('../types').Material[]>('/materials'),
-  
-  get: (id: string) => 
+
+  listByType: (type: string) =>
+    fetchApi<import('../types').Material[]>(`/materials?type=${encodeURIComponent(type)}`),
+
+  get: (id: string) =>
     fetchApi<import('../types').Material>(`/materials/${id}`),
-  
-  create: (data: Partial<import('../types').Material>) => 
+
+  create: (data: Partial<import('../types').Material>) =>
     fetchApi<import('../types').Material>('/materials', {
       method: 'POST',
       body: JSON.stringify(data),
     }),
+
+  delete: (id: string) =>
+    fetchApi<void>(`/materials/${id}`, { method: 'DELETE' }),
 }
 
 // Spools API

@@ -76,6 +76,9 @@ func RunMigrations(db *sql.DB) error {
 	alterStatements := []string{
 		`ALTER TABLE printers ADD COLUMN serial_number TEXT DEFAULT ''`,
 		`ALTER TABLE printers ADD COLUMN cost_per_hour_cents INTEGER DEFAULT 0`,
+		`ALTER TABLE print_jobs ADD COLUMN printer_time_cost_cents INTEGER`,
+		`ALTER TABLE print_jobs ADD COLUMN material_cost_cents INTEGER`,
+		`ALTER TABLE project_supplies ADD COLUMN material_id TEXT REFERENCES materials(id)`,
 	}
 	for _, stmt := range alterStatements {
 		db.Exec(stmt) // Ignore error if column already exists

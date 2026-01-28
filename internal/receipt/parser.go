@@ -137,24 +137,28 @@ func (p *Parser) ParseFromBytes(ctx context.Context, data []byte, contentType st
 		}
 	}
 
-	prompt := `You are a receipt parser for a 3D printing business. Extract structured data from this receipt.
+	prompt := `You are a receipt parser for a maker/3D printing business. Extract structured data from this receipt.
 
 Your task is to analyze the receipt and extract:
 1. Vendor/store name
 2. Date of purchase (from invoice/payment date)
-3. All line items with quantities and prices
+3. ALL line items with quantities and prices — include EVERY item on the receipt, not just filament
 4. Subtotal, tax, shipping (if applicable), and total
 5. For filament/spool purchases, extract: brand, material type (PLA, PETG, ABS, etc.), color, weight in grams, diameter in mm
+6. For non-filament items (tools, supplies, parts, etc.), provide a clean, descriptive item name
 
 Important rules:
+- Include EVERY item from the receipt. Non-filament items (lamp cords, lightbulbs, tools, hardware, etc.) are important supply items
 - For items with quantity > 1, the unit_price_cents should be the per-unit price, and total_price_cents should be quantity × unit_price (the "Items SubTotal" column value)
+- MULTI-PACKS: If a product name says "6 Pack", "4 Pack", "50pk", "10-Pack", etc., the quantity MUST be the pack count (e.g., 6) and unit_price_cents MUST be the total line price divided by that pack count. Example: "6 Pack Lamp Cord" at $37.33 → quantity: 6, unit_price_cents: 622, total_price_cents: 3733
 - Convert all prices to cents (e.g., $19.99 = 1999 cents)
 - For Bambu Lab invoices: the "Items SubTotal" column is the final per-line total after discounts and before tax
-- The vendor is the seller name (e.g., "Bambu Lab US"), not the buyer
+- The vendor is the seller name (e.g., "Bambu Lab US", "Amazon.com"), not the buyer
 - For filament items, extract variant info: color name, material type from the product name (PLA Basic = PLA, PETG Translucent = PETG, PLA Matte = PLA, PLA Silk+ = PLA)
 - For filament items, also provide a hex color code (color_hex) that represents the filament color (e.g., Black = #000000, White = #FFFFFF, Red = #FF0000, Beige = #F5DEB3)
 - Weight is typically in the variant description (e.g., "1kg" = 1000 grams, "1 kg" = 1000 grams)
 - Diameter is typically 1.75mm for these products
+- For non-filament items, use a short clean description of the INDIVIDUAL item, stripping pack count from the name (e.g., "6 Pack Plug in Hanging Light Kit..." → "Plug-in Hanging Light Cord 12ft", "LiteHistory 6W LED Bulb G16.5 2700K 6-Pack" → "LED Globe Bulb G16.5 6W 2700K")
 
 Return ONLY valid JSON in this exact format (no markdown, no explanation):
 {
@@ -182,12 +186,26 @@ Return ONLY valid JSON in this exact format (no markdown, no explanation):
         "diameter_mm": 1.75
       },
       "confidence": 95
+    },
+    {
+      "description": "Plug-in Hanging Light Cord 12ft with Switch",
+      "quantity": 6,
+      "unit_price_cents": 622,
+      "total_price_cents": 3733,
+      "category": "parts",
+      "is_filament": false,
+      "confidence": 95
     }
   ],
   "confidence": 90
 }
 
 Categories for items: filament, parts, tools, shipping, other
+- filament: 3D printer filament spools or refills
+- parts: components, hardware, electrical parts, supplies used in projects
+- tools: tools, equipment, instruments
+- shipping: shipping or delivery charges
+- other: anything that doesn't fit the above
 
 If a field cannot be determined, use reasonable defaults or null.
 Confidence should be 0-100 based on how certain you are about the extraction.`

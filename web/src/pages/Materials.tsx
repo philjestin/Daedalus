@@ -1,22 +1,26 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Package, Droplet } from 'lucide-react'
+import { Plus, Package, Droplet, ShoppingCart, Trash2 } from 'lucide-react'
 import { materialsApi, spoolsApi } from '../api/client'
 import { cn, getStatusBadge } from '../lib/utils'
 import type { Material, MaterialSpool, MaterialType } from '../types'
 
 export default function Materials() {
   const queryClient = useQueryClient()
-  
+
   const { data: materials = [], isLoading: materialsLoading } = useQuery({
     queryKey: ['materials'],
     queryFn: () => materialsApi.list(),
+    refetchInterval: 5000,
   })
-  
+
   const { data: spools = [], isLoading: spoolsLoading } = useQuery({
     queryKey: ['spools'],
     queryFn: () => spoolsApi.list(),
   })
+
+  const filamentMaterials = materials.filter(m => m.type !== 'supply')
+  const supplyMaterials = materials.filter(m => m.type === 'supply')
 
   const createMaterial = useMutation({
     mutationFn: (data: Partial<Material>) => materialsApi.create(data),
@@ -28,9 +32,28 @@ export default function Materials() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['spools'] }),
   })
 
+  const deleteMaterial = useMutation({
+    mutationFn: (id: string) => materialsApi.delete(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['materials'] })
+      queryClient.invalidateQueries({ queryKey: ['materials', 'supply'] })
+    },
+  })
+
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+
+  const handleDeleteMaterial = (material: Material) => {
+    if (confirmDeleteId === material.id) {
+      deleteMaterial.mutate(material.id)
+      setConfirmDeleteId(null)
+    } else {
+      setConfirmDeleteId(material.id)
+    }
+  }
+
   const [showAddMaterial, setShowAddMaterial] = useState(false)
   const [showAddSpool, setShowAddSpool] = useState(false)
-  const [tab, setTab] = useState<'spools' | 'catalog'>('spools')
+  const [tab, setTab] = useState<'spools' | 'catalog' | 'supplies'>('spools')
 
   const handleCreateMaterial = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
@@ -74,7 +97,7 @@ export default function Materials() {
             Materials
           </h1>
           <p className="text-surface-400 mt-1">
-            Manage your filament inventory
+            Manage your filament inventory and supplies
           </p>
         </div>
         <div className="flex gap-2">
@@ -119,7 +142,19 @@ export default function Materials() {
           )}
         >
           <Package className="h-4 w-4 inline mr-2" />
-          Catalog ({materials.length})
+          Catalog ({filamentMaterials.length})
+        </button>
+        <button
+          onClick={() => setTab('supplies')}
+          className={cn(
+            'px-4 py-2 rounded-lg text-sm font-medium transition-colors',
+            tab === 'supplies'
+              ? 'bg-accent-500/20 text-accent-400'
+              : 'text-surface-400 hover:text-surface-100 hover:bg-surface-800'
+          )}
+        >
+          <ShoppingCart className="h-4 w-4 inline mr-2" />
+          Supplies ({supplyMaterials.length})
         </button>
       </div>
 
@@ -207,7 +242,7 @@ export default function Materials() {
       {tab === 'catalog' && (
         materialsLoading ? (
           <div className="text-surface-500">Loading...</div>
-        ) : materials.length === 0 ? (
+        ) : filamentMaterials.length === 0 ? (
           <div className="text-center py-16">
             <Package className="h-16 w-16 mx-auto mb-4 text-surface-600" />
             <h3 className="text-xl font-semibold text-surface-300 mb-2">
@@ -216,7 +251,7 @@ export default function Materials() {
             <p className="text-surface-500 mb-4">
               Add materials to your catalog before creating spools
             </p>
-            <button 
+            <button
               onClick={() => setShowAddMaterial(true)}
               className="btn btn-primary"
             >
@@ -226,21 +261,39 @@ export default function Materials() {
           </div>
         ) : (
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            {materials.map((material) => (
+            {filamentMaterials.map((material) => (
               <div key={material.id} className="card p-4">
                 <div className="flex items-center gap-3 mb-3">
-                  <div 
+                  <div
                     className="w-10 h-10 rounded-full border-2 border-surface-700"
                     style={{ backgroundColor: material.color_hex || '#666' }}
                   />
-                  <div>
-                    <h3 className="font-medium text-surface-100">
+                  <div className="flex-1 min-w-0">
+                    <h3 className="font-medium text-surface-100 truncate">
                       {material.name}
                     </h3>
                     <p className="text-xs text-surface-500">
                       {material.manufacturer || material.type.toUpperCase()}
                     </p>
                   </div>
+                  {confirmDeleteId === material.id ? (
+                    <button
+                      onClick={() => handleDeleteMaterial(material)}
+                      onBlur={() => setConfirmDeleteId(null)}
+                      className="text-xs px-2 py-1 rounded bg-red-500/20 text-red-400 border border-red-500/50 hover:bg-red-500/30 transition-colors"
+                      autoFocus
+                    >
+                      Delete?
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => handleDeleteMaterial(material)}
+                      className="p-1.5 rounded-lg text-surface-500 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                      title="Delete material"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  )}
                 </div>
                 <div className="space-y-1 text-sm">
                   <div className="flex justify-between">
@@ -258,6 +311,66 @@ export default function Materials() {
                 </div>
               </div>
             ))}
+          </div>
+        )
+      )}
+
+      {/* Supplies Tab */}
+      {tab === 'supplies' && (
+        materialsLoading ? (
+          <div className="text-surface-500">Loading...</div>
+        ) : supplyMaterials.length === 0 ? (
+          <div className="text-center py-16">
+            <ShoppingCart className="h-16 w-16 mx-auto mb-4 text-surface-600" />
+            <h3 className="text-xl font-semibold text-surface-300 mb-2">
+              No supplies yet
+            </h3>
+            <p className="text-surface-500 mb-4">
+              Upload Amazon or other receipts to auto-create supply materials
+            </p>
+          </div>
+        ) : (
+          <div className="card overflow-hidden">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-surface-800">
+                  <th className="text-left text-xs font-medium text-surface-500 uppercase px-4 py-2">Item</th>
+                  <th className="text-left text-xs font-medium text-surface-500 uppercase px-4 py-2">Vendor</th>
+                  <th className="text-right text-xs font-medium text-surface-500 uppercase px-4 py-2">Unit Cost</th>
+                  <th className="w-10 px-4 py-2"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {supplyMaterials.map((material) => (
+                  <tr key={material.id} className="border-b border-surface-800/50">
+                    <td className="px-4 py-3 text-surface-200">{material.name}</td>
+                    <td className="px-4 py-3 text-surface-400">{material.manufacturer || '—'}</td>
+                    <td className="px-4 py-3 text-right text-surface-300">
+                      ${material.cost_per_kg.toFixed(2)}
+                    </td>
+                    <td className="px-4 py-3">
+                      {confirmDeleteId === material.id ? (
+                        <button
+                          onClick={() => handleDeleteMaterial(material)}
+                          onBlur={() => setConfirmDeleteId(null)}
+                          className="text-xs px-2 py-1 rounded bg-red-500/20 text-red-400 border border-red-500/50 hover:bg-red-500/30 transition-colors"
+                          autoFocus
+                        >
+                          Delete?
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => handleDeleteMaterial(material)}
+                          className="p-1 rounded text-surface-500 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )
       )}

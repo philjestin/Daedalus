@@ -196,6 +196,8 @@ CREATE TABLE IF NOT EXISTS print_jobs (
     actual_seconds INTEGER,
     material_used_grams REAL,
     cost_cents INTEGER,
+    printer_time_cost_cents INTEGER,
+    material_cost_cents INTEGER,
     material_snapshot TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -539,6 +541,20 @@ CREATE TABLE IF NOT EXISTS bambu_cloud_auth (
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Project supplies (non-printed BOM items)
+CREATE TABLE IF NOT EXISTS project_supplies (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    unit_cost_cents INTEGER NOT NULL DEFAULT 0,
+    quantity INTEGER NOT NULL DEFAULT 1,
+    notes TEXT DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_project_supplies_project ON project_supplies(project_id);
 
 -- Views
 

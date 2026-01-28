@@ -774,7 +774,14 @@ type MaterialHandler struct {
 
 // List returns all materials.
 func (h *MaterialHandler) List(w http.ResponseWriter, r *http.Request) {
-	materials, err := h.service.List(r.Context())
+	var materials []model.Material
+	var err error
+
+	if typeFilter := r.URL.Query().Get("type"); typeFilter != "" {
+		materials, err = h.service.ListByType(r.Context(), model.MaterialType(typeFilter))
+	} else {
+		materials, err = h.service.List(r.Context())
+	}
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -822,6 +829,22 @@ func (h *MaterialHandler) Get(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondJSON(w, http.StatusOK, material)
+}
+
+// Delete removes a material by ID.
+func (h *MaterialHandler) Delete(w http.ResponseWriter, r *http.Request) {
+	id, err := parseUUID(r, "id")
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid material ID")
+		return
+	}
+
+	if err := h.service.Delete(r.Context(), id); err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // SpoolHandler handles spool endpoints.
@@ -2319,6 +2342,70 @@ func (h *BambuCloudHandler) Logout(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// ProjectSupplyHandler handles project supply HTTP requests.
+type ProjectSupplyHandler struct {
+	service *service.ProjectSupplyService
+}
+
+// List retrieves all supplies for a project.
+func (h *ProjectSupplyHandler) List(w http.ResponseWriter, r *http.Request) {
+	projectID, err := parseUUID(r, "id")
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid project ID")
+		return
+	}
+
+	supplies, err := h.service.ListByProject(r.Context(), projectID)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	if supplies == nil {
+		supplies = []model.ProjectSupply{}
+	}
+	respondJSON(w, http.StatusOK, supplies)
+}
+
+// Create creates a new project supply.
+func (h *ProjectSupplyHandler) Create(w http.ResponseWriter, r *http.Request) {
+	projectID, err := parseUUID(r, "id")
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid project ID")
+		return
+	}
+
+	var supply model.ProjectSupply
+	if err := json.NewDecoder(r.Body).Decode(&supply); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	supply.ProjectID = projectID
+
+	if err := h.service.Create(r.Context(), &supply); err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusCreated, supply)
+}
+
+// Delete removes a project supply.
+func (h *ProjectSupplyHandler) Delete(w http.ResponseWriter, r *http.Request) {
+	supplyID, err := parseUUID(r, "id")
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid supply ID")
+		return
+	}
+
+	if err := h.service.Delete(r.Context(), supplyID); err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
 	w.WriteHeader(http.StatusNoContent)
 }
 

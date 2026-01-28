@@ -68,6 +68,40 @@ type ProjectSummary struct {
 
 	// Material
 	TotalMaterialGrams float64 `json:"total_material_grams"`
+
+	// Estimated costs (from slice profiles and supplies)
+	EstimatedMaterialCostCents int `json:"estimated_material_cost_cents"`
+	SupplyCostCents            int `json:"supply_cost_cents"`
+}
+
+// ProjectSupply represents a non-printed purchased item in a project's bill of materials.
+type ProjectSupply struct {
+	ID            uuid.UUID  `json:"id"`
+	ProjectID     uuid.UUID  `json:"project_id"`
+	Name          string     `json:"name"`
+	UnitCostCents int        `json:"unit_cost_cents"`
+	Quantity      int        `json:"quantity"`
+	Notes         string     `json:"notes"`
+	MaterialID    *uuid.UUID `json:"material_id,omitempty"`
+	CreatedAt     time.Time  `json:"created_at"`
+	UpdatedAt     time.Time  `json:"updated_at"`
+}
+
+// SliceProfileData represents parsed data from a 3MF slice profile.
+type SliceProfileData struct {
+	PrintTimeSeconds int              `json:"print_time_seconds"`
+	WeightGrams      float64          `json:"weight_grams"`
+	PrinterModel     string           `json:"printer_model,omitempty"`
+	NozzleDiameter   float64          `json:"nozzle_diameter,omitempty"`
+	Filaments        []FilamentUsage  `json:"filaments"`
+}
+
+// FilamentUsage represents filament usage data from a slice profile.
+type FilamentUsage struct {
+	Type      string  `json:"type"`
+	Color     string  `json:"color"`
+	UsedGrams float64 `json:"used_grams"`
+	UsedMeters float64 `json:"used_meters"`
 }
 
 // PrintProfile represents a symbolic slicer profile.
@@ -407,7 +441,8 @@ const (
 	MaterialTypePETG MaterialType = "petg"
 	MaterialTypeABS  MaterialType = "abs"
 	MaterialTypeASA  MaterialType = "asa"
-	MaterialTypeTPU  MaterialType = "tpu"
+	MaterialTypeTPU    MaterialType = "tpu"
+	MaterialTypeSupply MaterialType = "supply"
 )
 
 // TempRange represents a temperature range.
@@ -759,7 +794,8 @@ const (
 	ExpenseItemActionNone         ExpenseItemAction = "none"
 	ExpenseItemActionCreatedSpool ExpenseItemAction = "created_spool"
 	ExpenseItemActionMatchedSpool ExpenseItemAction = "matched_spool"
-	ExpenseItemActionSkipped      ExpenseItemAction = "skipped"
+	ExpenseItemActionSkipped       ExpenseItemAction = "skipped"
+	ExpenseItemActionCreatedSupply ExpenseItemAction = "created_supply"
 )
 
 // FilamentMetadata holds parsed attributes for filament items.
