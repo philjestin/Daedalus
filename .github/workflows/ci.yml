@@ -22,11 +22,15 @@ jobs:
       - name: Install dependencies
         run: go mod download
 
+      # Build internal packages and cmd/server (excludes Wails app which needs web/dist)
       - name: Build
-        run: go build -v ./...
+        run: |
+          go build -v ./internal/...
+          go build -v ./cmd/...
 
+      # Test internal packages
       - name: Test
-        run: go test -v -race -coverprofile=coverage.out ./...
+        run: go test -v -race -coverprofile=coverage.out ./internal/...
 
       - name: Upload coverage
         uses: codecov/codecov-action@v4
