@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -129,7 +130,8 @@ func MoneyToCents(m Money) int {
 	if err != nil {
 		return 0
 	}
-	return int(val * 100)
+	// Use math.Round to avoid floating-point precision issues (e.g., 19.99 * 100 = 1998.9999...)
+	return int(math.Round(val * 100))
 }
 
 // Address represents an address in the Squarespace API.
