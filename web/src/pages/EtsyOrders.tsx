@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { RefreshCw, Package, CheckCircle, Clock, ExternalLink } from 'lucide-react'
 import { etsyApi } from '../api/client'
 import type { EtsyReceipt, SyncResult } from '../types'
@@ -13,11 +13,7 @@ export default function EtsyOrders() {
   const [filter, setFilter] = useState<'all' | 'unprocessed' | 'processed'>('all')
   const [processingId, setProcessingId] = useState<string | null>(null)
 
-  useEffect(() => {
-    loadReceipts()
-  }, [filter])
-
-  async function loadReceipts() {
+  const loadReceipts = useCallback(async function() {
     setLoading(true)
     setError(null)
     try {
@@ -29,7 +25,11 @@ export default function EtsyOrders() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [filter])
+
+  useEffect(() => {
+    loadReceipts()
+  }, [loadReceipts])
 
   async function handleSync() {
     setSyncing(true)

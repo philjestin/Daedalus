@@ -32,6 +32,9 @@ export function useWebSocket() {
   const [status, setStatus] = useState<ConnectionStatus>('disconnected')
   const queryClient = useQueryClient()
 
+  // Use a ref to hold the connect function to avoid circular dependency
+  const connectRef = useRef<() => void>(() => {})
+
   const handleMessage = useCallback((event: WebSocketEvent) => {
     switch (event.type) {
       case 'printer_state_updated': {
@@ -118,12 +121,18 @@ export function useWebSocket() {
           reconnectDelayRef.current * RECONNECT_MULTIPLIER,
           RECONNECT_MAX_DELAY
         )
-        connect()
+        // Use ref to call connect to avoid stale closure
+        connectRef.current()
       }, delay)
     }
 
     wsRef.current = ws
   }, [handleMessage])
+
+  // Keep connectRef in sync with connect (must be in effect, not during render)
+  useEffect(() => {
+    connectRef.current = connect
+  }, [connect])
 
   const disconnect = useCallback(() => {
     if (reconnectTimeoutRef.current) {

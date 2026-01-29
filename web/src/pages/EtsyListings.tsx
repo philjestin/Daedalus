@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { RefreshCw, Store, Link, Unlink, ExternalLink, Eye, Heart } from 'lucide-react'
 import { etsyApi, templatesApi } from '../api/client'
 import type { EtsyListing, Template, SyncResult } from '../types'
@@ -20,11 +20,7 @@ export default function EtsyListings() {
     syncInventory: boolean
   } | null>(null)
 
-  useEffect(() => {
-    loadData()
-  }, [stateFilter])
-
-  async function loadData() {
+  const loadData = useCallback(async function() {
     setLoading(true)
     setError(null)
     try {
@@ -39,7 +35,11 @@ export default function EtsyListings() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [stateFilter])
+
+  useEffect(() => {
+    loadData()
+  }, [loadData])
 
   async function handleSync() {
     setSyncing(true)

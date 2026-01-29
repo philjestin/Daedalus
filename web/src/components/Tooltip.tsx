@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef } from 'react'
 import { Info } from 'lucide-react'
 
 interface TooltipProps {
@@ -8,20 +8,16 @@ interface TooltipProps {
 
 export function Tooltip({ text, children }: TooltipProps) {
   const [show, setShow] = useState(false)
-  const [position, setPosition] = useState<'bottom' | 'top'>('bottom')
   const ref = useRef<HTMLDivElement>(null)
 
-  useEffect(() => {
-    if (show && ref.current) {
-      const rect = ref.current.getBoundingClientRect()
-      // If tooltip would go below viewport, show above
-      if (rect.bottom + 80 > window.innerHeight) {
-        setPosition('top')
-      } else {
-        setPosition('bottom')
-      }
-    }
-  }, [show])
+  // Calculate position on-demand when rendering, not in an effect
+  const getPosition = () => {
+    if (!ref.current) return 'bottom'
+    const rect = ref.current.getBoundingClientRect()
+    return rect.bottom + 80 > window.innerHeight ? 'top' : 'bottom'
+  }
+
+  const position = show ? getPosition() : 'bottom'
 
   return (
     <div

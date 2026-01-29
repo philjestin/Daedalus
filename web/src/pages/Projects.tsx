@@ -10,6 +10,32 @@ import type { ProjectSummary } from '../types'
 type SortField = 'name' | 'updated_at' | 'revenue' | 'profit' | 'profit_per_hour' | 'success_rate' | 'print_time'
 type SortDir = 'asc' | 'desc'
 
+// SortHeader component - defined outside to avoid recreating during render
+function SortHeader({
+  field,
+  currentField,
+  onSort,
+  children
+}: {
+  field: SortField
+  currentField: SortField
+  onSort: (field: SortField) => void
+  children: React.ReactNode
+}) {
+  return (
+    <button
+      onClick={() => onSort(field)}
+      className={cn(
+        'flex items-center gap-1 text-xs font-medium uppercase tracking-wider',
+        currentField === field ? 'text-accent-400' : 'text-surface-500 hover:text-surface-300'
+      )}
+    >
+      {children}
+      <ArrowUpDown className="h-3 w-3" />
+    </button>
+  )
+}
+
 export default function Projects() {
   const [showCreate, setShowCreate] = useState(false)
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid')
@@ -107,19 +133,6 @@ export default function Projects() {
     return `${mins}m`
   }
 
-  const SortHeader = ({ field, children }: { field: SortField; children: React.ReactNode }) => (
-    <button
-      onClick={() => handleSort(field)}
-      className={cn(
-        'flex items-center gap-1 text-xs font-medium uppercase tracking-wider',
-        sortField === field ? 'text-accent-400' : 'text-surface-500 hover:text-surface-300'
-      )}
-    >
-      {children}
-      <ArrowUpDown className="h-3 w-3" />
-    </button>
-  )
-
   return (
     <div className="p-4 sm:p-6 lg:p-8">
       {/* Header */}
@@ -194,13 +207,13 @@ export default function Projects() {
             <table className="w-full">
               <thead>
                 <tr className="border-b border-surface-800">
-                  <th className="text-left p-3"><SortHeader field="name">Name</SortHeader></th>
-                  <th className="text-right p-3"><SortHeader field="revenue">Revenue</SortHeader></th>
-                  <th className="text-right p-3"><SortHeader field="profit">Profit</SortHeader></th>
-                  <th className="text-right p-3"><SortHeader field="profit_per_hour">Profit/hr</SortHeader></th>
-                  <th className="text-right p-3"><SortHeader field="success_rate">Success</SortHeader></th>
-                  <th className="text-right p-3"><SortHeader field="print_time">Print Time</SortHeader></th>
-                  <th className="text-right p-3"><SortHeader field="updated_at">Updated</SortHeader></th>
+                  <th className="text-left p-3"><SortHeader field="name" currentField={sortField} onSort={handleSort}>Name</SortHeader></th>
+                  <th className="text-right p-3"><SortHeader field="revenue" currentField={sortField} onSort={handleSort}>Revenue</SortHeader></th>
+                  <th className="text-right p-3"><SortHeader field="profit" currentField={sortField} onSort={handleSort}>Profit</SortHeader></th>
+                  <th className="text-right p-3"><SortHeader field="profit_per_hour" currentField={sortField} onSort={handleSort}>Profit/hr</SortHeader></th>
+                  <th className="text-right p-3"><SortHeader field="success_rate" currentField={sortField} onSort={handleSort}>Success</SortHeader></th>
+                  <th className="text-right p-3"><SortHeader field="print_time" currentField={sortField} onSort={handleSort}>Print Time</SortHeader></th>
+                  <th className="text-right p-3"><SortHeader field="updated_at" currentField={sortField} onSort={handleSort}>Updated</SortHeader></th>
                 </tr>
               </thead>
               <tbody>

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useMemo } from 'react'
 import { Settings2, Box, CircleDot, Thermometer, Layers } from 'lucide-react'
 import type { PrinterConstraints, BuildVolume } from '../types'
 
@@ -10,23 +10,30 @@ interface PrinterConstraintsEditorProps {
 
 const commonNozzleSizes = [0.2, 0.4, 0.6, 0.8]
 
+const defaultConstraints: PrinterConstraints = {
+  requires_enclosure: false,
+  requires_ams: false,
+}
+
 export default function PrinterConstraintsEditor({
   constraints,
   onChange,
   disabled = false,
 }: PrinterConstraintsEditorProps) {
-  const [localConstraints, setLocalConstraints] = useState<PrinterConstraints>(
-    constraints || {
-      requires_enclosure: false,
-      requires_ams: false,
-    }
+  // Use a key based on constraints to reset local state when props change
+  const initialConstraints = useMemo(
+    () => constraints || defaultConstraints,
+    [constraints]
   )
+  const [localConstraints, setLocalConstraints] = useState<PrinterConstraints>(initialConstraints)
 
-  useEffect(() => {
-    if (constraints) {
-      setLocalConstraints(constraints)
-    }
-  }, [constraints])
+  // Reset local state when constraints prop changes (using key pattern would be cleaner but this works)
+  const constraintsKey = JSON.stringify(constraints)
+  const [prevKey, setPrevKey] = useState(constraintsKey)
+  if (constraintsKey !== prevKey) {
+    setPrevKey(constraintsKey)
+    setLocalConstraints(constraints || defaultConstraints)
+  }
 
   const updateConstraints = (updates: Partial<PrinterConstraints>) => {
     const updated = { ...localConstraints, ...updates }
