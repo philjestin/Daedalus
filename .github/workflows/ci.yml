@@ -76,10 +76,13 @@ jobs:
         include:
           - os: macos-latest
             platform: darwin/universal
+            wails_flags: ""
           - os: windows-latest
             platform: windows/amd64
-          - os: ubuntu-20.04
+            wails_flags: ""
+          - os: ubuntu-latest
             platform: linux/amd64
+            wails_flags: "-tags webkit2_41"
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -104,7 +107,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.0-dev
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev
 
       - name: Build frontend
         working-directory: web
@@ -113,7 +116,7 @@ jobs:
           npm run build
 
       - name: Build Wails app
-        run: wails build -platform ${{ matrix.platform }}
+        run: wails build -platform ${{ matrix.platform }} ${{ matrix.wails_flags }}
 
       - name: Upload artifact (macOS)
         if: matrix.os == 'macos-latest'
