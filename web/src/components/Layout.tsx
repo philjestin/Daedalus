@@ -10,8 +10,7 @@ import {
   Receipt,
   DollarSign,
   FileStack,
-  ShoppingCart,
-  Store,
+  ShoppingBag,
   PanelLeftClose,
   PanelLeftOpen,
 } from 'lucide-react'
@@ -25,8 +24,7 @@ const navigation = [
   { name: 'Materials', href: '/materials', icon: Package },
   { name: 'Expenses', href: '/expenses', icon: Receipt },
   { name: 'Sales', href: '/sales', icon: DollarSign },
-  { name: 'Etsy Orders', href: '/etsy/orders', icon: ShoppingCart },
-  { name: 'Etsy Listings', href: '/etsy/listings', icon: Store },
+  { name: 'Channels', href: '/channels', icon: ShoppingBag },
 ]
 
 export default function Layout() {

@@ -171,6 +171,23 @@ func (m *Manager) Disconnect(id uuid.UUID) {
 	})
 }
 
+// DisconnectAll closes all printer connections. Used during graceful shutdown.
+func (m *Manager) DisconnectAll() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	for id, client := range m.clients {
+		slog.Info("disconnecting printer", "printer_id", id)
+		client.Disconnect()
+		delete(m.clients, id)
+	}
+	// Clear all states
+	for id := range m.states {
+		delete(m.states, id)
+	}
+	slog.Info("all printers disconnected")
+}
+
 // GetState retrieves current state for a printer.
 func (m *Manager) GetState(id uuid.UUID) (*model.PrinterState, error) {
 	m.mu.RLock()

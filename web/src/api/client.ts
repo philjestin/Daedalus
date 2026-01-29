@@ -777,6 +777,69 @@ export const bambuCloudApi = {
     fetchApi<void>('/bambu-cloud/logout', { method: 'DELETE' }),
 }
 
+// Squarespace API
+export const squarespaceApi = {
+  // Connection
+  connect: (apiKey: string) =>
+    fetchApi<import('../types').SquarespaceIntegration>('/integrations/squarespace/connect', {
+      method: 'POST',
+      body: JSON.stringify({ api_key: apiKey })
+    }),
+
+  getStatus: () =>
+    fetchApi<import('../types').SquarespaceIntegration>('/integrations/squarespace/status'),
+
+  disconnect: () =>
+    fetchApi<{ status: string }>('/integrations/squarespace/disconnect', { method: 'POST' }),
+
+  // Orders
+  syncOrders: () =>
+    fetchApi<import('../types').SyncResult>('/integrations/squarespace/orders/sync', { method: 'POST' }),
+
+  listOrders: (params?: { processed?: boolean; limit?: number; offset?: number }) => {
+    const searchParams = new URLSearchParams()
+    if (params?.processed !== undefined) searchParams.set('processed', String(params.processed))
+    if (params?.limit) searchParams.set('limit', String(params.limit))
+    if (params?.offset) searchParams.set('offset', String(params.offset))
+    const query = searchParams.toString()
+    return fetchApi<import('../types').SquarespaceOrder[]>(`/integrations/squarespace/orders${query ? `?${query}` : ''}`)
+  },
+
+  getOrder: (id: string) =>
+    fetchApi<import('../types').SquarespaceOrder>(`/integrations/squarespace/orders/${id}`),
+
+  processOrder: (id: string) =>
+    fetchApi<{ project_id: string; project: import('../types').Project }>(`/integrations/squarespace/orders/${id}/process`, {
+      method: 'POST',
+    }),
+
+  // Products
+  syncProducts: () =>
+    fetchApi<import('../types').SyncResult>('/integrations/squarespace/products/sync', { method: 'POST' }),
+
+  listProducts: (params?: { limit?: number; offset?: number }) => {
+    const searchParams = new URLSearchParams()
+    if (params?.limit) searchParams.set('limit', String(params.limit))
+    if (params?.offset) searchParams.set('offset', String(params.offset))
+    const query = searchParams.toString()
+    return fetchApi<import('../types').SquarespaceProduct[]>(`/integrations/squarespace/products${query ? `?${query}` : ''}`)
+  },
+
+  getProduct: (id: string) =>
+    fetchApi<import('../types').SquarespaceProduct>(`/integrations/squarespace/products/${id}`),
+
+  linkProduct: (id: string, templateId: string, sku?: string) =>
+    fetchApi<{ status: string }>(`/integrations/squarespace/products/${id}/link`, {
+      method: 'POST',
+      body: JSON.stringify({ template_id: templateId, sku })
+    }),
+
+  unlinkProduct: (id: string, templateId: string) =>
+    fetchApi<void>(`/integrations/squarespace/products/${id}/link?template_id=${templateId}`, {
+      method: 'DELETE'
+    }),
+}
+
 // WebSocket connection for real-time updates
 export function createWebSocket(onMessage: (event: { type: string; data: unknown }) => void) {
   const wsUrl = API_URL.replace('http', 'ws') + '/ws'

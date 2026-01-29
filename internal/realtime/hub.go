@@ -30,6 +30,8 @@ type Hub struct {
 	broadcast  chan Event
 	register   chan *Client
 	unregister chan *Client
+	stop       chan struct{}
+	stopped    bool
 }
 
 // NewHub creates a new WebSocket hub.
@@ -39,6 +41,7 @@ func NewHub() *Hub {
 		broadcast:  make(chan Event, 256),
 		register:   make(chan *Client),
 		unregister: make(chan *Client),
+		stop:       make(chan struct{}),
 	}
 }
 
@@ -46,6 +49,19 @@ func NewHub() *Hub {
 func (h *Hub) Run() {
 	for {
 		select {
+		case <-h.stop:
+			// Gracefully close all client connections
+			h.mu.Lock()
+			for client := range h.clients {
+				close(client.send)
+				client.conn.Close(websocket.StatusGoingAway, "server shutting down")
+				delete(h.clients, client)
+			}
+			h.stopped = true
+			h.mu.Unlock()
+			slog.Info("websocket hub stopped")
+			return
+
 		case client := <-h.register:
 			h.mu.Lock()
 			h.clients[client] = true
@@ -175,5 +191,17 @@ func (h *Hub) ClientCount() int {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	return len(h.clients)
+}
+
+// Stop gracefully shuts down the hub, closing all client connections.
+func (h *Hub) Stop() {
+	h.mu.RLock()
+	if h.stopped {
+		h.mu.RUnlock()
+		return
+	}
+	h.mu.RUnlock()
+
+	close(h.stop)
 }
 

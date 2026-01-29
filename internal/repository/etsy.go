@@ -3,9 +3,11 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/hyperion/printfarm/internal/crypto"
 	"github.com/hyperion/printfarm/internal/model"
 )
 
@@ -20,6 +22,7 @@ func NewEtsyRepository(db *sql.DB) *EtsyRepository {
 }
 
 // SaveIntegration creates or updates an Etsy integration.
+// Access and refresh tokens are encrypted before storage.
 func (r *EtsyRepository) SaveIntegration(ctx context.Context, i *model.EtsyIntegration) error {
 	if i.ID == uuid.Nil {
 		i.ID = uuid.New()
@@ -29,6 +32,24 @@ func (r *EtsyRepository) SaveIntegration(ctx context.Context, i *model.EtsyInteg
 
 	if i.Scopes == nil {
 		i.Scopes = []string{}
+	}
+
+	// Encrypt tokens before storing
+	accessToken := i.AccessToken
+	refreshToken := i.RefreshToken
+	if accessToken != "" {
+		if encrypted, err := crypto.Encrypt(accessToken); err == nil {
+			accessToken = encrypted
+		} else {
+			slog.Warn("failed to encrypt access token", "error", err)
+		}
+	}
+	if refreshToken != "" {
+		if encrypted, err := crypto.Encrypt(refreshToken); err == nil {
+			refreshToken = encrypted
+		} else {
+			slog.Warn("failed to encrypt refresh token", "error", err)
+		}
 	}
 
 	_, err := r.db.ExecContext(ctx, `
@@ -43,11 +64,12 @@ func (r *EtsyRepository) SaveIntegration(ctx context.Context, i *model.EtsyInteg
 			scopes = EXCLUDED.scopes,
 			is_active = EXCLUDED.is_active,
 			updated_at = EXCLUDED.updated_at
-	`, i.ID, i.ShopID, i.ShopName, i.UserID, i.AccessToken, i.RefreshToken, i.TokenExpiresAt, marshalStringArray(i.Scopes), i.IsActive, i.LastSyncAt, i.CreatedAt, i.UpdatedAt)
+	`, i.ID, i.ShopID, i.ShopName, i.UserID, accessToken, refreshToken, i.TokenExpiresAt, marshalStringArray(i.Scopes), i.IsActive, i.LastSyncAt, i.CreatedAt, i.UpdatedAt)
 	return err
 }
 
 // GetIntegration retrieves the current Etsy integration (only one per install).
+// Tokens are decrypted before returning.
 func (r *EtsyRepository) GetIntegration(ctx context.Context) (*model.EtsyIntegration, error) {
 	var i model.EtsyIntegration
 	var scopesJSON []byte
@@ -64,16 +86,44 @@ func (r *EtsyRepository) GetIntegration(ctx context.Context) (*model.EtsyIntegra
 		return nil, err
 	}
 	i.Scopes = unmarshalStringArray(scopesJSON)
+
+	// Decrypt tokens
+	if decrypted, err := crypto.Decrypt(i.AccessToken); err == nil {
+		i.AccessToken = decrypted
+	}
+	if decrypted, err := crypto.Decrypt(i.RefreshToken); err == nil {
+		i.RefreshToken = decrypted
+	}
+
 	return &i, nil
 }
 
 // UpdateTokens updates the access and refresh tokens.
+// Tokens are encrypted before storage.
 func (r *EtsyRepository) UpdateTokens(ctx context.Context, accessToken, refreshToken string, expiresAt time.Time) error {
+	// Encrypt tokens before storing
+	encAccessToken := accessToken
+	encRefreshToken := refreshToken
+	if accessToken != "" {
+		if encrypted, err := crypto.Encrypt(accessToken); err == nil {
+			encAccessToken = encrypted
+		} else {
+			slog.Warn("failed to encrypt access token", "error", err)
+		}
+	}
+	if refreshToken != "" {
+		if encrypted, err := crypto.Encrypt(refreshToken); err == nil {
+			encRefreshToken = encrypted
+		} else {
+			slog.Warn("failed to encrypt refresh token", "error", err)
+		}
+	}
+
 	_, err := r.db.ExecContext(ctx, `
 		UPDATE etsy_integration
 		SET access_token = ?, refresh_token = ?, token_expires_at = ?, updated_at = ?
 		WHERE is_active = 1
-	`, accessToken, refreshToken, expiresAt, time.Now())
+	`, encAccessToken, encRefreshToken, expiresAt, time.Now())
 	return err
 }
 

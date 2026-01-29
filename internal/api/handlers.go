@@ -14,6 +14,7 @@ import (
 	"github.com/hyperion/printfarm/internal/model"
 	"github.com/hyperion/printfarm/internal/printer"
 	"github.com/hyperion/printfarm/internal/service"
+	"github.com/hyperion/printfarm/internal/validation"
 )
 
 // respondJSON sends a JSON response.
@@ -34,6 +35,15 @@ func respondJSON(w http.ResponseWriter, status int, data interface{}) {
 // respondError sends an error response.
 func respondError(w http.ResponseWriter, status int, message string) {
 	respondJSON(w, status, map[string]string{"error": message})
+}
+
+// respondValidationError sends a validation error response.
+func respondValidationError(w http.ResponseWriter, err error) {
+	if ve, ok := err.(*validation.ValidationError); ok {
+		respondJSON(w, http.StatusBadRequest, ve)
+		return
+	}
+	respondError(w, http.StatusBadRequest, err.Error())
 }
 
 // parseUUID parses a UUID from URL parameter.
@@ -66,6 +76,17 @@ func (h *ProjectHandler) Create(w http.ResponseWriter, r *http.Request) {
 	var project model.Project
 	if err := json.NewDecoder(r.Body).Decode(&project); err != nil {
 		respondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	// Validate input
+	v := validation.New()
+	v.Required("name", project.Name)
+	v.MaxLength("name", project.Name, 255)
+	v.MaxLength("description", project.Description, 5000)
+	v.NoControlChars("name", project.Name)
+	if err := v.Error(); err != nil {
+		respondValidationError(w, err)
 		return
 	}
 
@@ -555,6 +576,19 @@ func (h *PrinterHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Validate input
+	v := validation.New()
+	v.Required("name", printer.Name)
+	v.MaxLength("name", printer.Name, 255)
+	v.MaxLength("model", printer.Model, 255)
+	v.MaxLength("manufacturer", printer.Manufacturer, 255)
+	v.NoControlChars("name", printer.Name)
+	v.NonNegative("cost_per_hour_cents", printer.CostPerHourCents)
+	if err := v.Error(); err != nil {
+		respondValidationError(w, err)
+		return
+	}
+
 	if err := h.service.Create(r.Context(), &printer); err != nil {
 		respondError(w, http.StatusBadRequest, err.Error())
 		return
@@ -763,6 +797,21 @@ func (h *MaterialHandler) Create(w http.ResponseWriter, r *http.Request) {
 	var material model.Material
 	if err := json.NewDecoder(r.Body).Decode(&material); err != nil {
 		respondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	// Validate input
+	v := validation.New()
+	v.Required("name", material.Name)
+	v.MaxLength("name", material.Name, 255)
+	v.Required("type", string(material.Type))
+	v.MaxLength("type", string(material.Type), 50)
+	v.MaxLength("manufacturer", material.Manufacturer, 255)
+	v.MaxLength("color", material.Color, 100)
+	v.NonNegativeFloat("density", material.Density)
+	v.NonNegativeFloat("cost_per_kg", material.CostPerKg)
+	if err := v.Error(); err != nil {
+		respondValidationError(w, err)
 		return
 	}
 
@@ -1499,6 +1548,20 @@ func (h *SaleHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Validate input
+	v := validation.New()
+	v.MaxLength("channel", string(sale.Channel), 100)
+	v.MaxLength("platform", sale.Platform, 100)
+	v.MaxLength("customer_name", sale.CustomerName, 255)
+	v.MaxLength("order_reference", sale.OrderReference, 255)
+	v.MaxLength("item_description", sale.ItemDescription, 1000)
+	v.NonNegative("gross_cents", sale.GrossCents)
+	v.NonNegative("fees_cents", sale.FeesCents)
+	if err := v.Error(); err != nil {
+		respondValidationError(w, err)
+		return
+	}
+
 	if err := h.service.Create(r.Context(), &sale); err != nil {
 		respondError(w, http.StatusBadRequest, err.Error())
 		return
@@ -1690,6 +1753,19 @@ func (h *TemplateHandler) Create(w http.ResponseWriter, r *http.Request) {
 	var template model.Template
 	if err := json.NewDecoder(r.Body).Decode(&template); err != nil {
 		respondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	// Validate input
+	v := validation.New()
+	v.Required("name", template.Name)
+	v.MaxLength("name", template.Name, 255)
+	v.MaxLength("description", template.Description, 5000)
+	v.NoControlChars("name", template.Name)
+	v.NonNegative("estimated_print_seconds", template.EstimatedPrintSeconds)
+	v.NonNegativeFloat("estimated_material_grams", template.EstimatedMaterialGrams)
+	if err := v.Error(); err != nil {
+		respondValidationError(w, err)
 		return
 	}
 

@@ -17,9 +17,8 @@ func NewRouter(services *service.Services, hub *realtime.Hub) http.Handler {
 	r := chi.NewRouter()
 
 	// Middleware
-	r.Use(middleware.Logger)
+	r.Use(RequestLogger) // Custom structured logging with request IDs and timing
 	r.Use(middleware.Recoverer)
-	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
 	// Configure CORS - allow all origins for desktop app (local API only)
 	r.Use(cors.Handler(cors.Options{
@@ -298,6 +297,30 @@ func NewRouter(services *service.Services, hub *realtime.Hub) http.Handler {
 				r.Post("/webhook", etsyHandler.HandleWebhook)
 				r.Get("/webhook/events", etsyHandler.ListWebhookEvents)
 				r.Post("/webhook/events/{id}/reprocess", etsyHandler.ReprocessWebhookEvent)
+			})
+		}
+
+		// Squarespace Integration
+		if services.Squarespace != nil {
+			squarespaceHandler := NewSquarespaceHandler(services.Squarespace)
+			r.Route("/integrations/squarespace", func(r chi.Router) {
+				// Connection
+				r.Post("/connect", squarespaceHandler.Connect)
+				r.Get("/status", squarespaceHandler.GetStatus)
+				r.Post("/disconnect", squarespaceHandler.Disconnect)
+
+				// Orders
+				r.Post("/orders/sync", squarespaceHandler.SyncOrders)
+				r.Get("/orders", squarespaceHandler.ListOrders)
+				r.Get("/orders/{id}", squarespaceHandler.GetOrder)
+				r.Post("/orders/{id}/process", squarespaceHandler.ProcessOrder)
+
+				// Products
+				r.Post("/products/sync", squarespaceHandler.SyncProducts)
+				r.Get("/products", squarespaceHandler.ListProducts)
+				r.Get("/products/{id}", squarespaceHandler.GetProduct)
+				r.Post("/products/{id}/link", squarespaceHandler.LinkProduct)
+				r.Delete("/products/{id}/link", squarespaceHandler.UnlinkProduct)
 			})
 		}
 	})

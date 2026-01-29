@@ -3,6 +3,7 @@ package service
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -15,13 +16,14 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/hyperion/printfarm/internal/bambu"
+	"github.com/hyperion/printfarm/internal/crypto"
 	"github.com/hyperion/printfarm/internal/model"
 	"github.com/hyperion/printfarm/internal/printer"
 	"github.com/hyperion/printfarm/internal/realtime"
-	"github.com/hyperion/printfarm/internal/threemf"
 	"github.com/hyperion/printfarm/internal/receipt"
 	"github.com/hyperion/printfarm/internal/repository"
 	"github.com/hyperion/printfarm/internal/storage"
+	"github.com/hyperion/printfarm/internal/threemf"
 )
 
 // Services holds all service instances.
@@ -39,6 +41,7 @@ type Services struct {
 	Stats           *StatsService
 	Templates       *TemplateService
 	Etsy            *EtsyService
+	Squarespace     *SquarespaceService
 	BambuCloud      *BambuCloudService
 	Settings        *SettingsService
 	ProjectSupplies *ProjectSupplyService
@@ -67,11 +70,12 @@ func NewServices(repos *repository.Repositories, store storage.Storage, printerM
 		Spools:    &SpoolService{repo: repos.Spools},
 		PrintJobs: &PrintJobService{repo: repos.PrintJobs, printerRepo: repos.Printers, designRepo: repos.Designs, spoolRepo: repos.Spools, materialRepo: repos.Materials, projectRepo: repos.Projects, printerMgr: printerMgr, hub: hub, storage: store},
 		Files:     &FileService{repo: repos.Files, storage: store},
-		Expenses:  &ExpenseService{repo: repos.Expenses, materialRepo: repos.Materials, spoolRepo: repos.Spools, fileRepo: repos.Files, settingsRepo: repos.Settings, storage: store},
+		Expenses:  &ExpenseService{repo: repos.Expenses, materialRepo: repos.Materials, spoolRepo: repos.Spools, fileRepo: repos.Files, settingsRepo: repos.Settings, repos: repos, storage: store},
 		Sales:     &SaleService{repo: repos.Sales},
 		Stats:     &StatsService{expenseRepo: repos.Expenses, saleRepo: repos.Sales, printJobRepo: repos.PrintJobs},
 		Templates: &TemplateService{repo: repos.Templates, projectRepo: repos.Projects, partRepo: repos.Parts, designRepo: repos.Designs, printJobRepo: repos.PrintJobs, spoolRepo: repos.Spools, materialRepo: repos.Materials, printerRepo: repos.Printers},
 		Etsy:            nil, // Initialize separately with NewServicesWithEtsy
+		Squarespace:     nil, // Initialize below after Templates is ready
 		BambuCloud:      NewBambuCloudService(repos.BambuCloud, repos.Printers, printerMgr, bambu.NewCloudClient()),
 		Settings:        &SettingsService{repo: repos.Settings},
 		ProjectSupplies: &ProjectSupplyService{repo: repos.ProjectSupplies, materialRepo: repos.Materials},
@@ -79,6 +83,8 @@ func NewServices(repos *repository.Repositories, store storage.Storage, printerM
 	// Wire cross-service dependencies
 	services.Stats.projectService = services.Projects
 	services.Templates.projectService = services.Projects
+	// Initialize Squarespace with template service for order processing
+	services.Squarespace = NewSquarespaceService(repos.Squarespace, services.Templates)
 	return services
 }
 
@@ -2175,6 +2181,7 @@ type ExpenseService struct {
 	spoolRepo    *repository.SpoolRepository
 	fileRepo     *repository.FileRepository
 	settingsRepo *repository.SettingsRepository
+	repos        *repository.Repositories // For transaction support
 	storage      storage.Storage
 	parser       *receipt.Parser
 }
@@ -2573,6 +2580,7 @@ type ConfirmExpenseItem struct {
 }
 
 // ConfirmExpense confirms an expense and applies inventory changes.
+// All database operations are wrapped in a transaction for atomicity.
 func (s *ExpenseService) ConfirmExpense(ctx context.Context, id uuid.UUID, req *ConfirmExpenseRequest) error {
 	expense, err := s.GetByID(ctx, id)
 	if err != nil {
@@ -2586,91 +2594,94 @@ func (s *ExpenseService) ConfirmExpense(ctx context.Context, id uuid.UUID, req *
 		return fmt.Errorf("expense is not pending")
 	}
 
-	// Process each item
-	for _, confirmItem := range req.Items {
-		// Find the expense item
-		var expenseItem *model.ExpenseItem
-		for i := range expense.Items {
-			if expense.Items[i].ID == confirmItem.ItemID {
-				expenseItem = &expense.Items[i]
-				break
-			}
-		}
-		if expenseItem == nil {
-			continue
-		}
-
-		if confirmItem.CreateSpool {
-			var materialID uuid.UUID
-
-			// Create new material if specified
-			if confirmItem.NewMaterial != nil {
-				if err := s.materialRepo.Create(ctx, confirmItem.NewMaterial); err != nil {
-					return fmt.Errorf("failed to create material: %w", err)
+	// Execute all inventory changes within a transaction
+	return s.repos.WithTransaction(ctx, func(tx *sql.Tx) error {
+		// Process each item
+		for _, confirmItem := range req.Items {
+			// Find the expense item
+			var expenseItem *model.ExpenseItem
+			for i := range expense.Items {
+				if expense.Items[i].ID == confirmItem.ItemID {
+					expenseItem = &expense.Items[i]
+					break
 				}
-				materialID = confirmItem.NewMaterial.ID
-			} else if confirmItem.MaterialID != nil {
-				materialID = *confirmItem.MaterialID
+			}
+			if expenseItem == nil {
+				continue
+			}
+
+			if confirmItem.CreateSpool {
+				var materialID uuid.UUID
+
+				// Create new material if specified
+				if confirmItem.NewMaterial != nil {
+					if err := s.materialRepo.CreateTx(ctx, tx, confirmItem.NewMaterial); err != nil {
+						return fmt.Errorf("failed to create material: %w", err)
+					}
+					materialID = confirmItem.NewMaterial.ID
+				} else if confirmItem.MaterialID != nil {
+					materialID = *confirmItem.MaterialID
+				} else {
+					continue // No material specified, skip
+				}
+
+				// Determine weight
+				weightGrams := confirmItem.WeightGrams
+				if weightGrams == 0 && expenseItem.Metadata != nil {
+					weightGrams = expenseItem.Metadata.WeightGrams
+				}
+				if weightGrams == 0 {
+					weightGrams = 1000 // Default 1kg
+				}
+
+				// Create spools (one per quantity)
+				quantity := int(expenseItem.Quantity)
+				if quantity < 1 {
+					quantity = 1
+				}
+
+				for i := 0; i < quantity; i++ {
+					spool := &model.MaterialSpool{
+						MaterialID:      materialID,
+						InitialWeight:   weightGrams,
+						RemainingWeight: weightGrams,
+						PurchaseDate:    &expense.OccurredAt,
+						PurchaseCost:    float64(expenseItem.TotalPriceCents) / 100.0 / float64(quantity),
+						Status:          model.SpoolStatusNew,
+						Notes:           fmt.Sprintf("From receipt: %s", expense.Vendor),
+					}
+
+					if err := s.spoolRepo.CreateTx(ctx, tx, spool); err != nil {
+						return fmt.Errorf("failed to create spool: %w", err)
+					}
+
+					// Update expense item with matched spool
+					if i == 0 {
+						expenseItem.MatchedSpoolID = &spool.ID
+						expenseItem.MatchedMaterialID = &materialID
+						expenseItem.ActionTaken = model.ExpenseItemActionCreatedSpool
+					}
+				}
+
+				if err := s.repo.UpdateItemTx(ctx, tx, expenseItem); err != nil {
+					return fmt.Errorf("failed to update expense item: %w", err)
+				}
 			} else {
-				continue // No material specified, skip
-			}
-
-			// Determine weight
-			weightGrams := confirmItem.WeightGrams
-			if weightGrams == 0 && expenseItem.Metadata != nil {
-				weightGrams = expenseItem.Metadata.WeightGrams
-			}
-			if weightGrams == 0 {
-				weightGrams = 1000 // Default 1kg
-			}
-
-			// Create spools (one per quantity)
-			quantity := int(expenseItem.Quantity)
-			if quantity < 1 {
-				quantity = 1
-			}
-
-			for i := 0; i < quantity; i++ {
-				spool := &model.MaterialSpool{
-					MaterialID:      materialID,
-					InitialWeight:   weightGrams,
-					RemainingWeight: weightGrams,
-					PurchaseDate:    &expense.OccurredAt,
-					PurchaseCost:    float64(expenseItem.TotalPriceCents) / 100.0 / float64(quantity),
-					Status:          model.SpoolStatusNew,
-					Notes:           fmt.Sprintf("From receipt: %s", expense.Vendor),
+				expenseItem.ActionTaken = model.ExpenseItemActionSkipped
+				if err := s.repo.UpdateItemTx(ctx, tx, expenseItem); err != nil {
+					return fmt.Errorf("failed to update expense item: %w", err)
 				}
-
-				if err := s.spoolRepo.Create(ctx, spool); err != nil {
-					return fmt.Errorf("failed to create spool: %w", err)
-				}
-
-				// Update expense item with matched spool
-				if i == 0 {
-					expenseItem.MatchedSpoolID = &spool.ID
-					expenseItem.MatchedMaterialID = &materialID
-					expenseItem.ActionTaken = model.ExpenseItemActionCreatedSpool
-				}
-			}
-
-			if err := s.repo.UpdateItem(ctx, expenseItem); err != nil {
-				return fmt.Errorf("failed to update expense item: %w", err)
-			}
-		} else {
-			expenseItem.ActionTaken = model.ExpenseItemActionSkipped
-			if err := s.repo.UpdateItem(ctx, expenseItem); err != nil {
-				return fmt.Errorf("failed to update expense item: %w", err)
 			}
 		}
-	}
 
-	// Mark expense as confirmed
-	expense.Status = model.ExpenseStatusConfirmed
-	if err := s.repo.Update(ctx, expense); err != nil {
-		return fmt.Errorf("failed to confirm expense: %w", err)
-	}
+		// Mark expense as confirmed
+		expense.Status = model.ExpenseStatusConfirmed
+		if err := s.repo.UpdateTx(ctx, tx, expense); err != nil {
+			return fmt.Errorf("failed to confirm expense: %w", err)
+		}
 
-	return nil
+		return nil
+	})
 }
 
 // RetryParse re-reads the stored receipt file and re-triggers AI parsing.
@@ -3791,19 +3802,77 @@ type SettingsService struct {
 	repo *repository.SettingsRepository
 }
 
-// Get retrieves a setting by key.
-func (s *SettingsService) Get(ctx context.Context, key string) (*repository.Setting, error) {
-	return s.repo.Get(ctx, key)
+// sensitiveKeys lists settings that should be encrypted at rest.
+var sensitiveKeys = map[string]bool{
+	"anthropic_api_key":       true,
+	"etsy_access_token":       true,
+	"etsy_refresh_token":      true,
+	"bambu_cloud_token":       true,
+	"bambu_cloud_password":    true,
 }
 
-// Set creates or updates a setting.
+// isSensitive checks if a key should be encrypted.
+func isSensitive(key string) bool {
+	return sensitiveKeys[key]
+}
+
+// Get retrieves a setting by key, decrypting if necessary.
+func (s *SettingsService) Get(ctx context.Context, key string) (*repository.Setting, error) {
+	setting, err := s.repo.Get(ctx, key)
+	if err != nil || setting == nil {
+		return setting, err
+	}
+
+	// Decrypt sensitive values
+	if isSensitive(key) && crypto.IsEncrypted(setting.Value) {
+		decrypted, err := crypto.Decrypt(setting.Value)
+		if err != nil {
+			slog.Warn("failed to decrypt setting", "key", key, "error", err)
+			// Return original value if decryption fails (might be unencrypted legacy data)
+			return setting, nil
+		}
+		setting.Value = decrypted
+	}
+
+	return setting, nil
+}
+
+// Set creates or updates a setting, encrypting sensitive values.
 func (s *SettingsService) Set(ctx context.Context, key, value string) error {
+	// Encrypt sensitive values
+	if isSensitive(key) && value != "" {
+		encrypted, err := crypto.Encrypt(value)
+		if err != nil {
+			slog.Warn("failed to encrypt setting, storing unencrypted", "key", key, "error", err)
+			// Fall back to storing unencrypted if encryption fails
+		} else {
+			value = encrypted
+		}
+	}
+
 	return s.repo.Set(ctx, key, value)
 }
 
-// List retrieves all settings.
+// List retrieves all settings, decrypting sensitive values.
 func (s *SettingsService) List(ctx context.Context) ([]repository.Setting, error) {
-	return s.repo.List(ctx)
+	settings, err := s.repo.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// Decrypt sensitive values
+	for i := range settings {
+		if isSensitive(settings[i].Key) && crypto.IsEncrypted(settings[i].Value) {
+			decrypted, err := crypto.Decrypt(settings[i].Value)
+			if err != nil {
+				slog.Warn("failed to decrypt setting", "key", settings[i].Key, "error", err)
+				continue
+			}
+			settings[i].Value = decrypted
+		}
+	}
+
+	return settings, nil
 }
 
 // Delete removes a setting.

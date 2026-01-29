@@ -903,3 +903,103 @@ export interface BackupInfo {
   created_at: string
 }
 
+// Squarespace Integration types
+export interface SquarespaceIntegration {
+  connected: boolean
+  id?: string
+  site_id?: string
+  site_title?: string
+  is_active?: boolean
+  last_order_sync_at?: string
+  last_product_sync_at?: string
+  created_at?: string
+  updated_at?: string
+}
+
+export interface SquarespaceAddress {
+  first_name: string
+  last_name: string
+  address1: string
+  address2: string
+  city: string
+  state: string
+  postal_code: string
+  country_code: string
+  phone: string
+}
+
+export interface SquarespaceOrder {
+  id: string
+  squarespace_order_id: string
+  order_number: string
+  customer_email: string
+  customer_name: string
+  channel: string
+  subtotal_cents: number
+  shipping_cents: number
+  tax_cents: number
+  discount_cents: number
+  refunded_cents: number
+  grand_total_cents: number
+  currency: string
+  fulfillment_status: string
+  billing_address?: SquarespaceAddress
+  shipping_address?: SquarespaceAddress
+  created_on?: string
+  modified_on?: string
+  is_processed: boolean
+  project_id?: string
+  items?: SquarespaceOrderItem[]
+  synced_at: string
+  created_at: string
+  updated_at: string
+}
+
+export interface SquarespaceOrderItem {
+  id: string
+  order_id: string
+  squarespace_item_id: string
+  product_id: string
+  variant_id: string
+  product_name: string
+  sku: string
+  quantity: number
+  unit_price_cents: number
+  currency: string
+  image_url: string
+  variant_options?: string[]
+  template_id?: string
+  created_at: string
+}
+
+export interface SquarespaceProduct {
+  id: string
+  squarespace_product_id: string
+  name: string
+  description: string
+  url: string
+  type: string
+  is_visible: boolean
+  tags?: string[]
+  variants?: SquarespaceProductVariant[]
+  created_on?: string
+  modified_on?: string
+  synced_at: string
+  created_at: string
+  updated_at: string
+}
+
+export interface SquarespaceProductVariant {
+  id: string
+  product_id: string
+  squarespace_variant_id: string
+  sku: string
+  price_cents: number
+  sale_price_cents: number
+  on_sale: boolean
+  stock_quantity: number
+  stock_unlimited: boolean
+  attributes?: Record<string, string>
+  created_at: string
+}
+

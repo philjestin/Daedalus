@@ -11,8 +11,7 @@ import Materials from './pages/Materials'
 import Expenses from './pages/Expenses'
 import Sales from './pages/Sales'
 import Settings from './pages/Settings'
-import EtsyOrders from './pages/EtsyOrders'
-import EtsyListings from './pages/EtsyListings'
+import Channels from './pages/Channels'
 import { useWebSocket } from './hooks/useWebSocket'
 
 function App() {
@@ -38,8 +37,10 @@ function App() {
         <Route path="/materials" element={<Materials />} />
         <Route path="/expenses" element={<Expenses />} />
         <Route path="/sales" element={<Sales />} />
-        <Route path="/etsy/orders" element={<EtsyOrders />} />
-        <Route path="/etsy/listings" element={<EtsyListings />} />
+        <Route path="/channels" element={<Channels />} />
+        {/* Legacy routes redirect to unified Channels page */}
+        <Route path="/etsy/*" element={<Navigate to="/channels" replace />} />
+        <Route path="/squarespace/*" element={<Navigate to="/channels" replace />} />
         <Route path="/settings" element={<Settings />} />
       </Route>
     </Routes>

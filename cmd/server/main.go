@@ -124,11 +124,19 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
+	// Shutdown HTTP server first (stop accepting new requests)
 	if err := server.Shutdown(ctx); err != nil {
 		slog.Error("server forced to shutdown", "error", err)
 	}
+	slog.Info("HTTP server stopped")
 
-	slog.Info("server stopped")
+	// Disconnect all printers (closes MQTT connections)
+	printerManager.DisconnectAll()
+
+	// Stop WebSocket hub (closes all client connections)
+	hub.Stop()
+
+	slog.Info("shutdown complete")
 }
 
 // getEnv returns environment variable or default value.

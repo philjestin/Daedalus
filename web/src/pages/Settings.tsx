@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Store, ExternalLink, RefreshCw, Unplug, AlertCircle, CheckCircle2, Key, Eye, EyeOff, Save, Database, Download, Trash2, RotateCcw, Plus } from 'lucide-react'
-import { etsyApi, settingsApi, backupsApi } from '../api/client'
-import type { EtsyIntegration, BackupInfo } from '../types'
+import { Store, ShoppingBag, ExternalLink, RefreshCw, Unplug, AlertCircle, CheckCircle2, Key, Eye, EyeOff, Save, Database, Download, Trash2, RotateCcw, Plus } from 'lucide-react'
+import { etsyApi, squarespaceApi, settingsApi, backupsApi } from '../api/client'
+import type { EtsyIntegration, SquarespaceIntegration, BackupInfo } from '../types'
 
 function formatBytes(bytes: number): string {
   if (bytes === 0) return '0 B'
@@ -15,6 +15,7 @@ function formatBytes(bytes: number): string {
 export default function Settings() {
   const [searchParams, setSearchParams] = useSearchParams()
   const [etsyStatus, setEtsyStatus] = useState<EtsyIntegration | null>(null)
+  const [squarespaceStatus, setSquarespaceStatus] = useState<SquarespaceIntegration | null>(null)
   const [loading, setLoading] = useState(true)
   const [connecting, setConnecting] = useState(false)
   const [disconnecting, setDisconnecting] = useState(false)
@@ -27,6 +28,12 @@ export default function Settings() {
   const [showAnthropicKey, setShowAnthropicKey] = useState(false)
   const [savingKey, setSavingKey] = useState(false)
   const [keyLoaded, setKeyLoaded] = useState(false)
+
+  // Squarespace API key
+  const [squarespaceKey, setSquarespaceKey] = useState('')
+  const [showSquarespaceKey, setShowSquarespaceKey] = useState(false)
+  const [connectingSquarespace, setConnectingSquarespace] = useState(false)
+  const [disconnectingSquarespace, setDisconnectingSquarespace] = useState(false)
 
   // Backup settings
   const [backups, setBackups] = useState<BackupInfo[]>([])
@@ -51,9 +58,10 @@ export default function Settings() {
     }
   }, [searchParams, setSearchParams])
 
-  // Load Etsy status and API key settings
+  // Load Etsy status, Squarespace status, and API key settings
   useEffect(() => {
     loadEtsyStatus()
+    loadSquarespaceStatus()
     loadApiKeys()
     loadBackups()
   }, [])
@@ -68,6 +76,56 @@ export default function Settings() {
       setError('Failed to load Etsy integration status')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const loadSquarespaceStatus = async () => {
+    try {
+      const status = await squarespaceApi.getStatus()
+      setSquarespaceStatus(status)
+    } catch (err) {
+      console.error('Failed to load Squarespace status:', err)
+    }
+  }
+
+  const handleConnectSquarespace = async () => {
+    if (!squarespaceKey.trim()) {
+      setError('Please enter a Squarespace API key')
+      return
+    }
+
+    try {
+      setConnectingSquarespace(true)
+      setError(null)
+      const result = await squarespaceApi.connect(squarespaceKey.trim())
+      setSquarespaceStatus(result)
+      setSquarespaceKey('')
+      setShowSquarespaceKey(false)
+      setSuccessMessage('Successfully connected to Squarespace!')
+    } catch (err) {
+      console.error('Failed to connect Squarespace:', err)
+      setError(err instanceof Error ? err.message : 'Failed to connect to Squarespace')
+    } finally {
+      setConnectingSquarespace(false)
+    }
+  }
+
+  const handleDisconnectSquarespace = async () => {
+    if (!confirm('Are you sure you want to disconnect your Squarespace store?')) {
+      return
+    }
+
+    try {
+      setDisconnectingSquarespace(true)
+      setError(null)
+      await squarespaceApi.disconnect()
+      setSquarespaceStatus({ connected: false })
+      setSuccessMessage('Squarespace store disconnected')
+    } catch (err) {
+      console.error('Failed to disconnect Squarespace:', err)
+      setError(err instanceof Error ? err.message : 'Failed to disconnect Squarespace')
+    } finally {
+      setDisconnectingSquarespace(false)
     }
   }
 
@@ -525,6 +583,115 @@ export default function Settings() {
                 )}
                 Connect to Etsy
               </button>
+            </div>
+          )}
+        </div>
+
+        {/* Squarespace Integration Card */}
+        <div className="bg-surface-900/50 border border-surface-800 rounded-xl p-6">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="p-2 bg-purple-500/10 rounded-lg">
+              <ShoppingBag className="h-6 w-6 text-purple-400" />
+            </div>
+            <div>
+              <h2 className="text-lg font-semibold text-surface-100">Squarespace Integration</h2>
+              <p className="text-sm text-surface-400">
+                Connect your Squarespace store to sync orders automatically
+              </p>
+            </div>
+          </div>
+
+          {squarespaceStatus?.connected ? (
+            <div className="space-y-4">
+              {/* Connected Store Info */}
+              <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <CheckCircle2 className="h-4 w-4 text-green-400" />
+                  <span className="text-green-300 font-medium">Connected</span>
+                </div>
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <p className="text-surface-400">Site Title</p>
+                    <p className="text-surface-100 font-medium">{squarespaceStatus.site_title}</p>
+                  </div>
+                  <div>
+                    <p className="text-surface-400">Site ID</p>
+                    <p className="text-surface-100 font-medium">{squarespaceStatus.site_id}</p>
+                  </div>
+                  <div>
+                    <p className="text-surface-400">Last Order Sync</p>
+                    <p className="text-surface-100">{formatDate(squarespaceStatus.last_order_sync_at)}</p>
+                  </div>
+                  <div>
+                    <p className="text-surface-400">Connected Since</p>
+                    <p className="text-surface-100">{formatDate(squarespaceStatus.created_at)}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Disconnect Button */}
+              <button
+                onClick={handleDisconnectSquarespace}
+                disabled={disconnectingSquarespace}
+                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg transition-colors disabled:opacity-50"
+              >
+                {disconnectingSquarespace ? (
+                  <RefreshCw className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Unplug className="h-4 w-4" />
+                )}
+                Disconnect Store
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <p className="text-surface-300">
+                Connect your Squarespace store to automatically import orders.
+              </p>
+              <p className="text-xs text-surface-500">
+                Get your API key from{' '}
+                <a
+                  href="https://support.squarespace.com/hc/en-us/articles/12880553888141-Commerce-APIs"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-accent-400 hover:underline"
+                >
+                  Squarespace Developer Settings
+                </a>
+                . You'll need the <code className="bg-surface-700 px-1 rounded">Orders Read</code> and{' '}
+                <code className="bg-surface-700 px-1 rounded">Products Read</code> permissions.
+              </p>
+
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <input
+                    type={showSquarespaceKey ? 'text' : 'password'}
+                    value={squarespaceKey}
+                    onChange={(e) => setSquarespaceKey(e.target.value)}
+                    placeholder="Enter your Squarespace API key..."
+                    className="w-full bg-surface-800 border border-surface-700 rounded-lg px-3 py-2 text-sm text-surface-100 placeholder-surface-500 focus:outline-none focus:ring-2 focus:ring-accent-500 focus:border-transparent pr-10"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowSquarespaceKey(!showSquarespaceKey)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-surface-400 hover:text-surface-300"
+                  >
+                    {showSquarespaceKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+                <button
+                  onClick={handleConnectSquarespace}
+                  disabled={!squarespaceKey.trim() || connectingSquarespace}
+                  className="flex items-center gap-2 px-4 py-2 bg-purple-500 hover:bg-purple-600 text-white font-medium rounded-lg transition-colors disabled:opacity-50"
+                >
+                  {connectingSquarespace ? (
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <ExternalLink className="h-4 w-4" />
+                  )}
+                  Connect
+                </button>
+              </div>
             </div>
           )}
         </div>

@@ -21,12 +21,13 @@ import (
 
 // App struct holds the application state
 type App struct {
-	ctx      context.Context
-	server   *http.Server
-	db       *sql.DB
-	dbPath   string
-	hub      *realtime.Hub
-	services *service.Services
+	ctx         context.Context
+	server      *http.Server
+	db          *sql.DB
+	dbPath      string
+	hub         *realtime.Hub
+	printerMgr  *printer.Manager
+	services    *service.Services
 }
 
 // NewApp creates a new App application struct
@@ -87,6 +88,7 @@ func (a *App) startup(ctx context.Context) {
 	// Initialize printer manager with hub for broadcasting state changes
 	printerManager := printer.NewManager()
 	printerManager.SetBroadcaster(a.hub)
+	a.printerMgr = printerManager
 
 	// Initialize services
 	servicesConfig := service.ServicesConfig{
@@ -136,18 +138,32 @@ func (a *App) startup(ctx context.Context) {
 func (a *App) shutdown(ctx context.Context) {
 	slog.Info("shutting down...")
 
-	// Shutdown HTTP server
+	// Shutdown HTTP server first (stop accepting new requests)
 	if a.server != nil {
 		shutdownCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 		defer cancel()
 		if err := a.server.Shutdown(shutdownCtx); err != nil {
 			slog.Error("server shutdown error", "error", err)
 		}
+		slog.Info("HTTP server stopped")
 	}
 
-	// Close database
+	// Disconnect all printers (closes MQTT connections)
+	if a.printerMgr != nil {
+		a.printerMgr.DisconnectAll()
+	}
+
+	// Stop WebSocket hub (closes all client connections)
+	if a.hub != nil {
+		a.hub.Stop()
+	}
+
+	// Close database last (after all operations complete)
 	if a.db != nil {
-		a.db.Close()
+		if err := a.db.Close(); err != nil {
+			slog.Error("database close error", "error", err)
+		}
+		slog.Info("database closed")
 	}
 
 	slog.Info("shutdown complete")

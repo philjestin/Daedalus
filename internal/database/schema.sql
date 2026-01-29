@@ -205,6 +205,7 @@ CREATE INDEX IF NOT EXISTS idx_print_jobs_created_at ON print_jobs(created_at);
 CREATE INDEX IF NOT EXISTS idx_print_jobs_parent ON print_jobs(parent_job_id);
 CREATE INDEX IF NOT EXISTS idx_print_jobs_recipe ON print_jobs(recipe_id);
 CREATE INDEX IF NOT EXISTS idx_print_jobs_project ON print_jobs(project_id);
+CREATE INDEX IF NOT EXISTS idx_print_jobs_material_spool ON print_jobs(material_spool_id);
 
 -- Job events table (append-only, immutable audit log)
 CREATE TABLE IF NOT EXISTS job_events (
@@ -370,6 +371,7 @@ CREATE TABLE IF NOT EXISTS etsy_receipts (
 
 CREATE INDEX IF NOT EXISTS idx_etsy_receipts_etsy_id ON etsy_receipts(etsy_receipt_id);
 CREATE INDEX IF NOT EXISTS idx_etsy_receipts_processed ON etsy_receipts(is_processed);
+CREATE INDEX IF NOT EXISTS idx_etsy_receipts_shop ON etsy_receipts(etsy_shop_id);
 
 -- Etsy receipt items
 CREATE TABLE IF NOT EXISTS etsy_receipt_items (
@@ -461,6 +463,111 @@ CREATE TABLE IF NOT EXISTS etsy_webhook_events (
 
 CREATE INDEX IF NOT EXISTS idx_etsy_webhook_events_type ON etsy_webhook_events(event_type);
 CREATE INDEX IF NOT EXISTS idx_etsy_webhook_events_processed ON etsy_webhook_events(processed);
+
+-- Squarespace Integration
+CREATE TABLE IF NOT EXISTS squarespace_integration (
+    id TEXT PRIMARY KEY,
+    site_id TEXT NOT NULL,
+    site_title TEXT,
+    api_key TEXT NOT NULL,  -- Encrypted
+    is_active INTEGER DEFAULT 1,
+    last_order_sync_at TEXT,
+    last_product_sync_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS squarespace_orders (
+    id TEXT PRIMARY KEY,
+    squarespace_order_id TEXT UNIQUE NOT NULL,
+    order_number TEXT,
+    customer_email TEXT,
+    customer_name TEXT,
+    channel TEXT,
+    subtotal_cents INTEGER,
+    shipping_cents INTEGER,
+    tax_cents INTEGER,
+    discount_cents INTEGER,
+    refunded_cents INTEGER,
+    grand_total_cents INTEGER,
+    currency TEXT DEFAULT 'USD',
+    fulfillment_status TEXT,
+    billing_address_json TEXT,
+    shipping_address_json TEXT,
+    created_on TEXT,
+    modified_on TEXT,
+    is_processed INTEGER DEFAULT 0,
+    project_id TEXT,
+    synced_at TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_squarespace_orders_order_id ON squarespace_orders(squarespace_order_id);
+CREATE INDEX IF NOT EXISTS idx_squarespace_orders_processed ON squarespace_orders(is_processed);
+
+CREATE TABLE IF NOT EXISTS squarespace_order_items (
+    id TEXT PRIMARY KEY,
+    order_id TEXT NOT NULL,
+    squarespace_item_id TEXT UNIQUE NOT NULL,
+    product_id TEXT,
+    variant_id TEXT,
+    product_name TEXT,
+    sku TEXT,
+    quantity INTEGER,
+    unit_price_cents INTEGER,
+    currency TEXT DEFAULT 'USD',
+    image_url TEXT,
+    variant_options_json TEXT,
+    template_id TEXT,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (order_id) REFERENCES squarespace_orders(id) ON DELETE CASCADE,
+    FOREIGN KEY (template_id) REFERENCES templates(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS squarespace_products (
+    id TEXT PRIMARY KEY,
+    squarespace_product_id TEXT UNIQUE NOT NULL,
+    name TEXT NOT NULL,
+    description TEXT,
+    url TEXT,
+    type TEXT,
+    is_visible INTEGER DEFAULT 1,
+    tags_json TEXT,
+    created_on TEXT,
+    modified_on TEXT,
+    synced_at TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_squarespace_products_product_id ON squarespace_products(squarespace_product_id);
+
+CREATE TABLE IF NOT EXISTS squarespace_product_variants (
+    id TEXT PRIMARY KEY,
+    product_id TEXT NOT NULL,
+    squarespace_variant_id TEXT UNIQUE NOT NULL,
+    sku TEXT,
+    price_cents INTEGER,
+    sale_price_cents INTEGER,
+    on_sale INTEGER DEFAULT 0,
+    stock_quantity INTEGER,
+    stock_unlimited INTEGER DEFAULT 0,
+    attributes_json TEXT,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (product_id) REFERENCES squarespace_products(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS squarespace_product_templates (
+    id TEXT PRIMARY KEY,
+    squarespace_product_id TEXT NOT NULL,
+    template_id TEXT NOT NULL,
+    sku TEXT,
+    created_at TEXT NOT NULL,
+    UNIQUE(squarespace_product_id, template_id),
+    FOREIGN KEY (template_id) REFERENCES templates(id) ON DELETE CASCADE
+);
 
 -- Recipe materials
 CREATE TABLE IF NOT EXISTS recipe_materials (

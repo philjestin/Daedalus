@@ -4,14 +4,24 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/hyperion/printfarm/internal/crypto"
 	"github.com/hyperion/printfarm/internal/model"
 )
 
+// DBTX is an interface for database operations that works with both *sql.DB and *sql.Tx.
+type DBTX interface {
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+}
+
 // Repositories holds all repository instances.
 type Repositories struct {
+	db              *sql.DB
 	Projects        *ProjectRepository
 	Parts           *PartRepository
 	Designs         *DesignRepository
@@ -24,14 +34,36 @@ type Repositories struct {
 	Sales           *SaleRepository
 	Templates       *TemplateRepository
 	Etsy            *EtsyRepository
+	Squarespace     *SquarespaceRepository
 	BambuCloud      *BambuCloudRepository
 	Settings        *SettingsRepository
 	ProjectSupplies *ProjectSupplyRepository
 }
 
+// WithTransaction executes a function within a database transaction.
+// If the function returns an error, the transaction is rolled back.
+// If the function succeeds, the transaction is committed.
+func (r *Repositories) WithTransaction(ctx context.Context, fn func(tx *sql.Tx) error) error {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+
+	err = fn(tx)
+	if err != nil {
+		if rbErr := tx.Rollback(); rbErr != nil {
+			return rbErr
+		}
+		return err
+	}
+
+	return tx.Commit()
+}
+
 // NewRepositories creates all repository instances.
 func NewRepositories(db *sql.DB) *Repositories {
 	return &Repositories{
+		db:              db,
 		Projects:        &ProjectRepository{db: db},
 		Parts:           &PartRepository{db: db},
 		Designs:         &DesignRepository{db: db},
@@ -44,6 +76,7 @@ func NewRepositories(db *sql.DB) *Repositories {
 		Sales:           &SaleRepository{db: db},
 		Templates:       &TemplateRepository{db: db},
 		Etsy:            &EtsyRepository{db: db},
+		Squarespace:     &SquarespaceRepository{db: db},
 		BambuCloud:      &BambuCloudRepository{db: db},
 		Settings:        &SettingsRepository{db: db},
 		ProjectSupplies: &ProjectSupplyRepository{db: db},
@@ -538,6 +571,11 @@ type MaterialRepository struct {
 
 // Create inserts a new material.
 func (r *MaterialRepository) Create(ctx context.Context, m *model.Material) error {
+	return r.CreateTx(ctx, r.db, m)
+}
+
+// CreateTx inserts a new material using the provided DBTX (supports transactions).
+func (r *MaterialRepository) CreateTx(ctx context.Context, db DBTX, m *model.Material) error {
 	m.ID = uuid.New()
 	m.CreatedAt = time.Now()
 	m.UpdatedAt = time.Now()
@@ -545,7 +583,7 @@ func (r *MaterialRepository) Create(ctx context.Context, m *model.Material) erro
 	printTempJSON, _ := json.Marshal(m.PrintTemp)
 	bedTempJSON, _ := json.Marshal(m.BedTemp)
 
-	_, err := r.db.ExecContext(ctx, `
+	_, err := db.ExecContext(ctx, `
 		INSERT INTO materials (id, name, type, manufacturer, color, color_hex, density, cost_per_kg, print_temp, bed_temp, notes, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, m.ID, m.Name, m.Type, m.Manufacturer, m.Color, m.ColorHex, m.Density, m.CostPerKg, printTempJSON, bedTempJSON, m.Notes, m.CreatedAt, m.UpdatedAt)
@@ -718,6 +756,11 @@ type SpoolRepository struct {
 
 // Create inserts a new spool.
 func (r *SpoolRepository) Create(ctx context.Context, s *model.MaterialSpool) error {
+	return r.CreateTx(ctx, r.db, s)
+}
+
+// CreateTx inserts a new spool using the provided DBTX (supports transactions).
+func (r *SpoolRepository) CreateTx(ctx context.Context, db DBTX, s *model.MaterialSpool) error {
 	s.ID = uuid.New()
 	s.CreatedAt = time.Now()
 	s.UpdatedAt = time.Now()
@@ -725,7 +768,7 @@ func (r *SpoolRepository) Create(ctx context.Context, s *model.MaterialSpool) er
 		s.Status = model.SpoolStatusNew
 	}
 
-	_, err := r.db.ExecContext(ctx, `
+	_, err := db.ExecContext(ctx, `
 		INSERT INTO material_spools (id, material_id, initial_weight, remaining_weight, purchase_date, purchase_cost, location, status, notes, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, s.ID, s.MaterialID, s.InitialWeight, s.RemainingWeight, s.PurchaseDate, s.PurchaseCost, s.Location, s.Status, s.Notes, s.CreatedAt, s.UpdatedAt)
@@ -1352,10 +1395,15 @@ func (r *ExpenseRepository) List(ctx context.Context, status *model.ExpenseStatu
 
 // Update updates an expense.
 func (r *ExpenseRepository) Update(ctx context.Context, e *model.Expense) error {
+	return r.UpdateTx(ctx, r.db, e)
+}
+
+// UpdateTx updates an expense using the provided DBTX (supports transactions).
+func (r *ExpenseRepository) UpdateTx(ctx context.Context, db DBTX, e *model.Expense) error {
 	e.UpdatedAt = time.Now()
 	rawAIJSON, _ := json.Marshal(e.RawAIResponse)
 
-	_, err := r.db.ExecContext(ctx, `
+	_, err := db.ExecContext(ctx, `
 		UPDATE expenses SET occurred_at = ?, vendor = ?, subtotal_cents = ?, tax_cents = ?, shipping_cents = ?, total_cents = ?, currency = ?, category = ?, notes = ?, status = ?, raw_ocr_text = ?, raw_ai_response = ?, confidence = ?, updated_at = ?
 		WHERE id = ?
 	`, e.OccurredAt, e.Vendor, e.SubtotalCents, e.TaxCents, e.ShippingCents, e.TotalCents, e.Currency, e.Category, e.Notes, e.Status, e.RawOCRText, rawAIJSON, e.Confidence, e.UpdatedAt, e.ID)
@@ -1415,9 +1463,14 @@ func (r *ExpenseRepository) GetItemsByExpenseID(ctx context.Context, expenseID u
 
 // UpdateItem updates an expense item.
 func (r *ExpenseRepository) UpdateItem(ctx context.Context, item *model.ExpenseItem) error {
+	return r.UpdateItemTx(ctx, r.db, item)
+}
+
+// UpdateItemTx updates an expense item using the provided DBTX (supports transactions).
+func (r *ExpenseRepository) UpdateItemTx(ctx context.Context, db DBTX, item *model.ExpenseItem) error {
 	metadataJSON, _ := json.Marshal(item.Metadata)
 
-	_, err := r.db.ExecContext(ctx, `
+	_, err := db.ExecContext(ctx, `
 		UPDATE expense_items SET description = ?, quantity = ?, unit_price_cents = ?, total_price_cents = ?, sku = ?, vendor_item_id = ?, category = ?, metadata = ?, matched_spool_id = ?, matched_material_id = ?, confidence = ?, action_taken = ?
 		WHERE id = ?
 	`, item.Description, item.Quantity, item.UnitPriceCents, item.TotalPriceCents, item.SKU, item.VendorItemID, item.Category, metadataJSON, item.MatchedSpoolID, item.MatchedMaterialID, item.Confidence, item.ActionTaken, item.ID)
@@ -2135,7 +2188,7 @@ type BambuCloudRepository struct {
 }
 
 // Upsert stores or updates Bambu Cloud auth credentials.
-// Only one row is expected (single account).
+// Only one row is expected (single account). Access token is encrypted before storage.
 func (r *BambuCloudRepository) Upsert(ctx context.Context, auth *model.BambuCloudAuth) error {
 	if auth.ID == uuid.Nil {
 		auth.ID = uuid.New()
@@ -2145,16 +2198,27 @@ func (r *BambuCloudRepository) Upsert(ctx context.Context, auth *model.BambuClou
 		auth.CreatedAt = auth.UpdatedAt
 	}
 
+	// Encrypt access token before storing
+	accessToken := auth.AccessToken
+	if accessToken != "" {
+		if encrypted, err := crypto.Encrypt(accessToken); err == nil {
+			accessToken = encrypted
+		} else {
+			slog.Warn("failed to encrypt bambu cloud access token", "error", err)
+		}
+	}
+
 	// Delete existing then insert (simpler than upsert for single-row table)
 	_, _ = r.db.ExecContext(ctx, `DELETE FROM bambu_cloud_auth`)
 	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO bambu_cloud_auth (id, email, access_token, mqtt_username, expires_at, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?)
-	`, auth.ID, auth.Email, auth.AccessToken, auth.MQTTUsername, auth.ExpiresAt, auth.CreatedAt, auth.UpdatedAt)
+	`, auth.ID, auth.Email, accessToken, auth.MQTTUsername, auth.ExpiresAt, auth.CreatedAt, auth.UpdatedAt)
 	return err
 }
 
 // Get retrieves the stored Bambu Cloud auth (if any).
+// Access token is decrypted before returning.
 func (r *BambuCloudRepository) Get(ctx context.Context) (*model.BambuCloudAuth, error) {
 	var auth model.BambuCloudAuth
 	err := scanRow(r.db.QueryRowContext(ctx, `
@@ -2167,6 +2231,12 @@ func (r *BambuCloudRepository) Get(ctx context.Context) (*model.BambuCloudAuth, 
 	if err != nil {
 		return nil, err
 	}
+
+	// Decrypt access token
+	if decrypted, err := crypto.Decrypt(auth.AccessToken); err == nil {
+		auth.AccessToken = decrypted
+	}
+
 	return &auth, nil
 }
 
