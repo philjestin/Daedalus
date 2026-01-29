@@ -192,7 +192,6 @@ func TestProject_TemplateFields(t *testing.T) {
 	project := Project{
 		ID:              uuid.New(),
 		Name:            "Order from Template",
-		Status:          ProjectStatusActive,
 		TemplateID:      &templateID,
 		Source:          "etsy",
 		ExternalOrderID: "ETSY-12345",

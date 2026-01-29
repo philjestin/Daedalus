@@ -39,10 +39,10 @@ type Services struct {
 	Stats           *StatsService
 	Templates       *TemplateService
 	Etsy            *EtsyService
-	Auth            *AuthService
 	BambuCloud      *BambuCloudService
 	Settings        *SettingsService
 	ProjectSupplies *ProjectSupplyService
+	Backup          *BackupService
 }
 
 // EtsyConfig holds Etsy OAuth configuration.
@@ -54,7 +54,6 @@ type EtsyConfig struct {
 // ServicesConfig holds all service configuration.
 type ServicesConfig struct {
 	Etsy EtsyConfig
-	Auth AuthConfig
 }
 
 // NewServices creates all service instances.
@@ -63,7 +62,7 @@ func NewServices(repos *repository.Repositories, store storage.Storage, printerM
 		Projects:  &ProjectService{repo: repos.Projects, printJobRepo: repos.PrintJobs, printerRepo: repos.Printers, spoolRepo: repos.Spools, templateRepo: repos.Templates, designRepo: repos.Designs, saleRepo: repos.Sales, partRepo: repos.Parts, supplyRepo: repos.ProjectSupplies, printerMgr: printerMgr, hub: hub, storage: store},
 		Parts:     &PartService{repo: repos.Parts},
 		Designs:   &DesignService{repo: repos.Designs, fileRepo: repos.Files, storage: store},
-		Printers:  &PrinterService{repo: repos.Printers, printJobRepo: repos.PrintJobs, manager: printerMgr, hub: hub, discovery: printer.NewDiscovery(), bambuCloudRepo: repos.BambuCloud},
+		Printers:  &PrinterService{repo: repos.Printers, printJobRepo: repos.PrintJobs, saleRepo: repos.Sales, manager: printerMgr, hub: hub, discovery: printer.NewDiscovery(), bambuCloudRepo: repos.BambuCloud},
 		Materials: &MaterialService{repo: repos.Materials},
 		Spools:    &SpoolService{repo: repos.Spools},
 		PrintJobs: &PrintJobService{repo: repos.PrintJobs, printerRepo: repos.Printers, designRepo: repos.Designs, spoolRepo: repos.Spools, materialRepo: repos.Materials, projectRepo: repos.Projects, printerMgr: printerMgr, hub: hub, storage: store},
@@ -73,13 +72,13 @@ func NewServices(repos *repository.Repositories, store storage.Storage, printerM
 		Stats:     &StatsService{expenseRepo: repos.Expenses, saleRepo: repos.Sales, printJobRepo: repos.PrintJobs},
 		Templates: &TemplateService{repo: repos.Templates, projectRepo: repos.Projects, partRepo: repos.Parts, designRepo: repos.Designs, printJobRepo: repos.PrintJobs, spoolRepo: repos.Spools, materialRepo: repos.Materials, printerRepo: repos.Printers},
 		Etsy:            nil, // Initialize separately with NewServicesWithEtsy
-		Auth:            nil, // Initialize separately with NewServicesWithConfig
 		BambuCloud:      NewBambuCloudService(repos.BambuCloud, repos.Printers, printerMgr, bambu.NewCloudClient()),
 		Settings:        &SettingsService{repo: repos.Settings},
 		ProjectSupplies: &ProjectSupplyService{repo: repos.ProjectSupplies, materialRepo: repos.Materials},
 	}
-	// Wire cross-service dependency (StatsService needs ProjectService for cost lookups)
+	// Wire cross-service dependencies
 	services.Stats.projectService = services.Projects
+	services.Templates.projectService = services.Projects
 	return services
 }
 
@@ -96,10 +95,12 @@ func NewServicesWithConfig(repos *repository.Repositories, store storage.Storage
 	if config.Etsy.ClientID != "" {
 		services.Etsy = NewEtsyService(repos.Etsy, config.Etsy.ClientID, config.Etsy.RedirectURI)
 	}
-	if config.Auth.JWTSecret != "" {
-		services.Auth = NewAuthService(repos.Auth, config.Auth)
-	}
 	return services
+}
+
+// SetBackupService sets the backup service (must be called after DB is available).
+func (s *Services) SetBackupService(backup *BackupService) {
+	s.Backup = backup
 }
 
 // ProjectService handles project business logic.
@@ -132,8 +133,8 @@ func (s *ProjectService) GetByID(ctx context.Context, id uuid.UUID) (*model.Proj
 }
 
 // List retrieves all projects.
-func (s *ProjectService) List(ctx context.Context, status *model.ProjectStatus) ([]model.Project, error) {
-	return s.repo.List(ctx, status)
+func (s *ProjectService) List(ctx context.Context) ([]model.Project, error) {
+	return s.repo.List(ctx)
 }
 
 // Update updates a project.
@@ -277,9 +278,15 @@ func (s *ProjectService) GetProjectSummary(ctx context.Context, projectID uuid.U
 		summary.GrossMarginPercent = float64(summary.GrossProfitCents) / float64(summary.NetRevenueCents) * 100
 	}
 
-	if summary.TotalPrintSeconds > 0 {
-		hours := float64(summary.TotalPrintSeconds) / 3600.0
-		summary.ProfitPerHourCents = int(float64(summary.GrossProfitCents) / hours)
+	// Profit per hour: (profit from one sale) / (print time for one unit in hours)
+	printSeconds := summary.TotalPrintSeconds
+	if printSeconds <= 0 {
+		printSeconds = summary.EstimatedPrintSeconds
+	}
+	if printSeconds > 0 && summary.SalesCount > 0 {
+		profitPerSale := float64(summary.GrossProfitCents) / float64(summary.SalesCount)
+		hours := float64(printSeconds) / 3600.0
+		summary.ProfitPerHourCents = int(profitPerSale / hours)
 	}
 
 	return summary, nil
@@ -464,12 +471,6 @@ func (s *ProjectService) StartProduction(ctx context.Context, projectID uuid.UUI
 		result.JobsStarted++
 	}
 
-	// Update project status to active if we started any jobs
-	if result.JobsStarted > 0 && project.Status == model.ProjectStatusDraft {
-		project.Status = model.ProjectStatusActive
-		s.repo.Update(ctx, project)
-	}
-
 	s.hub.Broadcast(realtime.Event{
 		Type: "production_started",
 		Data: map[string]interface{}{
@@ -479,64 +480,6 @@ func (s *ProjectService) StartProduction(ctx context.Context, projectID uuid.UUI
 	})
 
 	return result, nil
-}
-
-// MarkReadyToShip marks a project as ready to ship.
-func (s *ProjectService) MarkReadyToShip(ctx context.Context, projectID uuid.UUID) error {
-	project, err := s.repo.GetByID(ctx, projectID)
-	if err != nil {
-		return fmt.Errorf("failed to get project: %w", err)
-	}
-	if project == nil {
-		return fmt.Errorf("project not found")
-	}
-
-	if project.Status != model.ProjectStatusCompleted {
-		return fmt.Errorf("project must be in completed status to mark as ready to ship")
-	}
-
-	project.Status = model.ProjectStatusReadyToShip
-	if err := s.repo.Update(ctx, project); err != nil {
-		return fmt.Errorf("failed to update project: %w", err)
-	}
-
-	s.hub.Broadcast(realtime.Event{
-		Type: "project_ready_to_ship",
-		Data: project,
-	})
-
-	return nil
-}
-
-// MarkShipped marks a project as shipped with a tracking number.
-func (s *ProjectService) MarkShipped(ctx context.Context, projectID uuid.UUID, trackingNumber string) error {
-	project, err := s.repo.GetByID(ctx, projectID)
-	if err != nil {
-		return fmt.Errorf("failed to get project: %w", err)
-	}
-	if project == nil {
-		return fmt.Errorf("project not found")
-	}
-
-	if project.Status != model.ProjectStatusReadyToShip && project.Status != model.ProjectStatusCompleted {
-		return fmt.Errorf("project must be in completed or ready_to_ship status to mark as shipped")
-	}
-
-	now := time.Now()
-	project.Status = model.ProjectStatusShipped
-	project.ShippedAt = &now
-	project.TrackingNumber = trackingNumber
-
-	if err := s.repo.Update(ctx, project); err != nil {
-		return fmt.Errorf("failed to update project: %w", err)
-	}
-
-	s.hub.Broadcast(realtime.Event{
-		Type: "project_shipped",
-		Data: project,
-	})
-
-	return nil
 }
 
 // PartService handles part business logic.
@@ -741,6 +684,7 @@ func (s *DesignService) OpenInExternalApp(ctx context.Context, id uuid.UUID, app
 type PrinterService struct {
 	repo           *repository.PrinterRepository
 	printJobRepo   *repository.PrintJobRepository
+	saleRepo       *repository.SaleRepository
 	manager        *printer.Manager
 	hub            *realtime.Hub
 	discovery      *printer.Discovery
@@ -803,6 +747,162 @@ func (s *PrinterService) ListJobs(ctx context.Context, printerID uuid.UUID) ([]m
 // GetJobStats retrieves job statistics for a printer.
 func (s *PrinterService) GetJobStats(ctx context.Context, printerID uuid.UUID) (*repository.JobStats, error) {
 	return s.printJobRepo.GetPrinterJobStats(ctx, printerID)
+}
+
+// GetPrinterAnalytics computes comprehensive analytics for a printer.
+func (s *PrinterService) GetPrinterAnalytics(ctx context.Context, printerID uuid.UUID) (*model.PrinterAnalytics, error) {
+	// Fetch printer metadata
+	printer, err := s.repo.GetByID(ctx, printerID)
+	if err != nil {
+		return nil, fmt.Errorf("get printer: %w", err)
+	}
+	if printer == nil {
+		return nil, fmt.Errorf("printer not found")
+	}
+
+	// Compute revenue attribution (lifetime)
+	revenueCents, err := s.repo.GetPrinterRevenueAttribution(ctx, printerID)
+	if err != nil {
+		slog.Warn("failed to get revenue attribution", "printer_id", printerID, "error", err)
+		revenueCents = 0
+	}
+
+	// Compute utilization for 7d, 30d, 90d periods
+	now := time.Now()
+	periods := []struct {
+		label string
+		since time.Time
+	}{
+		{"7d", now.AddDate(0, 0, -7)},
+		{"30d", now.AddDate(0, 0, -30)},
+		{"90d", now.AddDate(0, 0, -90)},
+	}
+
+	var utilizations []model.PrinterUtilization
+	for _, p := range periods {
+		data, err := s.repo.GetPrinterUtilizationData(ctx, printerID, p.since)
+		if err != nil {
+			slog.Warn("failed to get utilization data", "period", p.label, "error", err)
+			continue
+		}
+
+		totalHours := now.Sub(p.since).Hours()
+		printingHours := float64(data.CompletedSeconds) / 3600.0
+		failedHours := float64(data.FailedSeconds) / 3600.0
+		idleHours := totalHours - printingHours - failedHours
+		if idleHours < 0 {
+			idleHours = 0
+		}
+
+		var utilizationPercent float64
+		if totalHours > 0 {
+			utilizationPercent = (printingHours / totalHours) * 100
+		}
+
+		var actualRevenuePerHour int
+		if printingHours > 0 {
+			// Proportionally attribute revenue to this period based on total printing hours
+			healthData, _ := s.repo.GetPrinterHealthData(ctx, printerID)
+			if healthData != nil && healthData.TotalSeconds > 0 {
+				totalPrintingHours := float64(healthData.TotalSeconds) / 3600.0
+				periodRevenueShare := (printingHours / totalPrintingHours) * float64(revenueCents)
+				actualRevenuePerHour = int(periodRevenueShare / printingHours)
+			}
+		}
+
+		utilizations = append(utilizations, model.PrinterUtilization{
+			Period:                     p.label,
+			TotalHours:                 totalHours,
+			PrintingHours:              printingHours,
+			FailedHours:                failedHours,
+			IdleHours:                  idleHours,
+			UtilizationPercent:         utilizationPercent,
+			ConfiguredCostPerHourCents: printer.CostPerHourCents,
+			ActualRevenuePerHourCents:  actualRevenuePerHour,
+		})
+	}
+
+	// Compute health metrics
+	healthData, err := s.repo.GetPrinterHealthData(ctx, printerID)
+	if err != nil {
+		return nil, fmt.Errorf("get health data: %w", err)
+	}
+
+	failureBreakdown, err := s.repo.GetPrinterFailureBreakdown(ctx, printerID)
+	if err != nil {
+		slog.Warn("failed to get failure breakdown", "printer_id", printerID, "error", err)
+		failureBreakdown = make(map[string]int)
+	}
+
+	var failureRate float64
+	if healthData.TotalJobs > 0 {
+		failureRate = float64(healthData.FailedJobs) / float64(healthData.TotalJobs) * 100
+	}
+
+	var avgJobDuration int
+	var avgCost int
+	if healthData.CompletedJobs > 0 {
+		avgJobDuration = healthData.TotalSeconds / healthData.CompletedJobs
+		avgCost = healthData.TotalCostCents / healthData.CompletedJobs
+	}
+
+	health := &model.PrinterHealth{
+		TotalJobs:          healthData.TotalJobs,
+		CompletedJobs:      healthData.CompletedJobs,
+		FailedJobs:         healthData.FailedJobs,
+		FailureRate:        failureRate,
+		AvgJobDurationSec:  avgJobDuration,
+		AvgCostCents:       avgCost,
+		TotalMaterialGrams: healthData.TotalMaterialGrams,
+		TotalCostCents:     healthData.TotalCostCents,
+		TotalRevenueCents:  revenueCents,
+		FailureBreakdown:   failureBreakdown,
+	}
+
+	// Compute ROI metrics
+	totalPrintingHours := float64(healthData.TotalSeconds) / 3600.0
+	printerAgeHours := now.Sub(printer.CreatedAt).Hours()
+
+	var revenuePerHour, costPerHour, netPerHour int
+	if totalPrintingHours > 0 {
+		revenuePerHour = int(float64(revenueCents) / totalPrintingHours)
+		costPerHour = int(float64(healthData.TotalCostCents) / totalPrintingHours)
+		netPerHour = revenuePerHour - costPerHour
+	}
+
+	lifetimeProfit := revenueCents - healthData.TotalCostCents - printer.PurchasePriceCents
+
+	var hoursToBreakEven float64
+	breakEvenReached := lifetimeProfit >= 0
+	if !breakEvenReached && netPerHour > 0 {
+		remainingToBreakEven := -lifetimeProfit
+		hoursToBreakEven = float64(remainingToBreakEven) / float64(netPerHour)
+	} else if breakEvenReached {
+		// Calculate when break-even was reached
+		if netPerHour > 0 {
+			hoursToBreakEven = float64(printer.PurchasePriceCents) / float64(netPerHour)
+		}
+	}
+
+	roi := &model.PrinterROI{
+		PurchasePriceCents:  printer.PurchasePriceCents,
+		TotalRevenueCents:   revenueCents,
+		TotalCostCents:      healthData.TotalCostCents,
+		LifetimeProfitCents: lifetimeProfit,
+		TotalPrintingHours:  totalPrintingHours,
+		RevenuePerHourCents: revenuePerHour,
+		CostPerHourCents:    costPerHour,
+		NetPerHourCents:     netPerHour,
+		HoursToBreakEven:    hoursToBreakEven,
+		PrinterAgeHours:     printerAgeHours,
+		BreakEvenReached:    breakEvenReached,
+	}
+
+	return &model.PrinterAnalytics{
+		Utilization: utilizations,
+		ROI:         roi,
+		Health:      health,
+	}, nil
 }
 
 // DiscoverPrinters scans the network for printers.
@@ -1763,45 +1863,7 @@ func (s *PrintJobService) RecordOutcome(ctx context.Context, id uuid.UUID, outco
 		Data: job,
 	})
 
-	// Check if all project jobs are now terminal (for auto-completing projects)
-	if job.ProjectID != nil && outcome.Success {
-		s.checkProjectCompletion(ctx, *job.ProjectID)
-	}
-
 	return nil
-}
-
-// checkProjectCompletion checks if all jobs in a project are terminal and updates project status.
-func (s *PrintJobService) checkProjectCompletion(ctx context.Context, projectID uuid.UUID) {
-	stats, err := s.repo.GetProjectJobStats(ctx, projectID)
-	if err != nil {
-		slog.Error("failed to get project job stats", "project_id", projectID, "error", err)
-		return
-	}
-
-	// If all jobs are in terminal state and at least one completed successfully
-	terminalCount := stats.Completed + stats.Failed + stats.Cancelled
-	if terminalCount == stats.Total && stats.Completed > 0 {
-		// All jobs done - update project status to completed
-		project, err := s.projectRepo.GetByID(ctx, projectID)
-		if err != nil || project == nil {
-			slog.Error("failed to get project for completion check", "project_id", projectID, "error", err)
-			return
-		}
-
-		if project.Status == model.ProjectStatusActive {
-			project.Status = model.ProjectStatusCompleted
-			if err := s.projectRepo.Update(ctx, project); err != nil {
-				slog.Error("failed to update project status", "project_id", projectID, "error", err)
-				return
-			}
-
-			s.hub.Broadcast(realtime.Event{
-				Type: "project_completed",
-				Data: project,
-			})
-		}
-	}
 }
 
 // RetryRequest contains parameters for retrying a failed job.
@@ -1916,11 +1978,6 @@ func (s *PrintJobService) RecordFailure(ctx context.Context, id uuid.UUID, categ
 		Type: "job_failed",
 		Data: job,
 	})
-
-	// Check if all project jobs are now terminal
-	if job.ProjectID != nil {
-		s.checkProjectCompletion(ctx, *job.ProjectID)
-	}
 
 	return nil
 }
@@ -3021,14 +3078,15 @@ func sortStrings(s []string) {
 
 // TemplateService handles template business logic.
 type TemplateService struct {
-	repo         *repository.TemplateRepository
-	projectRepo  *repository.ProjectRepository
-	partRepo     *repository.PartRepository
-	designRepo   *repository.DesignRepository
-	printJobRepo *repository.PrintJobRepository
-	spoolRepo    *repository.SpoolRepository
-	materialRepo *repository.MaterialRepository
-	printerRepo  *repository.PrinterRepository
+	repo           *repository.TemplateRepository
+	projectRepo    *repository.ProjectRepository
+	partRepo       *repository.PartRepository
+	designRepo     *repository.DesignRepository
+	printJobRepo   *repository.PrintJobRepository
+	spoolRepo      *repository.SpoolRepository
+	materialRepo   *repository.MaterialRepository
+	printerRepo    *repository.PrinterRepository
+	projectService *ProjectService
 }
 
 // Create creates a new template.
@@ -3043,7 +3101,7 @@ func (s *TemplateService) Create(ctx context.Context, t *model.Template) error {
 	return s.repo.Create(ctx, t)
 }
 
-// GetByID retrieves a template by ID with its designs.
+// GetByID retrieves a template by ID with its designs, materials, and supplies.
 func (s *TemplateService) GetByID(ctx context.Context, id uuid.UUID) (*model.Template, error) {
 	t, err := s.repo.GetByID(ctx, id)
 	if err != nil {
@@ -3059,6 +3117,20 @@ func (s *TemplateService) GetByID(ctx context.Context, id uuid.UUID) (*model.Tem
 		return nil, err
 	}
 	t.Designs = designs
+
+	// Load materials
+	materials, err := s.repo.GetRecipeMaterials(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	t.Materials = materials
+
+	// Load supplies
+	supplies, err := s.repo.GetRecipeSupplies(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	t.Supplies = supplies
 
 	return t, nil
 }
@@ -3150,7 +3222,6 @@ func (s *TemplateService) CreateProjectFromTemplate(ctx context.Context, templat
 	project := &model.Project{
 		Name:            template.Name,
 		Description:     template.Description,
-		Status:          model.ProjectStatusActive,
 		Tags:            template.Tags,
 		TemplateID:      &templateID,
 		Source:          opts.Source,
@@ -3215,7 +3286,7 @@ func (s *TemplateService) CreateProjectFromTemplate(ctx context.Context, templat
 	return project, printJobs, nil
 }
 
-// GetByIDWithMaterials retrieves a template with its materials loaded.
+// GetByIDWithMaterials retrieves a template with its materials and supplies loaded.
 func (s *TemplateService) GetByIDWithMaterials(ctx context.Context, id uuid.UUID) (*model.Template, error) {
 	t, err := s.GetByID(ctx, id)
 	if err != nil {
@@ -3231,6 +3302,13 @@ func (s *TemplateService) GetByIDWithMaterials(ctx context.Context, id uuid.UUID
 		return nil, fmt.Errorf("loading materials: %w", err)
 	}
 	t.Materials = materials
+
+	// Load supplies
+	supplies, err := s.repo.GetRecipeSupplies(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("loading supplies: %w", err)
+	}
+	t.Supplies = supplies
 
 	return t, nil
 }
@@ -3264,6 +3342,148 @@ func (s *TemplateService) GetMaterial(ctx context.Context, id uuid.UUID) (*model
 // ListMaterials retrieves all materials for a recipe.
 func (s *TemplateService) ListMaterials(ctx context.Context, recipeID uuid.UUID) ([]model.RecipeMaterial, error) {
 	return s.repo.GetRecipeMaterials(ctx, recipeID)
+}
+
+// AddSupply adds a supply item to a recipe.
+func (s *TemplateService) AddSupply(ctx context.Context, supply *model.RecipeSupply) error {
+	if supply.RecipeID == uuid.Nil {
+		return fmt.Errorf("recipe ID is required")
+	}
+	// If material_id is set and name is empty, auto-populate from the material
+	if supply.MaterialID != nil && *supply.MaterialID != uuid.Nil && supply.Name == "" {
+		mat, err := s.materialRepo.GetByID(ctx, *supply.MaterialID)
+		if err != nil {
+			return fmt.Errorf("failed to look up material: %w", err)
+		}
+		if mat != nil {
+			supply.Name = mat.Name
+			if supply.UnitCostCents == 0 {
+				supply.UnitCostCents = int(mat.CostPerKg * 100) // CostPerKg repurposed as per-unit $ for supplies
+			}
+		}
+	}
+	if supply.Name == "" {
+		return fmt.Errorf("supply name is required")
+	}
+	if supply.Quantity < 1 {
+		supply.Quantity = 1
+	}
+	return s.repo.AddRecipeSupply(ctx, supply)
+}
+
+// UpdateSupply updates a supply item.
+func (s *TemplateService) UpdateSupply(ctx context.Context, supply *model.RecipeSupply) error {
+	return s.repo.UpdateRecipeSupply(ctx, supply)
+}
+
+// RemoveSupply removes a supply item from a recipe.
+func (s *TemplateService) RemoveSupply(ctx context.Context, id uuid.UUID) error {
+	return s.repo.DeleteRecipeSupply(ctx, id)
+}
+
+// GetSupply retrieves a single supply by ID.
+func (s *TemplateService) GetSupply(ctx context.Context, id uuid.UUID) (*model.RecipeSupply, error) {
+	return s.repo.GetRecipeSupplyByID(ctx, id)
+}
+
+// ListSupplies retrieves all supplies for a recipe.
+func (s *TemplateService) ListSupplies(ctx context.Context, recipeID uuid.UUID) ([]model.RecipeSupply, error) {
+	return s.repo.GetRecipeSupplies(ctx, recipeID)
+}
+
+// GetTemplateAnalytics returns aggregated performance metrics from all projects created from a template.
+func (s *TemplateService) GetTemplateAnalytics(ctx context.Context, templateID uuid.UUID) (*model.TemplateAnalytics, error) {
+	// Verify template exists
+	template, err := s.GetByID(ctx, templateID)
+	if err != nil {
+		return nil, err
+	}
+	if template == nil {
+		return nil, fmt.Errorf("template not found")
+	}
+
+	// Get all projects linked to this template
+	projects, err := s.projectRepo.ListByTemplateID(ctx, templateID)
+	if err != nil {
+		return nil, fmt.Errorf("listing projects: %w", err)
+	}
+
+	analytics := &model.TemplateAnalytics{
+		TemplateID:             templateID,
+		ProjectCount:           len(projects),
+		EstimatedPrintSeconds:  template.EstimatedPrintSeconds,
+		EstimatedMaterialGrams: template.EstimatedMaterialGrams,
+	}
+
+	if len(projects) == 0 {
+		return analytics, nil
+	}
+
+	// Aggregate summaries from each project
+	var marginSum float64
+	var marginCount int
+	for _, proj := range projects {
+		if s.projectService == nil {
+			continue
+		}
+		summary, err := s.projectService.GetProjectSummary(ctx, proj.ID)
+		if err != nil || summary == nil {
+			continue
+		}
+
+		analytics.TotalRevenueCents += summary.TotalRevenueCents
+		analytics.TotalFeesCents += summary.TotalFeesCents
+		analytics.NetRevenueCents += summary.NetRevenueCents
+		analytics.TotalSalesCount += summary.SalesCount
+
+		analytics.TotalCostCents += summary.TotalCostCents
+		analytics.TotalPrinterTimeCost += summary.PrinterTimeCostCents
+		analytics.TotalMaterialCost += summary.MaterialCostCents
+		analytics.TotalSupplyCost += summary.SupplyCostCents
+
+		analytics.TotalJobCount += summary.JobCount
+		analytics.TotalCompleted += summary.CompletedCount
+		analytics.TotalFailed += summary.FailedCount
+
+		analytics.TotalPrintSeconds += summary.TotalPrintSeconds
+		analytics.TotalMaterialGrams += summary.TotalMaterialGrams
+
+		if summary.GrossMarginPercent != 0 {
+			marginSum += summary.GrossMarginPercent
+			marginCount++
+		}
+	}
+
+	// Derived metrics
+	if analytics.TotalCompleted+analytics.TotalFailed > 0 {
+		analytics.SuccessRate = float64(analytics.TotalCompleted) / float64(analytics.TotalCompleted+analytics.TotalFailed) * 100
+	}
+	if analytics.TotalCompleted > 0 {
+		analytics.AvgPrintSeconds = analytics.TotalPrintSeconds / analytics.TotalCompleted
+	}
+	if analytics.ProjectCount > 0 {
+		analytics.AvgUnitCostCents = analytics.TotalCostCents / analytics.ProjectCount
+		analytics.AvgMaterialGrams = analytics.TotalMaterialGrams / float64(analytics.ProjectCount)
+	}
+	if marginCount > 0 {
+		analytics.AvgGrossMarginPercent = marginSum / float64(marginCount)
+	}
+
+	analytics.TotalGrossProfitCents = analytics.NetRevenueCents - analytics.TotalCostCents
+
+	// Profit per hour across all projects
+	if analytics.TotalPrintSeconds > 0 {
+		hours := float64(analytics.TotalPrintSeconds) / 3600.0
+		analytics.ProfitPerHourCents = int(float64(analytics.TotalGrossProfitCents) / hours)
+	}
+
+	// Get estimated cost for comparison
+	costEstimate, err := s.CalculateRecipeCost(ctx, templateID)
+	if err == nil && costEstimate != nil {
+		analytics.EstimatedCostCents = costEstimate.TotalCostCents
+	}
+
+	return analytics, nil
 }
 
 // PrinterValidationResult contains the result of printer validation.
@@ -3464,12 +3684,24 @@ func (s *TemplateService) CalculateRecipeCost(ctx context.Context, recipeID uuid
 		materialMap[m.Type] = m
 	}
 
+	// Determine hourly rate: use preferred printer's rate if available
+	hourlyRateCents := DefaultHourlyRateCents
+	printerName := ""
+	if template.PreferredPrinterID != nil {
+		p, _ := s.printerRepo.GetByID(ctx, *template.PreferredPrinterID)
+		if p != nil && p.CostPerHourCents > 0 {
+			hourlyRateCents = p.CostPerHourCents
+			printerName = p.Name
+		}
+	}
+
 	estimate := &model.RecipeCostEstimate{
 		EstimatedPrintTime: template.EstimatedPrintSeconds,
-		HourlyRateCents:    DefaultHourlyRateCents,
+		HourlyRateCents:    hourlyRateCents,
 		LaborRateCents:     DefaultLaborRateCents,
 		LaborMinutes:       template.LaborMinutes,
 		SalePriceCents:     template.SalePriceCents,
+		PrinterName:        printerName,
 	}
 
 	// Calculate material costs
@@ -3512,10 +3744,10 @@ func (s *TemplateService) CalculateRecipeCost(ctx context.Context, recipeID uuid
 		})
 	}
 
-	// Calculate time cost (machine time)
+	// Calculate time cost (machine time) using actual printer rate
 	if template.EstimatedPrintSeconds > 0 {
 		hours := float64(template.EstimatedPrintSeconds) / 3600.0
-		estimate.TimeCostCents = int(hours * float64(DefaultHourlyRateCents))
+		estimate.TimeCostCents = int(hours * float64(hourlyRateCents))
 	}
 
 	// Calculate labor cost (manual labor time)
@@ -3524,13 +3756,31 @@ func (s *TemplateService) CalculateRecipeCost(ctx context.Context, recipeID uuid
 		estimate.LaborCostCents = int(hours * float64(DefaultLaborRateCents))
 	}
 
-	// Total cost = material + machine time + labor
-	estimate.TotalCostCents = estimate.MaterialCostCents + estimate.TimeCostCents + estimate.LaborCostCents
+	// Calculate supply costs
+	for _, supply := range template.Supplies {
+		totalCents := supply.UnitCostCents * supply.Quantity
+		estimate.SupplyCostCents += totalCents
+		estimate.SupplyBreakdown = append(estimate.SupplyBreakdown, model.RecipeSupplyCostBreakdown{
+			Name:          supply.Name,
+			UnitCostCents: supply.UnitCostCents,
+			Quantity:      supply.Quantity,
+			TotalCents:    totalCents,
+		})
+	}
+
+	// Total cost = material + machine time + labor + supplies
+	estimate.TotalCostCents = estimate.MaterialCostCents + estimate.TimeCostCents + estimate.LaborCostCents + estimate.SupplyCostCents
 
 	// Calculate gross margin if sale price is set
 	if template.SalePriceCents > 0 {
 		estimate.GrossMarginCents = template.SalePriceCents - estimate.TotalCostCents
 		estimate.GrossMarginPercent = float64(estimate.GrossMarginCents) / float64(template.SalePriceCents) * 100.0
+
+		// Profit per hour: margin / estimated print hours
+		if template.EstimatedPrintSeconds > 0 {
+			hours := float64(template.EstimatedPrintSeconds) / 3600.0
+			estimate.ProfitPerHourCents = int(float64(estimate.GrossMarginCents) / hours)
+		}
 	}
 
 	return estimate, nil

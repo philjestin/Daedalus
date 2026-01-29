@@ -78,6 +78,10 @@ func main() {
 	}
 	services := service.NewServicesWithConfig(repos, fileStorage, printerManager, hub, servicesConfig)
 
+	// Initialize backup service with database access
+	backupService := service.NewBackupService(db, dbPath)
+	services.SetBackupService(backupService)
+
 	// Initialize PrintJobService to register for printer status changes (auto failure detection)
 	services.PrintJobs.Init()
 

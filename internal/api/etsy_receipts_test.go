@@ -221,7 +221,6 @@ func TestProcessReceipt_Success(t *testing.T) {
 	project := &model.Project{
 		ID:              projectID,
 		Name:            "Order from Etsy",
-		Status:          model.ProjectStatusActive,
 		Source:          "etsy",
 		ExternalOrderID: "etsy-12345",
 	}

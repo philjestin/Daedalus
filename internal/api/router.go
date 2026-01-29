@@ -12,18 +12,8 @@ import (
 	"github.com/hyperion/printfarm/internal/service"
 )
 
-// RouterConfig holds configuration for the router.
-type RouterConfig struct {
-	RequireAuth bool // If true, protect all API routes with authentication
-}
-
 // NewRouter creates the HTTP router with all routes.
 func NewRouter(services *service.Services, hub *realtime.Hub) http.Handler {
-	return NewRouterWithConfig(services, hub, RouterConfig{RequireAuth: false})
-}
-
-// NewRouterWithConfig creates the HTTP router with configuration.
-func NewRouterWithConfig(services *service.Services, hub *realtime.Hub, config RouterConfig) http.Handler {
 	r := chi.NewRouter()
 
 	// Middleware
@@ -51,37 +41,9 @@ func NewRouterWithConfig(services *service.Services, hub *realtime.Hub, config R
 	// WebSocket endpoint
 	r.Get("/ws", hub.HandleWebSocket)
 
-	// Auth middleware (only if auth service is configured)
-	var authMiddleware *AuthMiddleware
-	if services.Auth != nil {
-		authMiddleware = NewAuthMiddleware(services.Auth)
-	}
-
 	// API routes
 	r.Route("/api", func(r chi.Router) {
-		// Auth routes (always public - defined in separate group)
-		if services.Auth != nil {
-			authHandler := NewAuthHandler(services.Auth)
-			// Public auth endpoints
-			r.Post("/auth/request-link", authHandler.RequestMagicLink)
-			r.Get("/auth/verify", authHandler.VerifyMagicLink)
-
-			// Protected auth endpoints (need their own group with middleware)
-			r.Group(func(r chi.Router) {
-				r.Use(authMiddleware.RequireAuth)
-				r.Get("/auth/me", authHandler.GetCurrentUser)
-				r.Post("/auth/logout", authHandler.Logout)
-			})
-		}
-
-		// Protected routes group - all routes below require auth if enabled
-		r.Group(func(r chi.Router) {
-			// Apply auth middleware if required
-			if config.RequireAuth && authMiddleware != nil {
-				r.Use(authMiddleware.RequireAuth)
-			}
-
-			// Projects
+		// Projects
 		projectHandler := &ProjectHandler{service: services.Projects}
 		r.Route("/projects", func(r chi.Router) {
 			r.Get("/", projectHandler.List)
@@ -96,8 +58,6 @@ func NewRouterWithConfig(services *service.Services, hub *realtime.Hub, config R
 				r.Get("/job-stats", projectHandler.GetJobStats)
 				r.Get("/summary", projectHandler.GetProjectSummary)
 				r.Post("/start-production", projectHandler.StartProduction)
-				r.Post("/ready-to-ship", projectHandler.MarkReadyToShip)
-				r.Post("/ship", projectHandler.Ship)
 
 				// Parts nested under project
 				partHandler := &PartHandler{service: services.Parts, designService: services.Designs}
@@ -152,6 +112,7 @@ func NewRouterWithConfig(services *service.Services, hub *realtime.Hub, config R
 				r.Get("/state", printerHandler.GetState)
 				r.Get("/jobs", printerHandler.ListJobs)
 				r.Get("/stats", printerHandler.GetJobStats)
+				r.Get("/analytics", printerHandler.GetPrinterAnalytics)
 			})
 		})
 
@@ -240,6 +201,17 @@ func NewRouterWithConfig(services *service.Services, hub *realtime.Hub, config R
 			})
 		})
 
+		// Backups
+		if services.Backup != nil {
+			backupHandler := &BackupHandler{service: services.Backup}
+			r.Route("/backups", func(r chi.Router) {
+				r.Get("/", backupHandler.List)
+				r.Post("/", backupHandler.Create)
+				r.Delete("/{name}", backupHandler.Delete)
+				r.Post("/{name}/restore", backupHandler.Restore)
+			})
+		}
+
 		// Stats
 		statsHandler := &StatsHandler{service: services.Stats}
 		r.Get("/stats/financial", statsHandler.GetFinancialSummary)
@@ -267,59 +239,67 @@ func NewRouterWithConfig(services *service.Services, hub *realtime.Hub, config R
 				r.Patch("/materials/{materialId}", templateHandler.UpdateMaterial)
 				r.Delete("/materials/{materialId}", templateHandler.RemoveMaterial)
 
+				// Recipe supply endpoints
+				r.Get("/supplies", templateHandler.ListSupplies)
+				r.Post("/supplies", templateHandler.AddSupply)
+				r.Patch("/supplies/{supplyId}", templateHandler.UpdateSupply)
+				r.Delete("/supplies/{supplyId}", templateHandler.RemoveSupply)
+
 				// Recipe compatibility endpoints
 				r.Get("/compatible-printers", templateHandler.GetCompatiblePrinters)
 				r.Get("/compatible-spools", templateHandler.GetCompatibleSpools)
 				r.Get("/cost-estimate", templateHandler.GetCostEstimate)
 				r.Post("/validate-printer/{printerId}", templateHandler.ValidatePrinter)
+
+				// Analytics
+				r.Get("/analytics", templateHandler.GetAnalytics)
 			})
 		})
 
-			// Bambu Cloud Integration
-			if services.BambuCloud != nil {
-				bambuCloudHandler := &BambuCloudHandler{service: services.BambuCloud}
-				r.Route("/bambu-cloud", func(r chi.Router) {
-					r.Post("/login", bambuCloudHandler.Login)
-					r.Post("/verify", bambuCloudHandler.Verify)
-					r.Get("/status", bambuCloudHandler.Status)
-					r.Get("/devices", bambuCloudHandler.Devices)
-					r.Post("/devices/add", bambuCloudHandler.AddDevice)
-					r.Delete("/logout", bambuCloudHandler.Logout)
-				})
-			}
+		// Bambu Cloud Integration
+		if services.BambuCloud != nil {
+			bambuCloudHandler := &BambuCloudHandler{service: services.BambuCloud}
+			r.Route("/bambu-cloud", func(r chi.Router) {
+				r.Post("/login", bambuCloudHandler.Login)
+				r.Post("/verify", bambuCloudHandler.Verify)
+				r.Get("/status", bambuCloudHandler.Status)
+				r.Get("/devices", bambuCloudHandler.Devices)
+				r.Post("/devices/add", bambuCloudHandler.AddDevice)
+				r.Delete("/logout", bambuCloudHandler.Logout)
+			})
+		}
 
-			// Etsy Integration
-			if services.Etsy != nil {
-				etsyHandler := NewEtsyHandler(services.Etsy)
-				etsyHandler.SetTemplateSvc(services.Templates)
-				r.Route("/integrations/etsy", func(r chi.Router) {
-					// Auth
-					r.Get("/auth", etsyHandler.StartAuth)
-					r.Get("/callback", etsyHandler.Callback)
-					r.Get("/status", etsyHandler.GetStatus)
-					r.Post("/disconnect", etsyHandler.Disconnect)
+		// Etsy Integration
+		if services.Etsy != nil {
+			etsyHandler := NewEtsyHandler(services.Etsy)
+			etsyHandler.SetTemplateSvc(services.Templates)
+			r.Route("/integrations/etsy", func(r chi.Router) {
+				// Auth
+				r.Get("/auth", etsyHandler.StartAuth)
+				r.Get("/callback", etsyHandler.Callback)
+				r.Get("/status", etsyHandler.GetStatus)
+				r.Post("/disconnect", etsyHandler.Disconnect)
 
-					// Receipts/Orders
-					r.Post("/receipts/sync", etsyHandler.SyncReceipts)
-					r.Get("/receipts", etsyHandler.ListReceipts)
-					r.Get("/receipts/{id}", etsyHandler.GetReceipt)
-					r.Post("/receipts/{id}/process", etsyHandler.ProcessReceipt)
+				// Receipts/Orders
+				r.Post("/receipts/sync", etsyHandler.SyncReceipts)
+				r.Get("/receipts", etsyHandler.ListReceipts)
+				r.Get("/receipts/{id}", etsyHandler.GetReceipt)
+				r.Post("/receipts/{id}/process", etsyHandler.ProcessReceipt)
 
-					// Listings
-					r.Post("/listings/sync", etsyHandler.SyncListings)
-					r.Get("/listings", etsyHandler.ListListings)
-					r.Get("/listings/{id}", etsyHandler.GetListing)
-					r.Post("/listings/{id}/link", etsyHandler.LinkListing)
-					r.Delete("/listings/{id}/link", etsyHandler.UnlinkListing)
-					r.Post("/listings/{id}/sync-inventory", etsyHandler.SyncInventory)
+				// Listings
+				r.Post("/listings/sync", etsyHandler.SyncListings)
+				r.Get("/listings", etsyHandler.ListListings)
+				r.Get("/listings/{id}", etsyHandler.GetListing)
+				r.Post("/listings/{id}/link", etsyHandler.LinkListing)
+				r.Delete("/listings/{id}/link", etsyHandler.UnlinkListing)
+				r.Post("/listings/{id}/sync-inventory", etsyHandler.SyncInventory)
 
-					// Webhooks
-					r.Post("/webhook", etsyHandler.HandleWebhook)
-					r.Get("/webhook/events", etsyHandler.ListWebhookEvents)
-					r.Post("/webhook/events/{id}/reprocess", etsyHandler.ReprocessWebhookEvent)
-				})
-			}
-		}) // End protected routes group
+				// Webhooks
+				r.Post("/webhook", etsyHandler.HandleWebhook)
+				r.Get("/webhook/events", etsyHandler.ListWebhookEvents)
+				r.Post("/webhook/events/{id}/reprocess", etsyHandler.ReprocessWebhookEvent)
+			})
+		}
 	})
 
 	// Serve static frontend files in production
@@ -343,4 +323,3 @@ func NewRouterWithConfig(services *service.Services, hub *realtime.Hub, config R
 
 	return r
 }
-

@@ -1,19 +1,14 @@
 // Project types
-export type ProjectStatus = 'draft' | 'active' | 'completed' | 'ready_to_ship' | 'shipped' | 'archived'
-
 export interface Project {
   id: string
   name: string
   description: string
-  status: ProjectStatus
   target_date?: string
   tags: string[]
   template_id?: string
   source: string
   external_order_id?: string
   customer_notes?: string
-  shipped_at?: string
-  tracking_number?: string
   created_at: string
   updated_at: string
 }
@@ -78,11 +73,6 @@ export interface StartProductionResult {
 export interface StartJobFailure {
   job_id: string
   reason: string
-}
-
-// Request for marking a project as shipped
-export interface ShipRequest {
-  tracking_number?: string
 }
 
 // Part types
@@ -156,6 +146,7 @@ export interface Printer {
   location: string
   notes: string
   cost_per_hour_cents: number // Hourly cost in cents (e.g. 150 = $1.50/hr)
+  purchase_price_cents: number // Purchase price in cents for ROI tracking
   created_at: string
   updated_at: string
 }
@@ -465,16 +456,40 @@ export interface RecipeCostEstimate {
   material_cost_cents: number
   time_cost_cents: number
   labor_cost_cents: number
+  supply_cost_cents: number
   total_cost_cents: number
   estimated_print_time_seconds: number
   labor_minutes: number
   material_breakdown: RecipeMaterialCostBreakdown[]
+  supply_breakdown?: RecipeSupplyCostBreakdown[]
   hourly_rate_cents: number
   labor_rate_cents: number
+  printer_name?: string
   // Margin calculation
   sale_price_cents: number
   gross_margin_cents: number
   gross_margin_percent: number
+  profit_per_hour_cents: number
+}
+
+// Supply cost breakdown
+export interface RecipeSupplyCostBreakdown {
+  name: string
+  unit_cost_cents: number
+  quantity: number
+  total_cents: number
+}
+
+// Recipe supply item (non-printed BOM)
+export interface RecipeSupply {
+  id: string
+  recipe_id: string
+  name: string
+  unit_cost_cents: number
+  quantity: number
+  material_id?: string
+  notes?: string
+  created_at: string
 }
 
 export interface RecipeMaterialCostBreakdown {
@@ -525,6 +540,43 @@ export interface Template {
   updated_at: string
   designs?: TemplateDesign[]
   materials?: RecipeMaterial[]
+  supplies?: RecipeSupply[]
+}
+
+// Aggregated performance analytics from projects created from a template
+export interface TemplateAnalytics {
+  template_id: string
+  project_count: number
+  // Revenue
+  total_revenue_cents: number
+  total_fees_cents: number
+  net_revenue_cents: number
+  total_sales_count: number
+  // Costs
+  total_cost_cents: number
+  avg_unit_cost_cents: number
+  total_printer_time_cost: number
+  total_material_cost: number
+  total_supply_cost: number
+  // Profit
+  total_gross_profit_cents: number
+  avg_gross_margin_percent: number
+  profit_per_hour_cents: number
+  // Performance
+  total_job_count: number
+  total_completed: number
+  total_failed: number
+  success_rate: number
+  // Print time
+  total_print_seconds: number
+  avg_print_seconds: number
+  // Material
+  total_material_grams: number
+  avg_material_grams: number
+  // Estimated vs Actual comparison
+  estimated_print_seconds: number
+  estimated_material_grams: number
+  estimated_cost_cents: number
 }
 
 export interface TemplateDesign {
@@ -796,5 +848,58 @@ export interface CloudDevice {
 export interface BambuCloudStatus {
   connected: boolean
   email?: string
+}
+
+// Printer Analytics types
+export interface PrinterUtilization {
+  period: string
+  total_hours: number
+  printing_hours: number
+  failed_hours: number
+  idle_hours: number
+  utilization_percent: number
+  configured_cost_per_hour_cents: number
+  actual_revenue_per_hour_cents: number
+}
+
+export interface PrinterROI {
+  purchase_price_cents: number
+  total_revenue_cents: number
+  total_cost_cents: number
+  lifetime_profit_cents: number
+  total_printing_hours: number
+  revenue_per_hour_cents: number
+  cost_per_hour_cents: number
+  net_per_hour_cents: number
+  hours_to_break_even: number
+  printer_age_hours: number
+  break_even_reached: boolean
+}
+
+export interface PrinterHealth {
+  total_jobs: number
+  completed_jobs: number
+  failed_jobs: number
+  failure_rate: number
+  avg_job_duration_sec: number
+  avg_cost_cents: number
+  total_material_grams: number
+  total_cost_cents: number
+  total_revenue_cents: number
+  failure_breakdown: Record<string, number>
+}
+
+export interface PrinterAnalytics {
+  utilization: PrinterUtilization[]
+  roi: PrinterROI
+  health: PrinterHealth
+}
+
+// Backup types
+export interface BackupInfo {
+  name: string
+  path: string
+  size: number
+  created_at: string
 }
 

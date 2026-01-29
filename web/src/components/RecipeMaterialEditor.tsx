@@ -70,6 +70,7 @@ export default function RecipeMaterialEditor({ templateId, materials }: RecipeMa
       abs: 'bg-amber-500/20 text-amber-400',
       asa: 'bg-orange-500/20 text-orange-400',
       tpu: 'bg-purple-500/20 text-purple-400',
+      supply: 'bg-surface-500/20 text-surface-400',
     }
     return colors[type] || 'bg-surface-700 text-surface-300'
   }

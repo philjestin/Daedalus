@@ -12,9 +12,9 @@ import {
   X,
   ShoppingBag,
 } from 'lucide-react'
-import { salesApi, statsApi } from '../api/client'
+import { salesApi, statsApi, projectsApi } from '../api/client'
 import { cn } from '../lib/utils'
-import type { Sale, SalesChannel } from '../types'
+import type { Sale, SalesChannel, ProjectSummary } from '../types'
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -379,6 +379,10 @@ function SaleModal({
 }) {
   const isEdit = !!sale
 
+  const [selectedProjectId, setSelectedProjectId] = useState<string>(sale?.project_id || '')
+  const [projectSummary, setProjectSummary] = useState<ProjectSummary | null>(null)
+  const [loadingSummary, setLoadingSummary] = useState(false)
+
   const [date, setDate] = useState(
     sale ? new Date(sale.occurred_at).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]
   )
@@ -395,6 +399,37 @@ function SaleModal({
   const [orderReference, setOrderReference] = useState(sale?.order_reference || '')
   const [notes, setNotes] = useState(sale?.notes || '')
   const [submitting, setSubmitting] = useState(false)
+
+  // Fetch projects for dropdown
+  const { data: projects = [] } = useQuery({
+    queryKey: ['projects'],
+    queryFn: () => projectsApi.list(),
+  })
+
+  // Fetch project summary when project is selected
+  const handleProjectChange = async (projectId: string) => {
+    setSelectedProjectId(projectId)
+    setProjectSummary(null)
+
+    if (projectId) {
+      setLoadingSummary(true)
+      try {
+        const [project, summary] = await Promise.all([
+          projectsApi.get(projectId),
+          projectsApi.getSummary(projectId),
+        ])
+        setProjectSummary(summary)
+        // Auto-populate item description with project name
+        if (!itemDescription) {
+          setItemDescription(project.name)
+        }
+      } catch (err) {
+        console.error('Failed to fetch project summary:', err)
+      } finally {
+        setLoadingSummary(false)
+      }
+    }
+  }
 
   const netCents = toCents(gross) - toCents(fees) - toCents(shippingCost)
 
@@ -417,6 +452,7 @@ function SaleModal({
         customer_name: customerName,
         order_reference: orderReference,
         notes,
+        project_id: selectedProjectId || undefined,
       }
 
       if (isEdit) {
@@ -448,6 +484,71 @@ function SaleModal({
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Project Selector */}
+          <div>
+            <label className="block text-sm text-surface-400 mb-1">Link to Project (optional)</label>
+            <select
+              value={selectedProjectId}
+              onChange={(e) => handleProjectChange(e.target.value)}
+              className="input w-full"
+            >
+              <option value="">-- No project --</option>
+              {projects.map((project) => (
+                <option key={project.id} value={project.id}>
+                  {project.name}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-surface-500 mt-1">
+              Linking to a project lets you track profit by including material and printing costs
+            </p>
+          </div>
+
+          {/* Project Cost Summary */}
+          {selectedProjectId && (
+            <div className="p-3 rounded-lg bg-surface-800/50 border border-surface-700">
+              <div className="text-sm font-medium text-surface-300 mb-2">Project Costs</div>
+              {loadingSummary ? (
+                <div className="text-sm text-surface-500">Loading costs...</div>
+              ) : projectSummary ? (
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-surface-500">Material Cost:</span>
+                    <span className="text-surface-300">{formatCents(projectSummary.material_cost_cents)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-surface-500">Printer Time:</span>
+                    <span className="text-surface-300">{formatCents(projectSummary.printer_time_cost_cents)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-surface-500">Supply Cost:</span>
+                    <span className="text-surface-300">{formatCents(projectSummary.supply_cost_cents)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-surface-500">Unit Cost:</span>
+                    <span className="text-surface-300">{formatCents(projectSummary.unit_cost_cents)}</span>
+                  </div>
+                  <div className="col-span-2 pt-2 border-t border-surface-700 flex justify-between font-medium">
+                    <span className="text-surface-400">Total COGS:</span>
+                    <span className="text-red-400">{formatCents(projectSummary.total_cost_cents)}</span>
+                  </div>
+                  {toCents(gross) > 0 && (
+                    <div className="col-span-2 flex justify-between font-medium">
+                      <span className="text-surface-400">Est. Profit:</span>
+                      <span className={cn(
+                        netCents - projectSummary.total_cost_cents >= 0 ? 'text-emerald-400' : 'text-red-400'
+                      )}>
+                        {formatCents(netCents - projectSummary.total_cost_cents)}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="text-sm text-surface-500">No cost data available</div>
+              )}
+            </div>
+          )}
+
           {/* Row 1: Date + Channel */}
           <div className="grid grid-cols-2 gap-4">
             <div>

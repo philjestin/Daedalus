@@ -20,8 +20,10 @@ import { templatesApi, designsApi, projectsApi, partsApi } from '../api/client'
 import { cn, formatBytes } from '../lib/utils'
 import type { Template, Design, Part, MaterialType, PrintProfile, PrinterConstraints } from '../types'
 import RecipeMaterialEditor from '../components/RecipeMaterialEditor'
+import RecipeSupplyEditor from '../components/RecipeSupplyEditor'
 import PrinterConstraintsEditor from '../components/PrinterConstraintsEditor'
 import RecipeCostCard from '../components/RecipeCostCard'
+import TemplateAnalyticsCard from '../components/TemplateAnalyticsCard'
 
 const materialTypes: { label: string; value: MaterialType }[] = [
   { label: 'PLA', value: 'pla' },
@@ -154,6 +156,7 @@ export default function TemplateDetail() {
       abs: 'bg-amber-500/20 text-amber-400',
       asa: 'bg-orange-500/20 text-orange-400',
       tpu: 'bg-purple-500/20 text-purple-400',
+      supply: 'bg-surface-500/20 text-surface-400',
     }
     return colors[type] || 'bg-surface-700 text-surface-300'
   }
@@ -554,6 +557,14 @@ export default function TemplateDetail() {
         />
       </div>
 
+      {/* Recipe Supplies */}
+      <div className="mb-6">
+        <RecipeSupplyEditor
+          templateId={id!}
+          supplies={template.supplies || []}
+        />
+      </div>
+
       {/* Two-column layout for constraints and cost */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
         {/* Printer Constraints */}
@@ -567,6 +578,11 @@ export default function TemplateDetail() {
 
         {/* Cost Estimate */}
         <RecipeCostCard templateId={id!} />
+      </div>
+
+      {/* Performance Analytics */}
+      <div className="mb-6">
+        <TemplateAnalyticsCard templateId={id!} />
       </div>
 
       {/* Compatible Printers */}

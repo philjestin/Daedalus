@@ -103,7 +103,6 @@ func (m *MockTemplateService) CreateProjectFromTemplate(ctx context.Context, tem
 		ID:          uuid.New(),
 		Name:        t.Name,
 		Description: t.Description,
-		Status:      model.ProjectStatusActive,
 		TemplateID:  &templateID,
 		Source:      opts.Source,
 	}

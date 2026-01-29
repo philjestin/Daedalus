@@ -4,20 +4,19 @@ import { Plus, FolderKanban, Calendar, Tag, LayoutGrid, Table, ArrowUpDown } fro
 import { useQueries } from '@tanstack/react-query'
 import { useProjects, useCreateProject } from '../hooks/useProjects'
 import { projectsApi } from '../api/client'
-import { cn, getStatusBadge, formatRelativeTime } from '../lib/utils'
-import type { ProjectStatus, ProjectSummary } from '../types'
+import { cn, formatRelativeTime } from '../lib/utils'
+import type { ProjectSummary } from '../types'
 
 type SortField = 'name' | 'updated_at' | 'revenue' | 'profit' | 'profit_per_hour' | 'success_rate' | 'print_time'
 type SortDir = 'asc' | 'desc'
 
 export default function Projects() {
-  const [filter, setFilter] = useState<ProjectStatus | ''>('')
   const [showCreate, setShowCreate] = useState(false)
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid')
   const [sortField, setSortField] = useState<SortField>('updated_at')
   const [sortDir, setSortDir] = useState<SortDir>('desc')
 
-  const { data: projects = [], isLoading } = useProjects(filter || undefined)
+  const { data: projects = [], isLoading } = useProjects()
   const createProject = useCreateProject()
 
   // Fetch summaries for all projects when in table view
@@ -88,7 +87,6 @@ export default function Projects() {
     await createProject.mutateAsync({
       name: formData.get('name') as string,
       description: formData.get('description') as string,
-      status: 'draft',
       tags: [],
     })
 
@@ -108,14 +106,6 @@ export default function Projects() {
     if (hours > 0) return `${hours}h ${mins}m`
     return `${mins}m`
   }
-
-  const statusFilters: { label: string; value: ProjectStatus | '' }[] = [
-    { label: 'All', value: '' },
-    { label: 'Draft', value: 'draft' },
-    { label: 'Active', value: 'active' },
-    { label: 'Completed', value: 'completed' },
-    { label: 'Archived', value: 'archived' },
-  ]
 
   const SortHeader = ({ field, children }: { field: SortField; children: React.ReactNode }) => (
     <button
@@ -151,24 +141,8 @@ export default function Projects() {
         </button>
       </div>
 
-      {/* Filters + View Toggle */}
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex gap-2">
-          {statusFilters.map((f) => (
-            <button
-              key={f.value}
-              onClick={() => setFilter(f.value)}
-              className={cn(
-                'px-3 py-1.5 rounded-lg text-sm font-medium transition-colors',
-                filter === f.value
-                  ? 'bg-accent-500/20 text-accent-400'
-                  : 'text-surface-400 hover:text-surface-100 hover:bg-surface-800'
-              )}
-            >
-              {f.label}
-            </button>
-          ))}
-        </div>
+      {/* View Toggle */}
+      <div className="flex items-center justify-end mb-6">
         <div className="flex gap-1 bg-surface-800 rounded-lg p-1">
           <button
             onClick={() => setViewMode('grid')}
@@ -203,17 +177,15 @@ export default function Projects() {
             No projects found
           </h3>
           <p className="text-surface-500 mb-4">
-            {filter ? 'Try a different filter' : 'Create your first project to get started'}
+            Create your first project to get started
           </p>
-          {!filter && (
-            <button
-              onClick={() => setShowCreate(true)}
-              className="btn btn-primary"
-            >
-              <Plus className="h-4 w-4 mr-2" />
-              Create Project
-            </button>
-          )}
+          <button
+            onClick={() => setShowCreate(true)}
+            className="btn btn-primary"
+          >
+            <Plus className="h-4 w-4 mr-2" />
+            Create Project
+          </button>
         </div>
       ) : viewMode === 'table' ? (
         /* Table View */
@@ -223,7 +195,6 @@ export default function Projects() {
               <thead>
                 <tr className="border-b border-surface-800">
                   <th className="text-left p-3"><SortHeader field="name">Name</SortHeader></th>
-                  <th className="text-left p-3 text-xs font-medium uppercase tracking-wider text-surface-500">Status</th>
                   <th className="text-right p-3"><SortHeader field="revenue">Revenue</SortHeader></th>
                   <th className="text-right p-3"><SortHeader field="profit">Profit</SortHeader></th>
                   <th className="text-right p-3"><SortHeader field="profit_per_hour">Profit/hr</SortHeader></th>
@@ -244,11 +215,6 @@ export default function Projects() {
                         >
                           {project.name}
                         </Link>
-                      </td>
-                      <td className="p-3">
-                        <span className={cn('badge text-xs', getStatusBadge(project.status))}>
-                          {project.status}
-                        </span>
                       </td>
                       <td className="p-3 text-right text-sm text-surface-300">
                         {s ? formatCents(s.net_revenue_cents) : '-'}
@@ -284,14 +250,9 @@ export default function Projects() {
               to={`/projects/${project.id}`}
               className="card p-5 hover:border-surface-700 transition-colors group"
             >
-              <div className="flex items-start justify-between mb-3">
-                <h3 className="font-semibold text-surface-100 group-hover:text-accent-400 transition-colors">
-                  {project.name}
-                </h3>
-                <span className={cn('badge', getStatusBadge(project.status))}>
-                  {project.status}
-                </span>
-              </div>
+              <h3 className="font-semibold text-surface-100 group-hover:text-accent-400 transition-colors mb-3">
+                {project.name}
+              </h3>
 
               {project.description && (
                 <p className="text-sm text-surface-500 mb-4 line-clamp-2">

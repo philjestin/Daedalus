@@ -119,7 +119,7 @@ export default function Dashboard() {
     queryFn: () => statsApi.getSalesByChannel(chartPeriod),
   })
 
-  const activeProjects = projects.filter(p => p.status === 'active')
+  const activeProjects = projects // All projects are considered active (status field removed)
   const printingPrinters = printers.filter(p => printerStates[p.id]?.status === 'printing')
   const idlePrinters = printers.filter(p =>
     printerStates[p.id]?.status === 'idle' || !printerStates[p.id]
@@ -505,9 +505,6 @@ export default function Dashboard() {
                     <div className="font-medium text-surface-100">
                       {project.name}
                     </div>
-                    <span className={cn('badge', getStatusBadge(project.status))}>
-                      {project.status}
-                    </span>
                   </div>
                   {project.description && (
                     <p className="text-sm text-surface-500 mt-1 truncate">

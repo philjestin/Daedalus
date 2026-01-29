@@ -90,8 +90,6 @@ func TestRouterRegistersAllExpectedRoutes(t *testing.T) {
 		{"GET", "/api/projects/{id}/job-stats"},
 		{"GET", "/api/projects/{id}/summary"},
 		{"POST", "/api/projects/{id}/start-production"},
-		{"POST", "/api/projects/{id}/ready-to-ship"},
-		{"POST", "/api/projects/{id}/ship"},
 
 		// Parts (nested under project)
 		{"GET", "/api/projects/{id}/parts"},

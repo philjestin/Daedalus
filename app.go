@@ -24,6 +24,7 @@ type App struct {
 	ctx      context.Context
 	server   *http.Server
 	db       *sql.DB
+	dbPath   string
 	hub      *realtime.Hub
 	services *service.Services
 }
@@ -71,6 +72,7 @@ func (a *App) startup(ctx context.Context) {
 		return
 	}
 	a.db = db
+	a.dbPath = dbPath
 
 	// Initialize storage
 	fileStorage := storage.NewLocalStorage(uploadDir)
@@ -95,8 +97,15 @@ func (a *App) startup(ctx context.Context) {
 	}
 	a.services = service.NewServicesWithConfig(repos, fileStorage, printerManager, a.hub, servicesConfig)
 
+	// Initialize backup service with database access
+	backupService := service.NewBackupService(db, a.dbPath)
+	a.services.SetBackupService(backupService)
+
 	// Initialize PrintJobService
 	a.services.PrintJobs.Init()
+
+	// Reconnect all saved printers at startup
+	a.services.Printers.ConnectAllPrinters(context.Background())
 
 	if etsyClientID != "" {
 		slog.Info("Etsy integration enabled", "redirect_uri", etsyRedirectURI)

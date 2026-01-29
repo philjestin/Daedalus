@@ -1,8 +1,16 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Store, ExternalLink, RefreshCw, Unplug, AlertCircle, CheckCircle2, Key, Eye, EyeOff, Save } from 'lucide-react'
-import { etsyApi, settingsApi } from '../api/client'
-import type { EtsyIntegration } from '../types'
+import { Store, ExternalLink, RefreshCw, Unplug, AlertCircle, CheckCircle2, Key, Eye, EyeOff, Save, Database, Download, Trash2, RotateCcw, Plus } from 'lucide-react'
+import { etsyApi, settingsApi, backupsApi } from '../api/client'
+import type { EtsyIntegration, BackupInfo } from '../types'
+
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return '0 B'
+  const k = 1024
+  const sizes = ['B', 'KB', 'MB', 'GB']
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i]
+}
 
 export default function Settings() {
   const [searchParams, setSearchParams] = useSearchParams()
@@ -19,6 +27,13 @@ export default function Settings() {
   const [showAnthropicKey, setShowAnthropicKey] = useState(false)
   const [savingKey, setSavingKey] = useState(false)
   const [keyLoaded, setKeyLoaded] = useState(false)
+
+  // Backup settings
+  const [backups, setBackups] = useState<BackupInfo[]>([])
+  const [backupsLoading, setBackupsLoading] = useState(true)
+  const [creatingBackup, setCreatingBackup] = useState(false)
+  const [deletingBackup, setDeletingBackup] = useState<string | null>(null)
+  const [restoringBackup, setRestoringBackup] = useState<string | null>(null)
 
   // Check for OAuth callback results
   useEffect(() => {
@@ -40,6 +55,7 @@ export default function Settings() {
   useEffect(() => {
     loadEtsyStatus()
     loadApiKeys()
+    loadBackups()
   }, [])
 
   const loadEtsyStatus = async () => {
@@ -63,6 +79,18 @@ export default function Settings() {
     } catch {
       // Key not set yet — that's fine
       setKeyLoaded(true)
+    }
+  }
+
+  const loadBackups = async () => {
+    try {
+      setBackupsLoading(true)
+      const list = await backupsApi.list()
+      setBackups(list || [])
+    } catch (err) {
+      console.error('Failed to load backups:', err)
+    } finally {
+      setBackupsLoading(false)
     }
   }
 
@@ -121,6 +149,58 @@ export default function Settings() {
     }
   }
 
+  const handleCreateBackup = async () => {
+    try {
+      setCreatingBackup(true)
+      setError(null)
+      const backup = await backupsApi.create()
+      setBackups(prev => [backup, ...prev])
+      setSuccessMessage('Backup created successfully')
+    } catch (err) {
+      console.error('Failed to create backup:', err)
+      setError(err instanceof Error ? err.message : 'Failed to create backup')
+    } finally {
+      setCreatingBackup(false)
+    }
+  }
+
+  const handleDeleteBackup = async (name: string) => {
+    if (!confirm(`Are you sure you want to delete backup "${name}"?`)) {
+      return
+    }
+
+    try {
+      setDeletingBackup(name)
+      setError(null)
+      await backupsApi.delete(name)
+      setBackups(prev => prev.filter(b => b.name !== name))
+      setSuccessMessage('Backup deleted')
+    } catch (err) {
+      console.error('Failed to delete backup:', err)
+      setError(err instanceof Error ? err.message : 'Failed to delete backup')
+    } finally {
+      setDeletingBackup(null)
+    }
+  }
+
+  const handleRestoreBackup = async (name: string) => {
+    if (!confirm(`Are you sure you want to restore from "${name}"?\n\nThis will replace your current database. The application will need to be restarted.`)) {
+      return
+    }
+
+    try {
+      setRestoringBackup(name)
+      setError(null)
+      const result = await backupsApi.restore(name)
+      setSuccessMessage(result.message + ' Please restart the application.')
+    } catch (err) {
+      console.error('Failed to restore backup:', err)
+      setError(err instanceof Error ? err.message : 'Failed to restore backup')
+    } finally {
+      setRestoringBackup(null)
+    }
+  }
+
   const formatDate = (dateStr?: string) => {
     if (!dateStr) return 'Never'
     return new Date(dateStr).toLocaleString()
@@ -167,6 +247,96 @@ export default function Settings() {
             </button>
           </div>
         )}
+
+        {/* Database Backups Card */}
+        <div className="bg-surface-900/50 border border-surface-800 rounded-xl p-6 mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-blue-500/10 rounded-lg">
+                <Database className="h-6 w-6 text-blue-400" />
+              </div>
+              <div>
+                <h2 className="text-lg font-semibold text-surface-100">Database Backups</h2>
+                <p className="text-sm text-surface-400">
+                  Create and restore database backups
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={handleCreateBackup}
+              disabled={creatingBackup}
+              className="flex items-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors disabled:opacity-50 text-sm"
+            >
+              {creatingBackup ? (
+                <RefreshCw className="h-4 w-4 animate-spin" />
+              ) : (
+                <Plus className="h-4 w-4" />
+              )}
+              Create Backup
+            </button>
+          </div>
+
+          {backupsLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <RefreshCw className="h-6 w-6 text-surface-400 animate-spin" />
+            </div>
+          ) : backups.length === 0 ? (
+            <div className="bg-surface-800/50 rounded-lg p-4 text-center">
+              <p className="text-surface-400">No backups yet. Create your first backup to protect your data.</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {backups.map((backup) => (
+                <div
+                  key={backup.name}
+                  className="flex items-center justify-between bg-surface-800/50 rounded-lg p-3"
+                >
+                  <div className="flex items-center gap-3">
+                    <Download className="h-4 w-4 text-surface-400" />
+                    <div>
+                      <p className="text-sm font-medium text-surface-200">{backup.name}</p>
+                      <p className="text-xs text-surface-500">
+                        {formatDate(backup.created_at)} · {formatBytes(backup.size)}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => handleRestoreBackup(backup.name)}
+                      disabled={restoringBackup === backup.name}
+                      className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-amber-400 hover:text-amber-300 hover:bg-amber-500/10 rounded transition-colors disabled:opacity-50"
+                      title="Restore this backup"
+                    >
+                      {restoringBackup === backup.name ? (
+                        <RefreshCw className="h-3 w-3 animate-spin" />
+                      ) : (
+                        <RotateCcw className="h-3 w-3" />
+                      )}
+                      Restore
+                    </button>
+                    <button
+                      onClick={() => handleDeleteBackup(backup.name)}
+                      disabled={deletingBackup === backup.name}
+                      className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded transition-colors disabled:opacity-50"
+                      title="Delete this backup"
+                    >
+                      {deletingBackup === backup.name ? (
+                        <RefreshCw className="h-3 w-3 animate-spin" />
+                      ) : (
+                        <Trash2 className="h-3 w-3" />
+                      )}
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <p className="mt-4 text-xs text-surface-500">
+            Backups are stored locally in your data directory. Consider copying important backups to external storage.
+          </p>
+        </div>
 
         {/* API Keys Card */}
         <div className="bg-surface-900/50 border border-surface-800 rounded-xl p-6 mb-6">

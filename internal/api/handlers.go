@@ -48,13 +48,7 @@ type ProjectHandler struct {
 
 // List returns all projects.
 func (h *ProjectHandler) List(w http.ResponseWriter, r *http.Request) {
-	var status *model.ProjectStatus
-	if s := r.URL.Query().Get("status"); s != "" {
-		ps := model.ProjectStatus(s)
-		status = &ps
-	}
-
-	projects, err := h.service.List(r.Context(), status)
+	projects, err := h.service.List(r.Context())
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -222,53 +216,6 @@ func (h *ProjectHandler) StartProduction(w http.ResponseWriter, r *http.Request)
 	}
 
 	respondJSON(w, http.StatusOK, result)
-}
-
-// MarkReadyToShip marks a project as ready for shipping.
-func (h *ProjectHandler) MarkReadyToShip(w http.ResponseWriter, r *http.Request) {
-	id, err := parseUUID(r, "id")
-	if err != nil {
-		respondError(w, http.StatusBadRequest, "invalid project ID")
-		return
-	}
-
-	if err := h.service.MarkReadyToShip(r.Context(), id); err != nil {
-		respondError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-
-	// Return updated project
-	project, _ := h.service.GetByID(r.Context(), id)
-	respondJSON(w, http.StatusOK, project)
-}
-
-// ShipRequest represents the request body for marking a project as shipped.
-type ShipRequest struct {
-	TrackingNumber string `json:"tracking_number"`
-}
-
-// Ship marks a project as shipped with tracking number.
-func (h *ProjectHandler) Ship(w http.ResponseWriter, r *http.Request) {
-	id, err := parseUUID(r, "id")
-	if err != nil {
-		respondError(w, http.StatusBadRequest, "invalid project ID")
-		return
-	}
-
-	var req ShipRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		// Tracking number is optional
-		req = ShipRequest{}
-	}
-
-	if err := h.service.MarkShipped(r.Context(), id, req.TrackingNumber); err != nil {
-		respondError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-
-	// Return updated project
-	project, _ := h.service.GetByID(r.Context(), id)
-	respondJSON(w, http.StatusOK, project)
 }
 
 // PartHandler handles part endpoints.
@@ -765,6 +712,23 @@ func (h *PrinterHandler) GetJobStats(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondJSON(w, http.StatusOK, stats)
+}
+
+// GetPrinterAnalytics returns comprehensive analytics for a printer.
+func (h *PrinterHandler) GetPrinterAnalytics(w http.ResponseWriter, r *http.Request) {
+	id, err := parseUUID(r, "id")
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid printer ID")
+		return
+	}
+
+	analytics, err := h.service.GetPrinterAnalytics(r.Context(), id)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusOK, analytics)
 }
 
 // MaterialHandler handles material endpoints.
@@ -2116,6 +2080,115 @@ func (h *TemplateHandler) ValidatePrinter(w http.ResponseWriter, r *http.Request
 	respondJSON(w, http.StatusOK, result)
 }
 
+// ListSupplies returns all supply items for a recipe.
+func (h *TemplateHandler) ListSupplies(w http.ResponseWriter, r *http.Request) {
+	templateID, err := parseUUID(r, "id")
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid template ID")
+		return
+	}
+
+	supplies, err := h.service.ListSupplies(r.Context(), templateID)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	if supplies == nil {
+		supplies = []model.RecipeSupply{}
+	}
+
+	respondJSON(w, http.StatusOK, supplies)
+}
+
+// AddSupply adds a supply item to a recipe.
+func (h *TemplateHandler) AddSupply(w http.ResponseWriter, r *http.Request) {
+	templateID, err := parseUUID(r, "id")
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid template ID")
+		return
+	}
+
+	var supply model.RecipeSupply
+	if err := json.NewDecoder(r.Body).Decode(&supply); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	supply.RecipeID = templateID
+
+	if err := h.service.AddSupply(r.Context(), &supply); err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusCreated, supply)
+}
+
+// UpdateSupply updates a supply item in a recipe.
+func (h *TemplateHandler) UpdateSupply(w http.ResponseWriter, r *http.Request) {
+	supplyID, err := parseUUID(r, "supplyId")
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid supply ID")
+		return
+	}
+
+	supply, err := h.service.GetSupply(r.Context(), supplyID)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if supply == nil {
+		respondError(w, http.StatusNotFound, "supply not found")
+		return
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(supply); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	supply.ID = supplyID
+
+	if err := h.service.UpdateSupply(r.Context(), supply); err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusOK, supply)
+}
+
+// RemoveSupply removes a supply item from a recipe.
+func (h *TemplateHandler) RemoveSupply(w http.ResponseWriter, r *http.Request) {
+	supplyID, err := parseUUID(r, "supplyId")
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid supply ID")
+		return
+	}
+
+	if err := h.service.RemoveSupply(r.Context(), supplyID); err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// GetAnalytics returns aggregated performance analytics for a template.
+func (h *TemplateHandler) GetAnalytics(w http.ResponseWriter, r *http.Request) {
+	templateID, err := parseUUID(r, "id")
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid template ID")
+		return
+	}
+
+	analytics, err := h.service.GetTemplateAnalytics(r.Context(), templateID)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusOK, analytics)
+}
+
 // SettingsHandler handles settings endpoints.
 type SettingsHandler struct {
 	service *service.SettingsService
@@ -2407,5 +2480,64 @@ func (h *ProjectSupplyHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// BackupHandler handles database backup HTTP requests.
+type BackupHandler struct {
+	service *service.BackupService
+}
+
+// List returns all available backups.
+func (h *BackupHandler) List(w http.ResponseWriter, r *http.Request) {
+	backups, err := h.service.ListBackups(r.Context())
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	respondJSON(w, http.StatusOK, backups)
+}
+
+// Create creates a new backup.
+func (h *BackupHandler) Create(w http.ResponseWriter, r *http.Request) {
+	backup, err := h.service.CreateBackup(r.Context())
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	respondJSON(w, http.StatusCreated, backup)
+}
+
+// Delete removes a backup.
+func (h *BackupHandler) Delete(w http.ResponseWriter, r *http.Request) {
+	name := chi.URLParam(r, "name")
+	if name == "" {
+		respondError(w, http.StatusBadRequest, "backup name required")
+		return
+	}
+
+	if err := h.service.DeleteBackup(r.Context(), name); err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// Restore restores the database from a backup.
+// WARNING: This will restart the application!
+func (h *BackupHandler) Restore(w http.ResponseWriter, r *http.Request) {
+	name := chi.URLParam(r, "name")
+	if name == "" {
+		respondError(w, http.StatusBadRequest, "backup name required")
+		return
+	}
+
+	if err := h.service.RestoreBackup(r.Context(), name); err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]string{
+		"message": "Database restored. Please restart the application.",
+	})
 }
 

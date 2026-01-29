@@ -90,20 +90,16 @@ CREATE TABLE IF NOT EXISTS projects (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     description TEXT DEFAULT '',
-    status TEXT NOT NULL DEFAULT 'draft',
     target_date TEXT,
     tags TEXT DEFAULT '[]',
     template_id TEXT REFERENCES templates(id),
     source TEXT DEFAULT 'manual',
     external_order_id TEXT,
     customer_notes TEXT DEFAULT '',
-    shipped_at TEXT,
-    tracking_number TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX IF NOT EXISTS idx_projects_status ON projects(status);
 CREATE INDEX IF NOT EXISTS idx_projects_updated_at ON projects(updated_at);
 CREATE INDEX IF NOT EXISTS idx_projects_template ON projects(template_id);
 CREATE INDEX IF NOT EXISTS idx_projects_external_order ON projects(external_order_id);
@@ -309,48 +305,6 @@ CREATE INDEX IF NOT EXISTS idx_sales_occurred_at ON sales(occurred_at);
 CREATE INDEX IF NOT EXISTS idx_sales_channel ON sales(channel);
 CREATE INDEX IF NOT EXISTS idx_sales_project_id ON sales(project_id);
 
--- Users table
-CREATE TABLE IF NOT EXISTS users (
-    id TEXT PRIMARY KEY,
-    email TEXT NOT NULL UNIQUE,
-    email_verified INTEGER NOT NULL DEFAULT 0,
-    name TEXT DEFAULT '',
-    role TEXT NOT NULL DEFAULT 'user',
-    is_active INTEGER NOT NULL DEFAULT 1,
-    last_login_at TEXT,
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
-
--- Auth tokens (magic links)
-CREATE TABLE IF NOT EXISTS auth_tokens (
-    id TEXT PRIMARY KEY,
-    user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
-    email TEXT NOT NULL,
-    token TEXT NOT NULL UNIQUE,
-    token_type TEXT NOT NULL DEFAULT 'magic_link',
-    expires_at TEXT NOT NULL,
-    used_at TEXT,
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX IF NOT EXISTS idx_auth_tokens_token ON auth_tokens(token);
-CREATE INDEX IF NOT EXISTS idx_auth_tokens_email ON auth_tokens(email);
-
--- Sessions
-CREATE TABLE IF NOT EXISTS sessions (
-    id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    token_hash TEXT NOT NULL UNIQUE,
-    expires_at TEXT NOT NULL,
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);
-CREATE INDEX IF NOT EXISTS idx_sessions_token_hash ON sessions(token_hash);
-
 -- Etsy integration
 CREATE TABLE IF NOT EXISTS etsy_integration (
     id TEXT PRIMARY KEY,
@@ -523,6 +477,20 @@ CREATE TABLE IF NOT EXISTS recipe_materials (
 );
 
 CREATE INDEX IF NOT EXISTS idx_recipe_materials_recipe ON recipe_materials(recipe_id);
+
+-- Recipe supplies (non-printed BOM items for templates/recipes)
+CREATE TABLE IF NOT EXISTS recipe_supplies (
+    id TEXT PRIMARY KEY,
+    recipe_id TEXT NOT NULL REFERENCES templates(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    unit_cost_cents INTEGER NOT NULL DEFAULT 0,
+    quantity INTEGER NOT NULL DEFAULT 1,
+    material_id TEXT REFERENCES materials(id),
+    notes TEXT DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_recipe_supplies_recipe ON recipe_supplies(recipe_id);
 
 -- Settings (key-value store for app configuration)
 CREATE TABLE IF NOT EXISTS settings (

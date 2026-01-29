@@ -1,9 +1,10 @@
+import { useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { ArrowLeft, Wifi, Thermometer, Fan, Gauge, Info, AlertTriangle, Lightbulb, Box, History, CheckCircle, XCircle, Printer as PrinterIcon, Clock } from 'lucide-react'
-import { usePrinter, usePrinterState, usePrinterJobs, usePrinterStats } from '../hooks/usePrinters'
+import { ArrowLeft, Wifi, Thermometer, Fan, Gauge, Info, AlertTriangle, Lightbulb, Box, History, CheckCircle, XCircle, Printer as PrinterIcon, Clock, DollarSign, Check, X, Activity, TrendingUp, Target, Heart } from 'lucide-react'
+import { usePrinter, usePrinterState, usePrinterJobs, usePrinterStats, useUpdatePrinter, usePrinterAnalytics } from '../hooks/usePrinters'
 import { cn, getStatusBadge, formatDuration, formatRelativeTime } from '../lib/utils'
 import { ExpandableJobEvents } from '../components/JobEventTimeline'
-import type { PrintJob } from '../types'
+import type { PrintJob, PrinterUtilization, PrinterROI, PrinterHealth } from '../types'
 
 const SPEED_LABELS: Record<number, string> = {
   1: 'Silent',
@@ -72,6 +73,7 @@ export default function PrinterDetail() {
   const { id } = useParams<{ id: string }>()
   const { data: printer, isLoading: printerLoading } = usePrinter(id!)
   const { data: state } = usePrinterState(id!)
+  const { data: analytics } = usePrinterAnalytics(id!)
 
   if (printerLoading) {
     return (
@@ -275,6 +277,9 @@ export default function PrinterDetail() {
           </div>
         </div>
 
+        {/* COST SETTINGS */}
+        <PrinterCostSetting printerId={printer.id} costPerHourCents={printer.cost_per_hour_cents} printerModel={printer.model} />
+
         {/* AMS STATUS */}
         {hasAMS && (
           <div className="card p-5">
@@ -411,8 +416,589 @@ export default function PrinterDetail() {
         )}
       </div>
 
+      {/* Analytics Section */}
+      {analytics && (
+        <div className="mt-6">
+          <h2 className="text-lg font-semibold text-surface-100 flex items-center gap-2 mb-4">
+            <TrendingUp className="h-5 w-5 text-surface-400" />
+            Analytics
+          </h2>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <PrinterUtilizationCard utilization={analytics.utilization} />
+            <PrinterROICard roi={analytics.roi} printerId={id!} purchasePriceCents={printer.purchase_price_cents} />
+            <PrinterHealthCard health={analytics.health} />
+          </div>
+        </div>
+      )}
+
       {/* Print History Section */}
       <PrinterHistory printerId={id!} />
+    </div>
+  )
+}
+
+function PrinterCostSetting({ printerId, costPerHourCents, printerModel }: { printerId: string; costPerHourCents: number; printerModel: string }) {
+  const [editing, setEditing] = useState(false)
+  const [value, setValue] = useState((costPerHourCents / 100).toFixed(2))
+  const [showBreakdown, setShowBreakdown] = useState(false)
+  const updatePrinter = useUpdatePrinter()
+
+  const handleSave = async () => {
+    const cents = Math.round(parseFloat(value || '0') * 100)
+    await updatePrinter.mutateAsync({ id: printerId, data: { cost_per_hour_cents: cents } })
+    setEditing(false)
+  }
+
+  const handleCancel = () => {
+    setValue((costPerHourCents / 100).toFixed(2))
+    setEditing(false)
+  }
+
+  const handleApplyDefault = async (cents: number) => {
+    await updatePrinter.mutateAsync({ id: printerId, data: { cost_per_hour_cents: cents } })
+    setValue((cents / 100).toFixed(2))
+  }
+
+  // Detect model tier for suggested defaults
+  const modelLower = printerModel.toLowerCase()
+  const isP1Series = modelLower.includes('p1s') || modelLower.includes('p1p')
+  const isX1Series = modelLower.includes('x1')
+  const suggestedLabel = isX1Series ? 'X1' : isP1Series ? 'P1S' : 'A1'
+
+  return (
+    <div className="card p-5">
+      <h2 className="text-sm font-semibold text-surface-400 uppercase tracking-wider mb-4 flex items-center gap-2">
+        <DollarSign className="h-4 w-4" />
+        Cost Settings
+      </h2>
+      <div className="space-y-4">
+        <div>
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-sm text-surface-400">Cost per Hour</span>
+            {!editing && (
+              <button
+                onClick={() => setEditing(true)}
+                className="text-xs text-accent-400 hover:text-accent-300"
+              >
+                Edit
+              </button>
+            )}
+          </div>
+          {editing ? (
+            <div className="flex items-center gap-2">
+              <span className="text-surface-400">$</span>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                value={value}
+                onChange={(e) => setValue(e.target.value)}
+                className="input w-28 text-sm"
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleSave()
+                  if (e.key === 'Escape') handleCancel()
+                }}
+              />
+              <span className="text-surface-500 text-sm">/ hr</span>
+              <button
+                onClick={handleSave}
+                disabled={updatePrinter.isPending}
+                className="p-1 rounded text-emerald-400 hover:bg-emerald-500/10"
+              >
+                <Check className="h-4 w-4" />
+              </button>
+              <button
+                onClick={handleCancel}
+                className="p-1 rounded text-surface-400 hover:bg-surface-700"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          ) : (
+            <div className="text-2xl font-semibold text-surface-100">
+              ${(costPerHourCents / 100).toFixed(2)}
+              <span className="text-sm font-normal text-surface-500 ml-1">/ hr</span>
+            </div>
+          )}
+        </div>
+
+        {/* Suggested defaults */}
+        {costPerHourCents === 0 && (
+          <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
+            <div className="text-sm text-amber-300 font-medium mb-2">No cost set</div>
+            <p className="text-xs text-surface-400 mb-3">
+              Set an hourly rate so project analytics can calculate printer time costs accurately.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => handleApplyDefault(50)}
+                className={cn('btn btn-ghost text-xs py-1 px-3', suggestedLabel === 'A1' && 'ring-1 ring-accent-500')}
+              >
+                A1 tier — $0.50/hr
+              </button>
+              <button
+                onClick={() => handleApplyDefault(75)}
+                className={cn('btn btn-ghost text-xs py-1 px-3', suggestedLabel === 'P1S' && 'ring-1 ring-accent-500')}
+              >
+                P1S tier — $0.75/hr
+              </button>
+              <button
+                onClick={() => handleApplyDefault(100)}
+                className={cn('btn btn-ghost text-xs py-1 px-3', suggestedLabel === 'X1' && 'ring-1 ring-accent-500')}
+              >
+                X1 tier — $1.00/hr
+              </button>
+            </div>
+            {printerModel && (
+              <p className="text-xs text-surface-500 mt-2">
+                Based on your model ({printerModel}), the {suggestedLabel} tier is highlighted.
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* Cost breakdown explainer */}
+        <div>
+          <button
+            onClick={() => setShowBreakdown(!showBreakdown)}
+            className="text-xs text-surface-500 hover:text-surface-300 transition-colors"
+          >
+            {showBreakdown ? 'Hide' : 'How is this cost calculated?'}
+          </button>
+          {showBreakdown && (
+            <div className="mt-3 p-3 rounded-lg bg-surface-800/50 border border-surface-700 text-xs text-surface-400 space-y-3">
+              <p>
+                Hourly cost covers everything except filament (which is tracked separately per job). It includes:
+              </p>
+              <table className="w-full">
+                <thead>
+                  <tr className="text-left text-surface-500">
+                    <th className="pb-1 font-medium">Component</th>
+                    <th className="pb-1 font-medium text-right">A1 (~$400)</th>
+                    <th className="pb-1 font-medium text-right">P1S (~$700)</th>
+                  </tr>
+                </thead>
+                <tbody className="text-surface-300">
+                  <tr>
+                    <td className="py-0.5">Electricity</td>
+                    <td className="py-0.5 text-right">$0.02</td>
+                    <td className="py-0.5 text-right">$0.04</td>
+                  </tr>
+                  <tr>
+                    <td className="py-0.5">Depreciation</td>
+                    <td className="py-0.5 text-right">$0.03</td>
+                    <td className="py-0.5 text-right">$0.05</td>
+                  </tr>
+                  <tr>
+                    <td className="py-0.5">Maintenance</td>
+                    <td className="py-0.5 text-right">$0.15</td>
+                    <td className="py-0.5 text-right">$0.20</td>
+                  </tr>
+                  <tr>
+                    <td className="py-0.5">Utilization buffer</td>
+                    <td className="py-0.5 text-right">$0.25</td>
+                    <td className="py-0.5 text-right">$0.35</td>
+                  </tr>
+                  <tr className="border-t border-surface-700 font-medium text-surface-200">
+                    <td className="pt-1">Total</td>
+                    <td className="pt-1 text-right">$0.50/hr</td>
+                    <td className="pt-1 text-right">$0.75/hr</td>
+                  </tr>
+                </tbody>
+              </table>
+              <p className="text-surface-500">
+                Depreciation assumes ~13,000 hr lifespan (3 yr @ 12 hr/day). Maintenance covers nozzles, hotends, fans, belts, and failed prints. Utilization buffer accounts for downtime, calibration, and demand spikes.
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function PrinterUtilizationCard({ utilization }: { utilization: PrinterUtilization[] }) {
+  const [selectedPeriod, setSelectedPeriod] = useState<string>('7d')
+  const data = utilization.find(u => u.period === selectedPeriod) || utilization[0]
+
+  if (!data) {
+    return (
+      <div className="card p-5">
+        <h3 className="text-sm font-semibold text-surface-400 uppercase tracking-wider mb-4 flex items-center gap-2">
+          <Activity className="h-4 w-4" />
+          Utilization
+        </h3>
+        <p className="text-surface-500 text-sm">No utilization data available</p>
+      </div>
+    )
+  }
+
+  const printingPercent = data.total_hours > 0 ? (data.printing_hours / data.total_hours) * 100 : 0
+  const failedPercent = data.total_hours > 0 ? (data.failed_hours / data.total_hours) * 100 : 0
+  const idlePercent = 100 - printingPercent - failedPercent
+
+  return (
+    <div className="card p-5">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-sm font-semibold text-surface-400 uppercase tracking-wider flex items-center gap-2">
+          <Activity className="h-4 w-4" />
+          Utilization
+        </h3>
+        <div className="flex gap-1">
+          {['7d', '30d', '90d'].map(period => (
+            <button
+              key={period}
+              onClick={() => setSelectedPeriod(period)}
+              className={cn(
+                'px-2 py-0.5 text-xs rounded transition-colors',
+                selectedPeriod === period
+                  ? 'bg-accent-500 text-white'
+                  : 'bg-surface-700 text-surface-400 hover:bg-surface-600'
+              )}
+            >
+              {period}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Donut-style breakdown bar */}
+      <div className="mb-4">
+        <div className="h-4 flex rounded-full overflow-hidden">
+          <div
+            className="bg-emerald-500 transition-all"
+            style={{ width: `${printingPercent}%` }}
+            title={`Printing: ${data.printing_hours.toFixed(1)}h`}
+          />
+          <div
+            className="bg-red-500 transition-all"
+            style={{ width: `${failedPercent}%` }}
+            title={`Failed: ${data.failed_hours.toFixed(1)}h`}
+          />
+          <div
+            className="bg-surface-700 transition-all"
+            style={{ width: `${idlePercent}%` }}
+            title={`Idle: ${data.idle_hours.toFixed(1)}h`}
+          />
+        </div>
+        <div className="flex justify-between mt-2 text-xs">
+          <div className="flex items-center gap-1">
+            <span className="w-2 h-2 rounded-full bg-emerald-500" />
+            <span className="text-surface-400">Printing</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <span className="w-2 h-2 rounded-full bg-red-500" />
+            <span className="text-surface-400">Failed</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <span className="w-2 h-2 rounded-full bg-surface-700" />
+            <span className="text-surface-400">Idle</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Stats */}
+      <div className="space-y-2 text-sm">
+        <div className="flex justify-between">
+          <span className="text-surface-400">Utilization</span>
+          <span className={cn(
+            'font-medium',
+            data.utilization_percent >= 50 ? 'text-emerald-400' :
+            data.utilization_percent >= 25 ? 'text-amber-400' :
+            'text-surface-300'
+          )}>
+            {data.utilization_percent.toFixed(1)}%
+          </span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-surface-400">Printing Hours</span>
+          <span className="text-surface-200">{data.printing_hours.toFixed(1)}h</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-surface-400">Failed Hours</span>
+          <span className="text-red-400">{data.failed_hours.toFixed(1)}h</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-surface-400">Idle Hours</span>
+          <span className="text-surface-500">{data.idle_hours.toFixed(1)}h</span>
+        </div>
+        <div className="border-t border-surface-700 pt-2 mt-2">
+          <div className="flex justify-between">
+            <span className="text-surface-400">Configured Rate</span>
+            <span className="text-surface-200">${(data.configured_cost_per_hour_cents / 100).toFixed(2)}/hr</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-surface-400">Actual Revenue/hr</span>
+            <span className={cn(
+              data.actual_revenue_per_hour_cents > data.configured_cost_per_hour_cents
+                ? 'text-emerald-400'
+                : 'text-surface-300'
+            )}>
+              ${(data.actual_revenue_per_hour_cents / 100).toFixed(2)}/hr
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function PrinterROICard({ roi, printerId, purchasePriceCents }: { roi: PrinterROI; printerId: string; purchasePriceCents: number }) {
+  const [editing, setEditing] = useState(false)
+  const [value, setValue] = useState((purchasePriceCents / 100).toFixed(2))
+  const updatePrinter = useUpdatePrinter()
+
+  const handleSave = async () => {
+    const cents = Math.round(parseFloat(value || '0') * 100)
+    await updatePrinter.mutateAsync({ id: printerId, data: { purchase_price_cents: cents } })
+    setEditing(false)
+  }
+
+  const handleCancel = () => {
+    setValue((purchasePriceCents / 100).toFixed(2))
+    setEditing(false)
+  }
+
+  // Break-even progress (capped at 100%)
+  const breakEvenProgress = roi.purchase_price_cents > 0
+    ? Math.min((roi.lifetime_profit_cents + roi.purchase_price_cents) / roi.purchase_price_cents * 100, 100)
+    : 0
+
+  return (
+    <div className="card p-5">
+      <h3 className="text-sm font-semibold text-surface-400 uppercase tracking-wider mb-4 flex items-center gap-2">
+        <Target className="h-4 w-4" />
+        ROI & Break-Even
+      </h3>
+
+      {purchasePriceCents === 0 ? (
+        <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
+          <div className="text-sm text-amber-300 font-medium mb-2">Set Purchase Price</div>
+          <p className="text-xs text-surface-400 mb-3">
+            Enter the purchase price to track ROI and break-even.
+          </p>
+          <div className="flex items-center gap-2">
+            <span className="text-surface-400">$</span>
+            <input
+              type="number"
+              step="0.01"
+              min="0"
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              className="input w-28 text-sm"
+              placeholder="0.00"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleSave()
+                if (e.key === 'Escape') handleCancel()
+              }}
+            />
+            <button
+              onClick={handleSave}
+              disabled={updatePrinter.isPending}
+              className="btn btn-primary text-xs py-1 px-3"
+            >
+              Save
+            </button>
+          </div>
+        </div>
+      ) : (
+        <>
+          {/* Break-even progress bar */}
+          <div className="mb-4">
+            <div className="flex items-center justify-between text-sm mb-1">
+              <span className="text-surface-400">Break-even Progress</span>
+              <span className={cn(
+                'font-medium',
+                roi.break_even_reached ? 'text-emerald-400' : 'text-surface-200'
+              )}>
+                {roi.break_even_reached ? 'Reached!' : `${breakEvenProgress.toFixed(0)}%`}
+              </span>
+            </div>
+            <div className="h-3 bg-surface-800 rounded-full overflow-hidden">
+              <div
+                className={cn(
+                  'h-full transition-all',
+                  roi.break_even_reached ? 'bg-emerald-500' : 'bg-accent-500'
+                )}
+                style={{ width: `${breakEvenProgress}%` }}
+              />
+            </div>
+            {!roi.break_even_reached && roi.hours_to_break_even > 0 && (
+              <p className="text-xs text-surface-500 mt-1">
+                ~{roi.hours_to_break_even.toFixed(0)}h remaining to break even
+              </p>
+            )}
+          </div>
+
+          {/* Stats grid */}
+          <div className="space-y-2 text-sm">
+            <div className="flex justify-between">
+              <span className="text-surface-400">Purchase Price</span>
+              <div className="flex items-center gap-2">
+                {editing ? (
+                  <>
+                    <span className="text-surface-400">$</span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={value}
+                      onChange={(e) => setValue(e.target.value)}
+                      className="input w-20 text-xs py-0.5"
+                      autoFocus
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') handleSave()
+                        if (e.key === 'Escape') handleCancel()
+                      }}
+                    />
+                    <button onClick={handleSave} className="p-0.5 rounded text-emerald-400 hover:bg-emerald-500/10">
+                      <Check className="h-3 w-3" />
+                    </button>
+                    <button onClick={handleCancel} className="p-0.5 rounded text-surface-400 hover:bg-surface-700">
+                      <X className="h-3 w-3" />
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <span className="text-surface-200">${(purchasePriceCents / 100).toFixed(2)}</span>
+                    <button
+                      onClick={() => setEditing(true)}
+                      className="text-xs text-accent-400 hover:text-accent-300"
+                    >
+                      Edit
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-surface-400">Lifetime Profit</span>
+              <span className={cn(
+                'font-medium',
+                roi.lifetime_profit_cents >= 0 ? 'text-emerald-400' : 'text-red-400'
+              )}>
+                {roi.lifetime_profit_cents >= 0 ? '' : '-'}${Math.abs(roi.lifetime_profit_cents / 100).toFixed(2)}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-surface-400">Revenue/Hour</span>
+              <span className="text-surface-200">${(roi.revenue_per_hour_cents / 100).toFixed(2)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-surface-400">Net/Hour</span>
+              <span className={cn(
+                roi.net_per_hour_cents >= 0 ? 'text-emerald-400' : 'text-red-400'
+              )}>
+                ${(roi.net_per_hour_cents / 100).toFixed(2)}
+              </span>
+            </div>
+            <div className="border-t border-surface-700 pt-2 mt-2">
+              <div className="flex justify-between">
+                <span className="text-surface-400">Total Print Hours</span>
+                <span className="text-surface-200">{roi.total_printing_hours.toFixed(1)}h</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-surface-400">Printer Age</span>
+                <span className="text-surface-500">{(roi.printer_age_hours / 24).toFixed(0)} days</span>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+function PrinterHealthCard({ health }: { health: PrinterHealth }) {
+  const failureCategories = Object.entries(health.failure_breakdown || {})
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+  const maxFailures = failureCategories.length > 0 ? Math.max(...failureCategories.map(f => f[1])) : 0
+
+  const categoryLabels: Record<string, string> = {
+    mechanical: 'Mechanical',
+    filament: 'Filament',
+    adhesion: 'Adhesion',
+    thermal: 'Thermal',
+    network: 'Network',
+    user_cancelled: 'Cancelled',
+    unknown: 'Unknown'
+  }
+
+  return (
+    <div className="card p-5">
+      <h3 className="text-sm font-semibold text-surface-400 uppercase tracking-wider mb-4 flex items-center gap-2">
+        <Heart className="h-4 w-4" />
+        Health
+      </h3>
+
+      {/* Stats grid */}
+      <div className="grid grid-cols-2 gap-3 mb-4">
+        <div className="p-2 rounded bg-surface-800/50">
+          <div className="text-xs text-surface-500">Failure Rate</div>
+          <div className={cn(
+            'text-lg font-semibold',
+            health.failure_rate < 10 ? 'text-emerald-400' :
+            health.failure_rate < 25 ? 'text-amber-400' :
+            'text-red-400'
+          )}>
+            {health.failure_rate.toFixed(1)}%
+          </div>
+        </div>
+        <div className="p-2 rounded bg-surface-800/50">
+          <div className="text-xs text-surface-500">Avg Duration</div>
+          <div className="text-lg font-semibold text-surface-200">
+            {formatDuration(health.avg_job_duration_sec)}
+          </div>
+        </div>
+        <div className="p-2 rounded bg-surface-800/50">
+          <div className="text-xs text-surface-500">Avg Cost/Job</div>
+          <div className="text-lg font-semibold text-surface-200">
+            ${(health.avg_cost_cents / 100).toFixed(2)}
+          </div>
+        </div>
+        <div className="p-2 rounded bg-surface-800/50">
+          <div className="text-xs text-surface-500">Revenue</div>
+          <div className="text-lg font-semibold text-emerald-400">
+            ${(health.total_revenue_cents / 100).toFixed(2)}
+          </div>
+        </div>
+      </div>
+
+      {/* Failure breakdown */}
+      {failureCategories.length > 0 ? (
+        <div>
+          <div className="text-xs text-surface-500 mb-2">Failure Breakdown</div>
+          <div className="space-y-1.5">
+            {failureCategories.map(([category, count]) => (
+              <div key={category} className="flex items-center gap-2">
+                <span className="text-xs text-surface-400 w-20 truncate">
+                  {categoryLabels[category] || category}
+                </span>
+                <div className="flex-1 h-2 bg-surface-800 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-red-500/70 transition-all"
+                    style={{ width: `${maxFailures > 0 ? (count / maxFailures) * 100 : 0}%` }}
+                  />
+                </div>
+                <span className="text-xs text-surface-500 w-6 text-right">{count}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <div className="flex items-center gap-2 text-surface-400 text-sm">
+          <span className="text-emerald-400">&#10003;</span> No failures recorded
+        </div>
+      )}
+
+      {/* Job counts */}
+      <div className="mt-3 pt-3 border-t border-surface-700 flex justify-between text-xs text-surface-500">
+        <span>{health.completed_jobs} completed</span>
+        <span>{health.failed_jobs} failed</span>
+        <span>{health.total_jobs} total</span>
+      </div>
     </div>
   )
 }

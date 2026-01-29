@@ -3,10 +3,10 @@ import { projectsApi, partsApi } from '../api/client'
 import type { Project, Part } from '../types'
 
 // Fetch all projects.
-export function useProjects(status?: string) {
+export function useProjects() {
   return useQuery({
-    queryKey: ['projects', status],
-    queryFn: () => projectsApi.list(status),
+    queryKey: ['projects'],
+    queryFn: () => projectsApi.list(),
   })
 }
 

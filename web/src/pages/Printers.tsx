@@ -195,6 +195,7 @@ export default function Printers() {
       connection_type: formData.get('connection_type') as ConnectionType,
       connection_uri: formData.get('connection_uri') as string,
       location: formData.get('location') as string,
+      cost_per_hour_cents: Math.round(parseFloat(formData.get('cost_per_hour') as string || '0') * 100),
     })
     
     setShowAdd(false)
@@ -872,6 +873,23 @@ export default function Printers() {
                       placeholder="Workshop, Desk 3"
                     />
                   </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-surface-300 mb-1">
+                    Cost per Hour ($)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    name="cost_per_hour"
+                    className="input"
+                    placeholder="0.50"
+                    defaultValue="0.50"
+                  />
+                  <p className="text-xs text-surface-500 mt-1">
+                    Suggested: A1 $0.50 / P1S $0.75 / X1 $1.00 — covers electricity, depreciation, maintenance, and utilization.
+                    You can adjust this later from the printer detail page.
+                  </p>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-surface-300 mb-1">

@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { DollarSign, Clock, Package, RefreshCw, Wrench, TrendingUp } from 'lucide-react'
+import { DollarSign, Clock, Package, RefreshCw, Wrench, TrendingUp, ShoppingCart } from 'lucide-react'
 import { templatesApi } from '../api/client'
 import { cn } from '../lib/utils'
 
@@ -122,6 +122,18 @@ export default function RecipeCostCard({ templateId }: RecipeCostCardProps) {
             </span>
           </div>
         )}
+
+        {estimate.supply_cost_cents > 0 && (
+          <div className="flex items-center justify-between p-3 rounded-lg bg-surface-800/50">
+            <div className="flex items-center gap-3">
+              <ShoppingCart className="h-4 w-4 text-surface-400" />
+              <span className="text-surface-200">Supplies</span>
+            </div>
+            <span className="font-medium text-surface-100">
+              {formatCents(estimate.supply_cost_cents)}
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Margin Section */}
@@ -158,6 +170,17 @@ export default function RecipeCostCard({ templateId }: RecipeCostCardProps) {
                 </span>
               </div>
             </div>
+            {estimate.profit_per_hour_cents !== 0 && (
+              <div className="flex items-center justify-between text-sm mt-2">
+                <span className="text-surface-400">Profit/Hour</span>
+                <span className={cn(
+                  'font-medium',
+                  estimate.profit_per_hour_cents >= 0 ? 'text-emerald-400' : 'text-red-400'
+                )}>
+                  {formatCents(estimate.profit_per_hour_cents)}/hr
+                </span>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -186,9 +209,33 @@ export default function RecipeCostCard({ templateId }: RecipeCostCardProps) {
         </div>
       )}
 
+      {/* Supply Breakdown */}
+      {estimate.supply_breakdown && estimate.supply_breakdown.length > 0 && (
+        <div className="mt-6">
+          <h3 className="text-sm font-medium text-surface-300 mb-3">Supply Breakdown</h3>
+          <div className="space-y-2">
+            {estimate.supply_breakdown.map((item, idx) => (
+              <div
+                key={idx}
+                className="flex items-center justify-between text-sm p-2 rounded bg-surface-800/30"
+              >
+                <div className="flex items-center gap-2">
+                  <span className="text-surface-300">{item.name}</span>
+                  <span className="text-surface-500">×{item.quantity}</span>
+                </div>
+                <span className="text-surface-200">{formatCents(item.total_cents)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Rate Info */}
       <div className="mt-4 text-xs text-surface-500 text-center">
         Machine: {formatCents(estimate.hourly_rate_cents)}/hr
+        {estimate.printer_name && (
+          <span className="text-surface-400"> ({estimate.printer_name})</span>
+        )}
         {estimate.labor_rate_cents > 0 && (
           <span> • Labor: {formatCents(estimate.labor_rate_cents)}/hr</span>
         )}

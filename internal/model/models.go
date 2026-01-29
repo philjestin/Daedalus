@@ -7,34 +7,19 @@ import (
 	"github.com/google/uuid"
 )
 
-// ProjectStatus represents the status of a project.
-type ProjectStatus string
-
-const (
-	ProjectStatusDraft       ProjectStatus = "draft"
-	ProjectStatusActive      ProjectStatus = "active"
-	ProjectStatusCompleted   ProjectStatus = "completed"
-	ProjectStatusReadyToShip ProjectStatus = "ready_to_ship"
-	ProjectStatusShipped     ProjectStatus = "shipped"
-	ProjectStatusArchived    ProjectStatus = "archived"
-)
-
-// Project represents a maker project containing parts to be printed.
+// Project represents a maker project/product that tracks lifetime performance.
 type Project struct {
-	ID              uuid.UUID     `json:"id"`
-	Name            string        `json:"name"`
-	Description     string        `json:"description"`
-	Status          ProjectStatus `json:"status"`
-	TargetDate      *time.Time    `json:"target_date,omitempty"`
-	Tags            []string      `json:"tags"`
-	TemplateID      *uuid.UUID    `json:"template_id,omitempty"`
-	Source          string        `json:"source"`
-	ExternalOrderID string        `json:"external_order_id,omitempty"`
-	CustomerNotes   string        `json:"customer_notes,omitempty"`
-	ShippedAt       *time.Time    `json:"shipped_at,omitempty"`
-	TrackingNumber  string        `json:"tracking_number,omitempty"`
-	CreatedAt       time.Time     `json:"created_at"`
-	UpdatedAt       time.Time     `json:"updated_at"`
+	ID              uuid.UUID  `json:"id"`
+	Name            string     `json:"name"`
+	Description     string     `json:"description"`
+	TargetDate      *time.Time `json:"target_date,omitempty"`
+	Tags            []string   `json:"tags"`
+	TemplateID      *uuid.UUID `json:"template_id,omitempty"`
+	Source          string     `json:"source"`
+	ExternalOrderID string     `json:"external_order_id,omitempty"`
+	CustomerNotes   string     `json:"customer_notes,omitempty"`
+	CreatedAt       time.Time  `json:"created_at"`
+	UpdatedAt       time.Time  `json:"updated_at"`
 }
 
 // ProjectSummary is a derived analytics object for a project.
@@ -152,16 +137,40 @@ type RecipeCostEstimate struct {
 	MaterialCostCents   int                           `json:"material_cost_cents"`
 	TimeCostCents       int                           `json:"time_cost_cents"`
 	LaborCostCents      int                           `json:"labor_cost_cents"`
+	SupplyCostCents     int                           `json:"supply_cost_cents"`
 	TotalCostCents      int                           `json:"total_cost_cents"`
 	EstimatedPrintTime  int                           `json:"estimated_print_time_seconds"`
 	LaborMinutes        int                           `json:"labor_minutes"`
 	MaterialBreakdown   []RecipeMaterialCostBreakdown `json:"material_breakdown"`
+	SupplyBreakdown     []RecipeSupplyCostBreakdown   `json:"supply_breakdown,omitempty"`
 	HourlyRateCents     int                           `json:"hourly_rate_cents"`
 	LaborRateCents      int                           `json:"labor_rate_cents"`
+	PrinterName         string                        `json:"printer_name,omitempty"`
 	// Margin calculation
 	SalePriceCents     int     `json:"sale_price_cents"`
 	GrossMarginCents   int     `json:"gross_margin_cents"`
 	GrossMarginPercent float64 `json:"gross_margin_percent"`
+	ProfitPerHourCents int     `json:"profit_per_hour_cents"`
+}
+
+// RecipeSupplyCostBreakdown shows cost for each supply item in a recipe.
+type RecipeSupplyCostBreakdown struct {
+	Name          string `json:"name"`
+	UnitCostCents int    `json:"unit_cost_cents"`
+	Quantity      int    `json:"quantity"`
+	TotalCents    int    `json:"total_cents"`
+}
+
+// RecipeSupply represents a non-printed purchased item in a recipe's bill of materials.
+type RecipeSupply struct {
+	ID            uuid.UUID  `json:"id"`
+	RecipeID      uuid.UUID  `json:"recipe_id"`
+	Name          string     `json:"name"`
+	UnitCostCents int        `json:"unit_cost_cents"`
+	Quantity      int        `json:"quantity"`
+	MaterialID    *uuid.UUID `json:"material_id,omitempty"`
+	Notes         string     `json:"notes,omitempty"`
+	CreatedAt     time.Time  `json:"created_at"`
 }
 
 // RecipeMaterialCostBreakdown shows cost for each material in a recipe.
@@ -199,6 +208,50 @@ type Template struct {
 	UpdatedAt              time.Time           `json:"updated_at"`
 	Designs                []TemplateDesign    `json:"designs,omitempty"`
 	Materials              []RecipeMaterial    `json:"materials,omitempty"`
+	Supplies               []RecipeSupply      `json:"supplies,omitempty"`
+}
+
+// TemplateAnalytics contains aggregated performance metrics from projects created from a template.
+type TemplateAnalytics struct {
+	TemplateID   uuid.UUID `json:"template_id"`
+	ProjectCount int       `json:"project_count"`
+
+	// Revenue
+	TotalRevenueCents int `json:"total_revenue_cents"`
+	TotalFeesCents    int `json:"total_fees_cents"`
+	NetRevenueCents   int `json:"net_revenue_cents"`
+	TotalSalesCount   int `json:"total_sales_count"`
+
+	// Costs
+	TotalCostCents       int `json:"total_cost_cents"`
+	AvgUnitCostCents     int `json:"avg_unit_cost_cents"`
+	TotalPrinterTimeCost int `json:"total_printer_time_cost"`
+	TotalMaterialCost    int `json:"total_material_cost"`
+	TotalSupplyCost      int `json:"total_supply_cost"`
+
+	// Profit
+	TotalGrossProfitCents  int     `json:"total_gross_profit_cents"`
+	AvgGrossMarginPercent  float64 `json:"avg_gross_margin_percent"`
+	ProfitPerHourCents     int     `json:"profit_per_hour_cents"`
+
+	// Performance
+	TotalJobCount  int     `json:"total_job_count"`
+	TotalCompleted int     `json:"total_completed"`
+	TotalFailed    int     `json:"total_failed"`
+	SuccessRate    float64 `json:"success_rate"`
+
+	// Print time
+	TotalPrintSeconds int `json:"total_print_seconds"`
+	AvgPrintSeconds   int `json:"avg_print_seconds"`
+
+	// Material
+	TotalMaterialGrams float64 `json:"total_material_grams"`
+	AvgMaterialGrams   float64 `json:"avg_material_grams"`
+
+	// Estimated vs Actual comparison (from template)
+	EstimatedPrintSeconds  int     `json:"estimated_print_seconds"`
+	EstimatedMaterialGrams float64 `json:"estimated_material_grams"`
+	EstimatedCostCents     int     `json:"estimated_cost_cents"`
 }
 
 // CostBreakdown contains the cost and margin breakdown for a recipe/order.
@@ -320,6 +373,7 @@ type Printer struct {
 	Notes             string         `json:"notes"`
 	MinMaterialPercent int           `json:"min_material_percent"` // Minimum % before warning (default 10)
 	CostPerHourCents  int            `json:"cost_per_hour_cents"`  // Hourly cost in cents (e.g. 150 = $1.50/hr)
+	PurchasePriceCents int           `json:"purchase_price_cents"` // Purchase price in cents for ROI tracking
 	CreatedAt         time.Time      `json:"created_at"`
 	UpdatedAt         time.Time      `json:"updated_at"`
 }
@@ -899,5 +953,53 @@ type BambuCloudAuth struct {
 	ExpiresAt    *time.Time `json:"expires_at,omitempty"`
 	CreatedAt    time.Time  `json:"created_at"`
 	UpdatedAt    time.Time  `json:"updated_at"`
+}
+
+// PrinterUtilization represents utilization metrics for a time period.
+type PrinterUtilization struct {
+	Period                     string  `json:"period"`
+	TotalHours                 float64 `json:"total_hours"`
+	PrintingHours              float64 `json:"printing_hours"`
+	FailedHours                float64 `json:"failed_hours"`
+	IdleHours                  float64 `json:"idle_hours"`
+	UtilizationPercent         float64 `json:"utilization_percent"`
+	ConfiguredCostPerHourCents int     `json:"configured_cost_per_hour_cents"`
+	ActualRevenuePerHourCents  int     `json:"actual_revenue_per_hour_cents"`
+}
+
+// PrinterROI represents ROI and break-even metrics for a printer.
+type PrinterROI struct {
+	PurchasePriceCents  int     `json:"purchase_price_cents"`
+	TotalRevenueCents   int     `json:"total_revenue_cents"`
+	TotalCostCents      int     `json:"total_cost_cents"`
+	LifetimeProfitCents int     `json:"lifetime_profit_cents"`
+	TotalPrintingHours  float64 `json:"total_printing_hours"`
+	RevenuePerHourCents int     `json:"revenue_per_hour_cents"`
+	CostPerHourCents    int     `json:"cost_per_hour_cents"`
+	NetPerHourCents     int     `json:"net_per_hour_cents"`
+	HoursToBreakEven    float64 `json:"hours_to_break_even"`
+	PrinterAgeHours     float64 `json:"printer_age_hours"`
+	BreakEvenReached    bool    `json:"break_even_reached"`
+}
+
+// PrinterHealth represents health and performance metrics for a printer.
+type PrinterHealth struct {
+	TotalJobs          int            `json:"total_jobs"`
+	CompletedJobs      int            `json:"completed_jobs"`
+	FailedJobs         int            `json:"failed_jobs"`
+	FailureRate        float64        `json:"failure_rate"`
+	AvgJobDurationSec  int            `json:"avg_job_duration_sec"`
+	AvgCostCents       int            `json:"avg_cost_cents"`
+	TotalMaterialGrams float64        `json:"total_material_grams"`
+	TotalCostCents     int            `json:"total_cost_cents"`
+	TotalRevenueCents  int            `json:"total_revenue_cents"`
+	FailureBreakdown   map[string]int `json:"failure_breakdown"`
+}
+
+// PrinterAnalytics combines utilization, ROI, and health metrics.
+type PrinterAnalytics struct {
+	Utilization []PrinterUtilization `json:"utilization"`
+	ROI         *PrinterROI          `json:"roi"`
+	Health      *PrinterHealth       `json:"health"`
 }
 

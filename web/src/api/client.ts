@@ -48,8 +48,8 @@ async function fetchApi<T>(
 
 // Projects API
 export const projectsApi = {
-  list: (status?: string) =>
-    fetchApi<import('../types').Project[]>(`/projects${status ? `?status=${status}` : ''}`),
+  list: () =>
+    fetchApi<import('../types').Project[]>('/projects'),
 
   get: (id: string) =>
     fetchApi<import('../types').Project>(`/projects/${id}`),
@@ -251,7 +251,10 @@ export const printersApi = {
 
   getStats: (id: string) =>
     fetchApi<import('../types').JobStats>(`/printers/${id}/stats`),
-  
+
+  getAnalytics: (id: string) =>
+    fetchApi<import('../types').PrinterAnalytics>(`/printers/${id}/analytics`),
+
   // Discover printers on local network
   discover: async () => {
     console.log('Starting printer discovery...')
@@ -458,6 +461,21 @@ export const settingsApi = {
     fetchApi<void>(`/settings/${key}`, { method: 'DELETE' }),
 }
 
+// Backups API
+export const backupsApi = {
+  list: () =>
+    fetchApi<import('../types').BackupInfo[]>('/backups'),
+
+  create: () =>
+    fetchApi<import('../types').BackupInfo>('/backups', { method: 'POST' }),
+
+  delete: (name: string) =>
+    fetchApi<void>(`/backups/${encodeURIComponent(name)}`, { method: 'DELETE' }),
+
+  restore: (name: string) =>
+    fetchApi<{ message: string }>(`/backups/${encodeURIComponent(name)}/restore`, { method: 'POST' }),
+}
+
 // Sales API
 export const salesApi = {
   list: (projectId?: string) =>
@@ -617,6 +635,38 @@ export const templatesApi = {
     fetchApi<import('../types').PrinterValidationResult>(`/templates/${id}/validate-printer/${printerId}`, {
       method: 'POST',
     }),
+
+  // Recipe supply methods
+  listSupplies: (id: string) =>
+    fetchApi<import('../types').RecipeSupply[]>(`/templates/${id}/supplies`),
+
+  addSupply: (
+    id: string,
+    data: {
+      name: string
+      unit_cost_cents: number
+      quantity: number
+      notes?: string
+      material_id?: string
+    }
+  ) =>
+    fetchApi<import('../types').RecipeSupply>(`/templates/${id}/supplies`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  updateSupply: (id: string, supplyId: string, data: Partial<import('../types').RecipeSupply>) =>
+    fetchApi<import('../types').RecipeSupply>(`/templates/${id}/supplies/${supplyId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+
+  removeSupply: (id: string, supplyId: string) =>
+    fetchApi<void>(`/templates/${id}/supplies/${supplyId}`, { method: 'DELETE' }),
+
+  // Analytics
+  getAnalytics: (id: string) =>
+    fetchApi<import('../types').TemplateAnalytics>(`/templates/${id}/analytics`),
 }
 
 // Etsy API

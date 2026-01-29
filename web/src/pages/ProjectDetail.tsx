@@ -26,7 +26,7 @@ import {
   ShoppingCart,
 } from 'lucide-react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useProject, useParts, useCreatePart, useUpdateProject } from '../hooks/useProjects'
+import { useProject, useParts, useCreatePart } from '../hooks/useProjects'
 import { usePrinters, usePrinterStates } from '../hooks/usePrinters'
 import { useSpoolsWithMaterials } from '../hooks/useMaterials'
 import { designsApi, printJobsApi, projectsApi, partsApi, suppliesApi, materialsApi } from '../api/client'
@@ -34,7 +34,7 @@ import { cn, getStatusBadge, formatBytes, formatRelativeTime } from '../lib/util
 import { FailureModal } from '../components/FailureModal'
 import { ExpandableJobEvents } from '../components/JobEventTimeline'
 import { Tooltip } from '../components/Tooltip'
-import type { Design, Part, ProjectStatus, Material, PrintJob, ProjectSummary, ProjectSupply } from '../types'
+import type { Design, Part, Material, PrintJob, ProjectSummary, ProjectSupply } from '../types'
 
 export default function ProjectDetail() {
   const { id } = useParams<{ id: string }>()
@@ -46,7 +46,6 @@ export default function ProjectDetail() {
   const { data: printerStates = {} } = usePrinterStates()
   
   const createPart = useCreatePart()
-  const updateProject = useUpdateProject()
   
   const [showAddPart, setShowAddPart] = useState(false)
   const [selectedPart, setSelectedPart] = useState<Part | null>(null)
@@ -84,14 +83,6 @@ export default function ProjectDetail() {
     setPartFileNotes('')
   }
 
-  const handleStatusChange = async (status: ProjectStatus) => {
-    if (!project) return
-    await updateProject.mutateAsync({
-      id: project.id,
-      data: { status },
-    })
-  }
-
   if (projectLoading) {
     return (
       <div className="p-4 sm:p-6 lg:p-8">
@@ -120,28 +111,13 @@ export default function ProjectDetail() {
           Back to Projects
         </Link>
         
-        <div className="flex items-start justify-between">
-          <div>
-            <h1 className="text-3xl font-display font-bold text-surface-100">
-              {project.name}
-            </h1>
-            {project.description && (
-              <p className="text-surface-400 mt-1">{project.description}</p>
-            )}
-          </div>
-          
-          <div className="flex items-center gap-3">
-            <select
-              value={project.status}
-              onChange={(e) => handleStatusChange(e.target.value as ProjectStatus)}
-              className="input w-auto"
-            >
-              <option value="draft">Draft</option>
-              <option value="active">Active</option>
-              <option value="completed">Completed</option>
-              <option value="archived">Archived</option>
-            </select>
-          </div>
+        <div>
+          <h1 className="text-3xl font-display font-bold text-surface-100">
+            {project.name}
+          </h1>
+          {project.description && (
+            <p className="text-surface-400 mt-1">{project.description}</p>
+          )}
         </div>
       </div>
 

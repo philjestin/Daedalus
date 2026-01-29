@@ -98,6 +98,16 @@ export function usePrinterStats(id: string) {
   })
 }
 
+// Fetch comprehensive analytics for a specific printer.
+export function usePrinterAnalytics(id: string) {
+  return useQuery({
+    queryKey: ['printer-analytics', id],
+    queryFn: () => printersApi.getAnalytics(id),
+    enabled: !!id,
+    staleTime: 60000, // Data is fresh for 1 minute
+  })
+}
+
 // Fetch events for a specific print job.
 export function useJobEvents(jobId: string) {
   return useQuery({
