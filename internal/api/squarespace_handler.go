@@ -12,12 +12,13 @@ import (
 
 // SquarespaceHandler handles Squarespace integration endpoints.
 type SquarespaceHandler struct {
-	service *service.SquarespaceService
+	service  *service.SquarespaceService
+	orderSvc *service.OrderService
 }
 
 // NewSquarespaceHandler creates a new SquarespaceHandler.
-func NewSquarespaceHandler(svc *service.SquarespaceService) *SquarespaceHandler {
-	return &SquarespaceHandler{service: svc}
+func NewSquarespaceHandler(svc *service.SquarespaceService, orderSvc *service.OrderService) *SquarespaceHandler {
+	return &SquarespaceHandler{service: svc, orderSvc: orderSvc}
 }
 
 // ConnectRequest represents the request body for connecting to Squarespace.
@@ -167,7 +168,7 @@ func (h *SquarespaceHandler) GetOrder(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, order)
 }
 
-// ProcessOrder creates a project from a Squarespace order.
+// ProcessOrder creates a unified order from a Squarespace order.
 // POST /api/integrations/squarespace/orders/{id}/process
 func (h *SquarespaceHandler) ProcessOrder(w http.ResponseWriter, r *http.Request) {
 	id, err := parseUUID(r, "id")
@@ -176,7 +177,7 @@ func (h *SquarespaceHandler) ProcessOrder(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	project, err := h.service.ProcessOrder(r.Context(), id)
+	order, err := h.service.ProcessOrder(r.Context(), id, h.orderSvc)
 	if err != nil {
 		slog.Error("failed to process Squarespace order", "error", err)
 		respondError(w, http.StatusInternalServerError, err.Error())
@@ -184,8 +185,8 @@ func (h *SquarespaceHandler) ProcessOrder(w http.ResponseWriter, r *http.Request
 	}
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"project_id": project.ID,
-		"project":    project,
+		"order_id": order.ID,
+		"order":    order,
 	})
 }
 

@@ -12,6 +12,9 @@ import Expenses from './pages/Expenses'
 import Sales from './pages/Sales'
 import Settings from './pages/Settings'
 import Channels from './pages/Channels'
+import Orders from './pages/Orders'
+import OrderDetail from './pages/OrderDetail'
+import Timeline from './pages/Timeline'
 import { useWebSocket } from './hooks/useWebSocket'
 
 function App() {
@@ -28,6 +31,9 @@ function App() {
       <Route element={<Layout />}>
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
         <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/orders" element={<Orders />} />
+        <Route path="/orders/:id" element={<OrderDetail />} />
+        <Route path="/timeline" element={<Timeline />} />
         <Route path="/projects" element={<Projects />} />
         <Route path="/projects/:id" element={<ProjectDetail />} />
         <Route path="/templates" element={<Templates />} />

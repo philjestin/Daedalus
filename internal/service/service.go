@@ -47,6 +47,12 @@ type Services struct {
 	ProjectSupplies *ProjectSupplyService
 	Backup          *BackupService
 	Dispatcher      *DispatcherService
+	// New services for feature gaps
+	Orders   *OrderService
+	Alerts   *AlertService
+	Tags     *TagService
+	Shopify  *ShopifyService
+	Timeline *TimelineService
 }
 
 // EtsyConfig holds Etsy OAuth configuration.
@@ -102,6 +108,14 @@ func NewServices(repos *repository.Repositories, store storage.Storage, printerM
 		services.Settings,
 	)
 	services.Dispatcher.Init()
+
+	// Initialize new services for feature gaps
+	services.Orders = NewOrderService(repos.Orders, repos.Projects, repos.PrintJobs, services.Templates, hub)
+	services.Alerts = NewAlertService(repos.Spools, repos.Materials, repos.Orders, repos.AlertDismissals, hub)
+	services.Tags = NewTagService(repos.Tags, repos.Parts, repos.Designs)
+	services.Shopify = NewShopifyService(repos.Shopify, services.Orders, services.Templates, hub)
+	services.Timeline = NewTimelineService(repos.Orders, repos.Projects, repos.PrintJobs)
+
 	return services
 }
 

@@ -18,6 +18,8 @@ type Project struct {
 	Source          string     `json:"source"`
 	ExternalOrderID string     `json:"external_order_id,omitempty"`
 	CustomerNotes   string     `json:"customer_notes,omitempty"`
+	OrderID         *uuid.UUID `json:"order_id,omitempty"`
+	OrderItemID     *uuid.UUID `json:"order_item_id,omitempty"`
 	CreatedAt       time.Time  `json:"created_at"`
 	UpdatedAt       time.Time  `json:"updated_at"`
 }
@@ -300,6 +302,7 @@ type Part struct {
 	Status      PartStatus `json:"status"`
 	CreatedAt   time.Time  `json:"created_at"`
 	UpdatedAt   time.Time  `json:"updated_at"`
+	Tags        []Tag      `json:"tags,omitempty"`
 }
 
 // FileType represents supported design file types.
@@ -324,6 +327,7 @@ type Design struct {
 	Notes         string          `json:"notes"`
 	SliceProfile  json.RawMessage `json:"slice_profile,omitempty"`
 	CreatedAt     time.Time       `json:"created_at"`
+	Tags          []Tag           `json:"tags,omitempty"`
 }
 
 // ConnectionType represents how a printer is connected.
@@ -510,19 +514,20 @@ type TempRange struct {
 
 // Material represents a type of printing material in the catalog.
 type Material struct {
-	ID           uuid.UUID    `json:"id"`
-	Name         string       `json:"name"`
-	Type         MaterialType `json:"type"`
-	Manufacturer string       `json:"manufacturer"`
-	Color        string       `json:"color"`
-	ColorHex     string       `json:"color_hex"`
-	Density      float64      `json:"density"`
-	CostPerKg    float64      `json:"cost_per_kg"`
-	PrintTemp    *TempRange   `json:"print_temp,omitempty"`
-	BedTemp      *TempRange   `json:"bed_temp,omitempty"`
-	Notes        string       `json:"notes"`
-	CreatedAt    time.Time    `json:"created_at"`
-	UpdatedAt    time.Time    `json:"updated_at"`
+	ID                uuid.UUID    `json:"id"`
+	Name              string       `json:"name"`
+	Type              MaterialType `json:"type"`
+	Manufacturer      string       `json:"manufacturer"`
+	Color             string       `json:"color"`
+	ColorHex          string       `json:"color_hex"`
+	Density           float64      `json:"density"`
+	CostPerKg         float64      `json:"cost_per_kg"`
+	PrintTemp         *TempRange   `json:"print_temp,omitempty"`
+	BedTemp           *TempRange   `json:"bed_temp,omitempty"`
+	Notes             string       `json:"notes"`
+	LowThresholdGrams int          `json:"low_threshold_grams"` // Alert when spool falls below this
+	CreatedAt         time.Time    `json:"created_at"`
+	UpdatedAt         time.Time    `json:"updated_at"`
 }
 
 // SpoolStatus represents the status of a material spool.
@@ -1053,5 +1058,223 @@ type AutoDispatchSettings struct {
 	AutoStart           bool      `json:"auto_start"`
 	TimeoutMinutes      int       `json:"timeout_minutes"`
 	UpdatedAt           time.Time `json:"updated_at"`
+}
+
+// ============================================
+// Alerts (Phase 1)
+// ============================================
+
+// AlertType identifies the type of alert.
+type AlertType string
+
+const (
+	AlertTypeLowSpool   AlertType = "low_spool"
+	AlertTypeEmptySpool AlertType = "empty_spool"
+	AlertTypeOrderDue   AlertType = "order_due"
+	AlertTypeJobFailed  AlertType = "job_failed"
+)
+
+// AlertSeverity indicates how urgent an alert is.
+type AlertSeverity string
+
+const (
+	AlertSeverityInfo     AlertSeverity = "info"
+	AlertSeverityWarning  AlertSeverity = "warning"
+	AlertSeverityCritical AlertSeverity = "critical"
+)
+
+// Alert represents a system alert for user attention.
+type Alert struct {
+	ID             string        `json:"id"`
+	Type           AlertType     `json:"type"`
+	Severity       AlertSeverity `json:"severity"`
+	EntityID       uuid.UUID     `json:"entity_id"`
+	EntityType     string        `json:"entity_type"` // "spool", "order", "job"
+	Message        string        `json:"message"`
+	CreatedAt      time.Time     `json:"created_at"`
+	DismissedUntil *time.Time    `json:"dismissed_until,omitempty"`
+}
+
+// AlertDismissal records when a user dismissed an alert.
+type AlertDismissal struct {
+	ID             uuid.UUID  `json:"id"`
+	AlertType      AlertType  `json:"alert_type"`
+	EntityID       string     `json:"entity_id"`
+	DismissedAt    time.Time  `json:"dismissed_at"`
+	DismissedUntil *time.Time `json:"dismissed_until,omitempty"`
+}
+
+// ============================================
+// Unified Orders (Phase 2)
+// ============================================
+
+// OrderStatus represents the status of an order.
+type OrderStatus string
+
+const (
+	OrderStatusPending    OrderStatus = "pending"
+	OrderStatusInProgress OrderStatus = "in_progress"
+	OrderStatusCompleted  OrderStatus = "completed"
+	OrderStatusShipped    OrderStatus = "shipped"
+	OrderStatusCancelled  OrderStatus = "cancelled"
+)
+
+// OrderSource identifies where an order originated.
+type OrderSource string
+
+const (
+	OrderSourceManual      OrderSource = "manual"
+	OrderSourceEtsy        OrderSource = "etsy"
+	OrderSourceSquarespace OrderSource = "squarespace"
+	OrderSourceShopify     OrderSource = "shopify"
+)
+
+// Order represents a unified order from any source.
+type Order struct {
+	ID            uuid.UUID   `json:"id"`
+	Source        OrderSource `json:"source"`
+	SourceOrderID string      `json:"source_order_id,omitempty"`
+	CustomerName  string      `json:"customer_name"`
+	CustomerEmail string      `json:"customer_email,omitempty"`
+	Status        OrderStatus `json:"status"`
+	Priority      int         `json:"priority"`
+	DueDate       *time.Time  `json:"due_date,omitempty"`
+	Notes         string      `json:"notes,omitempty"`
+	CreatedAt     time.Time   `json:"created_at"`
+	UpdatedAt     time.Time   `json:"updated_at"`
+	CompletedAt   *time.Time  `json:"completed_at,omitempty"`
+	ShippedAt     *time.Time  `json:"shipped_at,omitempty"`
+	Items         []OrderItem `json:"items,omitempty"`
+	Projects      []Project   `json:"projects,omitempty"`
+	Events        []OrderEvent `json:"events,omitempty"`
+}
+
+// OrderItem represents a line item in an order.
+type OrderItem struct {
+	ID         uuid.UUID  `json:"id"`
+	OrderID    uuid.UUID  `json:"order_id"`
+	TemplateID *uuid.UUID `json:"template_id,omitempty"`
+	SKU        string     `json:"sku,omitempty"`
+	Quantity   int        `json:"quantity"`
+	Notes      string     `json:"notes,omitempty"`
+	CreatedAt  time.Time  `json:"created_at"`
+}
+
+// OrderEvent records an event in the order lifecycle.
+type OrderEvent struct {
+	ID        uuid.UUID `json:"id"`
+	OrderID   uuid.UUID `json:"order_id"`
+	EventType string    `json:"event_type"`
+	Message   string    `json:"message,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// OrderProgress represents the completion progress of an order.
+type OrderProgress struct {
+	OrderID         uuid.UUID `json:"order_id"`
+	TotalItems      int       `json:"total_items"`
+	CompletedItems  int       `json:"completed_items"`
+	TotalJobs       int       `json:"total_jobs"`
+	CompletedJobs   int       `json:"completed_jobs"`
+	ProgressPercent float64   `json:"progress_percent"`
+}
+
+// OrderFilters defines filter options for listing orders.
+type OrderFilters struct {
+	Status    *OrderStatus `json:"status,omitempty"`
+	Source    *OrderSource `json:"source,omitempty"`
+	StartDate *time.Time   `json:"start_date,omitempty"`
+	EndDate   *time.Time   `json:"end_date,omitempty"`
+	Limit     int          `json:"limit,omitempty"`
+	Offset    int          `json:"offset,omitempty"`
+}
+
+// ============================================
+// Shopify Integration (Phase 3)
+// ============================================
+
+// ShopifyCredentials stores OAuth credentials for a Shopify store.
+type ShopifyCredentials struct {
+	ID          uuid.UUID `json:"id"`
+	ShopDomain  string    `json:"shop_domain"`
+	AccessToken string    `json:"access_token"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+// ShopifyOrder represents a synced Shopify order.
+type ShopifyOrder struct {
+	ID              uuid.UUID          `json:"id"`
+	ShopifyOrderID  string             `json:"shopify_order_id"`
+	OrderID         *uuid.UUID         `json:"order_id,omitempty"` // Link to unified Order
+	ShopDomain      string             `json:"shop_domain"`
+	OrderNumber     string             `json:"order_number"`
+	CustomerName    string             `json:"customer_name"`
+	CustomerEmail   string             `json:"customer_email"`
+	TotalCents      int                `json:"total_cents"`
+	Status          string             `json:"status"`
+	SyncedAt        time.Time          `json:"synced_at"`
+	CreatedAt       time.Time          `json:"created_at"`
+	UpdatedAt       time.Time          `json:"updated_at"`
+	Items           []ShopifyOrderItem `json:"items,omitempty"`
+}
+
+// ShopifyOrderItem represents a line item in a Shopify order.
+type ShopifyOrderItem struct {
+	ID                 uuid.UUID `json:"id"`
+	ShopifyOrderID     uuid.UUID `json:"shopify_order_id"`
+	ShopifyLineItemID  string    `json:"shopify_line_item_id"`
+	SKU                string    `json:"sku"`
+	Title              string    `json:"title"`
+	Quantity           int       `json:"quantity"`
+	PriceCents         int       `json:"price_cents"`
+	CreatedAt          time.Time `json:"created_at"`
+}
+
+// ShopifyProductTemplate links a Shopify product to a template.
+type ShopifyProductTemplate struct {
+	ID               uuid.UUID `json:"id"`
+	ShopifyProductID string    `json:"shopify_product_id"`
+	TemplateID       uuid.UUID `json:"template_id"`
+	SKU              string    `json:"sku,omitempty"`
+	CreatedAt        time.Time `json:"created_at"`
+}
+
+// ShopifyIntegrationStatus represents the connection status.
+type ShopifyIntegrationStatus struct {
+	Connected   bool       `json:"connected"`
+	ShopDomain  string     `json:"shop_domain,omitempty"`
+	LastSyncAt  *time.Time `json:"last_sync_at,omitempty"`
+	OrderCount  int        `json:"order_count,omitempty"`
+}
+
+// ============================================
+// Timeline / Gantt View (Phase 4)
+// ============================================
+
+// TimelineItem represents an item on the timeline/Gantt view.
+type TimelineItem struct {
+	ID        uuid.UUID      `json:"id"`
+	Type      string         `json:"type"` // "order", "project", "job"
+	Name      string         `json:"name"`
+	Status    string         `json:"status"`
+	StartDate *time.Time     `json:"start_date,omitempty"`
+	DueDate   *time.Time     `json:"due_date,omitempty"`
+	EndDate   *time.Time     `json:"end_date,omitempty"` // Actual or estimated
+	Progress  float64        `json:"progress"`           // 0-100
+	ParentID  *uuid.UUID     `json:"parent_id,omitempty"`
+	Children  []TimelineItem `json:"children,omitempty"`
+}
+
+// ============================================
+// Tags (Phase 5)
+// ============================================
+
+// Tag represents a user-defined tag for organization.
+type Tag struct {
+	ID        uuid.UUID `json:"id"`
+	Name      string    `json:"name"`
+	Color     string    `json:"color"`
+	CreatedAt time.Time `json:"created_at"`
 }
 

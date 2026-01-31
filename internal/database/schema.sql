@@ -659,7 +659,146 @@ CREATE TABLE IF NOT EXISTS project_supplies (
 
 CREATE INDEX IF NOT EXISTS idx_project_supplies_project ON project_supplies(project_id);
 
+-- ============================================
+-- Low-Spool Threshold Alerts (Phase 1)
+-- ============================================
+
+-- Alert dismissals for user dismissal tracking
+CREATE TABLE IF NOT EXISTS alert_dismissals (
+    id TEXT PRIMARY KEY,
+    alert_type TEXT NOT NULL,  -- 'low_spool', 'empty_spool', 'order_due', etc.
+    entity_id TEXT NOT NULL,   -- spool_id, printer_id, order_id, etc.
+    dismissed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    dismissed_until TEXT       -- NULL = permanent, or timestamp for snooze
+);
+CREATE INDEX IF NOT EXISTS idx_alert_dismissals_entity ON alert_dismissals(alert_type, entity_id);
+
+-- ============================================
+-- Unified Orders (Phase 2)
+-- ============================================
+
+CREATE TABLE IF NOT EXISTS orders (
+    id TEXT PRIMARY KEY,
+    source TEXT NOT NULL,           -- 'manual', 'etsy', 'squarespace', 'shopify'
+    source_order_id TEXT,           -- External order ID
+    customer_name TEXT NOT NULL,
+    customer_email TEXT,
+    status TEXT NOT NULL DEFAULT 'pending',  -- pending, in_progress, completed, shipped, cancelled
+    priority INTEGER NOT NULL DEFAULT 0,
+    due_date TEXT,
+    notes TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    completed_at TEXT,
+    shipped_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
+CREATE INDEX IF NOT EXISTS idx_orders_source ON orders(source, source_order_id);
+CREATE INDEX IF NOT EXISTS idx_orders_due_date ON orders(due_date);
+
+CREATE TABLE IF NOT EXISTS order_items (
+    id TEXT PRIMARY KEY,
+    order_id TEXT NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+    template_id TEXT REFERENCES templates(id),
+    sku TEXT,
+    quantity INTEGER NOT NULL DEFAULT 1,
+    notes TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_order_items_order ON order_items(order_id);
+CREATE INDEX IF NOT EXISTS idx_order_items_sku ON order_items(sku);
+
+-- Order events for history tracking
+CREATE TABLE IF NOT EXISTS order_events (
+    id TEXT PRIMARY KEY,
+    order_id TEXT NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+    event_type TEXT NOT NULL,  -- 'created', 'synced', 'item_added', 'job_started', 'completed', etc.
+    message TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_order_events_order ON order_events(order_id);
+
+-- ============================================
+-- Shopify Integration (Phase 3)
+-- ============================================
+
+CREATE TABLE IF NOT EXISTS shopify_credentials (
+    id TEXT PRIMARY KEY,
+    shop_domain TEXT NOT NULL UNIQUE,
+    access_token TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS shopify_orders (
+    id TEXT PRIMARY KEY,
+    shopify_order_id TEXT NOT NULL UNIQUE,
+    order_id TEXT REFERENCES orders(id),  -- Link to unified Order
+    shop_domain TEXT NOT NULL,
+    order_number TEXT,
+    customer_name TEXT,
+    customer_email TEXT,
+    total_cents INTEGER,
+    status TEXT,
+    synced_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_shopify_orders_shopify_id ON shopify_orders(shopify_order_id);
+CREATE INDEX IF NOT EXISTS idx_shopify_orders_order ON shopify_orders(order_id);
+
+CREATE TABLE IF NOT EXISTS shopify_order_items (
+    id TEXT PRIMARY KEY,
+    shopify_order_id TEXT NOT NULL REFERENCES shopify_orders(id) ON DELETE CASCADE,
+    shopify_line_item_id TEXT NOT NULL,
+    sku TEXT,
+    title TEXT,
+    quantity INTEGER NOT NULL,
+    price_cents INTEGER,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_shopify_order_items_order ON shopify_order_items(shopify_order_id);
+
+CREATE TABLE IF NOT EXISTS shopify_product_templates (
+    id TEXT PRIMARY KEY,
+    shopify_product_id TEXT NOT NULL,
+    template_id TEXT NOT NULL REFERENCES templates(id) ON DELETE CASCADE,
+    sku TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(shopify_product_id, template_id)
+);
+
+-- ============================================
+-- Tags for File Versioning (Phase 5)
+-- ============================================
+
+CREATE TABLE IF NOT EXISTS tags (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE,
+    color TEXT DEFAULT '#6b7280',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS part_tags (
+    part_id TEXT NOT NULL REFERENCES parts(id) ON DELETE CASCADE,
+    tag_id TEXT NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+    PRIMARY KEY (part_id, tag_id)
+);
+
+CREATE TABLE IF NOT EXISTS design_tags (
+    design_id TEXT NOT NULL REFERENCES designs(id) ON DELETE CASCADE,
+    tag_id TEXT NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+    PRIMARY KEY (design_id, tag_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_part_tags_part ON part_tags(part_id);
+CREATE INDEX IF NOT EXISTS idx_part_tags_tag ON part_tags(tag_id);
+CREATE INDEX IF NOT EXISTS idx_design_tags_design ON design_tags(design_id);
+CREATE INDEX IF NOT EXISTS idx_design_tags_tag ON design_tags(tag_id);
+
+-- ============================================
 -- Views
+-- ============================================
 
 -- Current job status (replaces PostgreSQL DISTINCT ON)
 CREATE VIEW IF NOT EXISTS job_current_status AS

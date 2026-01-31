@@ -83,6 +83,15 @@ func RunMigrations(db *sql.DB) error {
 		// Auto-dispatch feature columns
 		`ALTER TABLE print_jobs ADD COLUMN priority INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE print_jobs ADD COLUMN auto_dispatch_enabled INTEGER NOT NULL DEFAULT 1`,
+		// Low-spool threshold (Phase 1)
+		`ALTER TABLE materials ADD COLUMN low_threshold_grams INTEGER NOT NULL DEFAULT 100`,
+		// Unified orders (Phase 2) - link projects to orders
+		`ALTER TABLE projects ADD COLUMN order_id TEXT REFERENCES orders(id)`,
+		`ALTER TABLE projects ADD COLUMN order_item_id TEXT REFERENCES order_items(id)`,
+		// Link Etsy receipts to unified orders
+		`ALTER TABLE etsy_receipts ADD COLUMN order_id TEXT REFERENCES orders(id)`,
+		// Link Squarespace orders to unified orders
+		`ALTER TABLE squarespace_orders ADD COLUMN order_id TEXT REFERENCES orders(id)`,
 	}
 	for _, stmt := range alterStatements {
 		db.Exec(stmt) // Ignore error if column already exists

@@ -885,6 +885,211 @@ export const printJobPriorityApi = {
     }),
 }
 
+// ============================================
+// New Feature Gap APIs
+// ============================================
+
+// Alerts API
+export const alertsApi = {
+  list: () =>
+    fetchApi<import('../types').Alert[]>('/alerts'),
+
+  getCounts: () =>
+    fetchApi<import('../types').AlertCounts>('/alerts/counts'),
+
+  dismiss: (type: string, entityId: string, duration?: string) =>
+    fetchApi<{ status: string }>(`/alerts/${type}/${entityId}/dismiss`, {
+      method: 'POST',
+      body: JSON.stringify({ duration: duration || '1h' }),
+    }),
+
+  undismiss: (type: string, entityId: string) =>
+    fetchApi<{ status: string }>(`/alerts/${type}/${entityId}/dismiss`, {
+      method: 'DELETE',
+    }),
+
+  updateMaterialThreshold: (materialId: string, thresholdGrams: number) =>
+    fetchApi<{ status: string }>(`/materials/${materialId}/threshold`, {
+      method: 'PATCH',
+      body: JSON.stringify({ threshold_grams: thresholdGrams }),
+    }),
+}
+
+// Orders API (Unified)
+export const ordersApi = {
+  list: (params?: { status?: string; source?: string; limit?: number; offset?: number }) => {
+    const searchParams = new URLSearchParams()
+    if (params?.status) searchParams.set('status', params.status)
+    if (params?.source) searchParams.set('source', params.source)
+    if (params?.limit) searchParams.set('limit', String(params.limit))
+    if (params?.offset) searchParams.set('offset', String(params.offset))
+    const query = searchParams.toString()
+    return fetchApi<import('../types').Order[]>(`/orders${query ? `?${query}` : ''}`)
+  },
+
+  get: (id: string) =>
+    fetchApi<import('../types').Order>(`/orders/${id}`),
+
+  create: (data: { customer_name: string; customer_email?: string; due_date?: string; priority?: number; notes?: string }) =>
+    fetchApi<import('../types').Order>('/orders', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  update: (id: string, data: Partial<import('../types').Order>) =>
+    fetchApi<import('../types').Order>(`/orders/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+
+  delete: (id: string) =>
+    fetchApi<void>(`/orders/${id}`, { method: 'DELETE' }),
+
+  updateStatus: (id: string, status: import('../types').OrderStatus) =>
+    fetchApi<import('../types').Order>(`/orders/${id}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
+    }),
+
+  getProgress: (id: string) =>
+    fetchApi<import('../types').OrderProgress>(`/orders/${id}/progress`),
+
+  getCounts: () =>
+    fetchApi<import('../types').OrderCounts>('/orders/counts'),
+
+  markShipped: (id: string, trackingNumber?: string) =>
+    fetchApi<import('../types').Order>(`/orders/${id}/ship`, {
+      method: 'POST',
+      body: JSON.stringify({ tracking_number: trackingNumber }),
+    }),
+
+  // Order items
+  addItem: (orderId: string, data: { template_id?: string; sku?: string; quantity: number; notes?: string }) =>
+    fetchApi<import('../types').OrderItem>(`/orders/${orderId}/items`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  removeItem: (orderId: string, itemId: string) =>
+    fetchApi<void>(`/orders/${orderId}/items/${itemId}`, { method: 'DELETE' }),
+
+  processItem: (orderId: string, itemId: string) =>
+    fetchApi<import('../types').Project>(`/orders/${orderId}/items/${itemId}/process`, {
+      method: 'POST',
+    }),
+}
+
+// Tags API
+export const tagsApi = {
+  list: () =>
+    fetchApi<import('../types').Tag[]>('/tags'),
+
+  get: (id: string) =>
+    fetchApi<import('../types').Tag>(`/tags/${id}`),
+
+  create: (data: { name: string; color?: string }) =>
+    fetchApi<import('../types').Tag>('/tags', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  update: (id: string, data: { name?: string; color?: string }) =>
+    fetchApi<import('../types').Tag>(`/tags/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+
+  delete: (id: string) =>
+    fetchApi<void>(`/tags/${id}`, { method: 'DELETE' }),
+
+  // Part tags
+  getPartTags: (partId: string) =>
+    fetchApi<import('../types').Tag[]>(`/parts/${partId}/tags`),
+
+  addTagToPart: (partId: string, tagId: string) =>
+    fetchApi<void>(`/parts/${partId}/tags/${tagId}`, { method: 'POST' }),
+
+  removeTagFromPart: (partId: string, tagId: string) =>
+    fetchApi<void>(`/parts/${partId}/tags/${tagId}`, { method: 'DELETE' }),
+
+  // Design tags
+  getDesignTags: (designId: string) =>
+    fetchApi<import('../types').Tag[]>(`/designs/${designId}/tags`),
+
+  addTagToDesign: (designId: string, tagId: string) =>
+    fetchApi<void>(`/designs/${designId}/tags/${tagId}`, { method: 'POST' }),
+
+  removeTagFromDesign: (designId: string, tagId: string) =>
+    fetchApi<void>(`/designs/${designId}/tags/${tagId}`, { method: 'DELETE' }),
+
+  // Search by tag
+  listPartsByTag: (tagId: string) =>
+    fetchApi<import('../types').Part[]>(`/tags/${tagId}/parts`),
+
+  listDesignsByTag: (tagId: string) =>
+    fetchApi<import('../types').Design[]>(`/tags/${tagId}/designs`),
+}
+
+// Shopify API
+export const shopifyApi = {
+  getAuthUrl: (shopDomain: string) =>
+    fetchApi<{ auth_url: string }>(`/integrations/shopify/auth-url?shop=${encodeURIComponent(shopDomain)}`),
+
+  getStatus: () =>
+    fetchApi<import('../types').ShopifyIntegrationStatus>('/integrations/shopify/status'),
+
+  disconnect: () =>
+    fetchApi<{ status: string }>('/integrations/shopify', { method: 'DELETE' }),
+
+  syncOrders: () =>
+    fetchApi<import('../types').SyncResult>('/integrations/shopify/sync', { method: 'POST' }),
+
+  listOrders: (params?: { processed?: boolean; limit?: number; offset?: number }) => {
+    const searchParams = new URLSearchParams()
+    if (params?.processed !== undefined) searchParams.set('processed', String(params.processed))
+    if (params?.limit) searchParams.set('limit', String(params.limit))
+    if (params?.offset) searchParams.set('offset', String(params.offset))
+    const query = searchParams.toString()
+    return fetchApi<import('../types').ShopifyOrder[]>(`/integrations/shopify/orders${query ? `?${query}` : ''}`)
+  },
+
+  getOrder: (id: string) =>
+    fetchApi<import('../types').ShopifyOrder>(`/integrations/shopify/orders/${id}`),
+
+  processOrder: (id: string) =>
+    fetchApi<import('../types').Order>(`/integrations/shopify/orders/${id}/process`, {
+      method: 'POST',
+    }),
+
+  linkProduct: (productId: string, templateId: string, sku?: string) =>
+    fetchApi<{ status: string }>(`/integrations/shopify/products/${productId}/link`, {
+      method: 'POST',
+      body: JSON.stringify({ template_id: templateId, sku }),
+    }),
+
+  unlinkProduct: (productId: string, templateId: string) =>
+    fetchApi<void>(`/integrations/shopify/products/${productId}/link?template_id=${templateId}`, {
+      method: 'DELETE',
+    }),
+}
+
+// Timeline API (Gantt View)
+export const timelineApi = {
+  getTimeline: (params?: { start?: string; end?: string }) => {
+    const searchParams = new URLSearchParams()
+    if (params?.start) searchParams.set('start', params.start)
+    if (params?.end) searchParams.set('end', params.end)
+    const query = searchParams.toString()
+    return fetchApi<import('../types').TimelineItem[]>(`/timeline${query ? `?${query}` : ''}`)
+  },
+
+  getOrderTimeline: (orderId: string) =>
+    fetchApi<import('../types').TimelineItem>(`/timeline/orders/${orderId}`),
+
+  getProjectTimeline: (projectId: string) =>
+    fetchApi<import('../types').TimelineItem>(`/timeline/projects/${projectId}`),
+}
+
 // WebSocket connection for real-time updates
 export function createWebSocket(onMessage: (event: { type: string; data: unknown }) => void) {
   const wsUrl = API_URL.replace('http', 'ws') + '/ws'

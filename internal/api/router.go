@@ -286,7 +286,7 @@ func NewRouter(services *service.Services, hub *realtime.Hub) http.Handler {
 
 		// Etsy Integration
 		if services.Etsy != nil {
-			etsyHandler := NewEtsyHandler(services.Etsy)
+			etsyHandler := NewEtsyHandler(services.Etsy, services.Orders)
 			etsyHandler.SetTemplateSvc(services.Templates)
 			r.Route("/integrations/etsy", func(r chi.Router) {
 				// Auth
@@ -318,7 +318,7 @@ func NewRouter(services *service.Services, hub *realtime.Hub) http.Handler {
 
 		// Squarespace Integration
 		if services.Squarespace != nil {
-			squarespaceHandler := NewSquarespaceHandler(services.Squarespace)
+			squarespaceHandler := NewSquarespaceHandler(services.Squarespace, services.Orders)
 			r.Route("/integrations/squarespace", func(r chi.Router) {
 				// Connection
 				r.Post("/connect", squarespaceHandler.Connect)
@@ -337,6 +337,95 @@ func NewRouter(services *service.Services, hub *realtime.Hub) http.Handler {
 				r.Get("/products/{id}", squarespaceHandler.GetProduct)
 				r.Post("/products/{id}/link", squarespaceHandler.LinkProduct)
 				r.Delete("/products/{id}/link", squarespaceHandler.UnlinkProduct)
+			})
+		}
+
+		// ============================================
+		// New Feature Gap Endpoints
+		// ============================================
+
+		// Alerts
+		if services.Alerts != nil {
+			alertsHandler := NewAlertsHandler(services.Alerts)
+			r.Route("/alerts", func(r chi.Router) {
+				r.Get("/", alertsHandler.List)
+				r.Get("/counts", alertsHandler.GetCounts)
+				r.Post("/{type}/{entityId}/dismiss", alertsHandler.Dismiss)
+				r.Delete("/{type}/{entityId}/dismiss", alertsHandler.Undismiss)
+			})
+			r.Patch("/materials/{materialId}/threshold", alertsHandler.UpdateMaterialThreshold)
+		}
+
+		// Orders (Unified)
+		if services.Orders != nil {
+			orderHandler := NewOrderHandler(services.Orders)
+			r.Route("/orders", func(r chi.Router) {
+				r.Get("/", orderHandler.List)
+				r.Post("/", orderHandler.Create)
+				r.Get("/counts", orderHandler.GetCounts)
+				r.Route("/{id}", func(r chi.Router) {
+					r.Get("/", orderHandler.Get)
+					r.Patch("/", orderHandler.Update)
+					r.Delete("/", orderHandler.Delete)
+					r.Patch("/status", orderHandler.UpdateStatus)
+					r.Get("/progress", orderHandler.GetProgress)
+					r.Post("/ship", orderHandler.MarkShipped)
+					// Order items
+					r.Post("/items", orderHandler.AddItem)
+					r.Delete("/items/{itemId}", orderHandler.RemoveItem)
+					r.Post("/items/{itemId}/process", orderHandler.ProcessItem)
+				})
+			})
+		}
+
+		// Tags
+		if services.Tags != nil {
+			tagsHandler := NewTagsHandler(services.Tags)
+			r.Route("/tags", func(r chi.Router) {
+				r.Get("/", tagsHandler.List)
+				r.Post("/", tagsHandler.Create)
+				r.Route("/{id}", func(r chi.Router) {
+					r.Get("/", tagsHandler.Get)
+					r.Patch("/", tagsHandler.Update)
+					r.Delete("/", tagsHandler.Delete)
+					r.Get("/parts", tagsHandler.ListPartsByTag)
+					r.Get("/designs", tagsHandler.ListDesignsByTag)
+				})
+			})
+			// Part tags
+			r.Get("/parts/{id}/tags", tagsHandler.GetPartTags)
+			r.Post("/parts/{id}/tags/{tagId}", tagsHandler.AddTagToPart)
+			r.Delete("/parts/{id}/tags/{tagId}", tagsHandler.RemoveTagFromPart)
+			// Design tags
+			r.Get("/designs/{id}/tags", tagsHandler.GetDesignTags)
+			r.Post("/designs/{id}/tags/{tagId}", tagsHandler.AddTagToDesign)
+			r.Delete("/designs/{id}/tags/{tagId}", tagsHandler.RemoveTagFromDesign)
+		}
+
+		// Shopify Integration
+		if services.Shopify != nil {
+			shopifyHandler := NewShopifyHandler(services.Shopify, services.Orders, service.ShopifyConfig{})
+			r.Route("/integrations/shopify", func(r chi.Router) {
+				r.Get("/auth-url", shopifyHandler.GetAuthURL)
+				r.Get("/callback", shopifyHandler.Callback)
+				r.Get("/status", shopifyHandler.GetStatus)
+				r.Delete("/", shopifyHandler.Disconnect)
+				r.Post("/sync", shopifyHandler.SyncOrders)
+				r.Get("/orders", shopifyHandler.ListOrders)
+				r.Get("/orders/{id}", shopifyHandler.GetOrder)
+				r.Post("/orders/{id}/process", shopifyHandler.ProcessOrder)
+				r.Post("/products/{productId}/link", shopifyHandler.LinkProduct)
+				r.Delete("/products/{productId}/link", shopifyHandler.UnlinkProduct)
+			})
+		}
+
+		// Timeline (Gantt View)
+		if services.Timeline != nil {
+			timelineHandler := NewTimelineHandler(services.Timeline)
+			r.Route("/timeline", func(r chi.Router) {
+				r.Get("/", timelineHandler.GetTimeline)
+				r.Get("/orders/{id}", timelineHandler.GetOrderTimeline)
+				r.Get("/projects/{id}", timelineHandler.GetProjectTimeline)
 			})
 		}
 	})

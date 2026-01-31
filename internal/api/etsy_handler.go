@@ -17,14 +17,15 @@ import (
 
 // EtsyHandler handles Etsy integration endpoints.
 type EtsyHandler struct {
-	service     *service.EtsyService
-	templateSvc *service.TemplateService
+	service       *service.EtsyService
+	templateSvc   *service.TemplateService
+	orderSvc      *service.OrderService
 	webhookSecret string
 }
 
 // NewEtsyHandler creates a new EtsyHandler.
-func NewEtsyHandler(svc *service.EtsyService) *EtsyHandler {
-	return &EtsyHandler{service: svc}
+func NewEtsyHandler(svc *service.EtsyService, orderSvc *service.OrderService) *EtsyHandler {
+	return &EtsyHandler{service: svc, orderSvc: orderSvc}
 }
 
 // SetTemplateSvc sets the template service for receipt processing.
@@ -229,7 +230,7 @@ func (h *EtsyHandler) ProcessReceipt(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	project, err := h.service.ProcessReceipt(r.Context(), id, h.templateSvc)
+	order, err := h.service.ProcessReceipt(r.Context(), id, h.templateSvc, h.orderSvc)
 	if err != nil {
 		slog.Error("failed to process receipt", "error", err)
 		respondError(w, http.StatusBadRequest, err.Error())
@@ -237,7 +238,7 @@ func (h *EtsyHandler) ProcessReceipt(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"project": project,
+		"order": order,
 	})
 }
 

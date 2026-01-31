@@ -1031,3 +1031,154 @@ export interface AutoDispatchSettings {
   updated_at?: string
 }
 
+// ============================================
+// Alerts (Phase 1)
+// ============================================
+
+export type AlertType = 'low_spool' | 'empty_spool' | 'order_due' | 'job_failed'
+export type AlertSeverity = 'info' | 'warning' | 'critical'
+
+export interface Alert {
+  id: string
+  type: AlertType
+  severity: AlertSeverity
+  entity_id: string
+  entity_type: string
+  message: string
+  created_at: string
+  dismissed_until?: string
+}
+
+export interface AlertCounts {
+  info: number
+  warning: number
+  critical: number
+}
+
+// ============================================
+// Unified Orders (Phase 2)
+// ============================================
+
+export type OrderStatus = 'pending' | 'in_progress' | 'completed' | 'shipped' | 'cancelled'
+export type OrderSource = 'manual' | 'etsy' | 'squarespace' | 'shopify'
+
+export interface Order {
+  id: string
+  source: OrderSource
+  source_order_id?: string
+  customer_name: string
+  customer_email?: string
+  status: OrderStatus
+  priority: number
+  due_date?: string
+  notes?: string
+  created_at: string
+  updated_at: string
+  completed_at?: string
+  shipped_at?: string
+  items?: OrderItem[]
+  projects?: Project[]
+  events?: OrderEvent[]
+}
+
+export interface OrderItem {
+  id: string
+  order_id: string
+  template_id?: string
+  sku?: string
+  quantity: number
+  notes?: string
+  created_at: string
+}
+
+export interface OrderEvent {
+  id: string
+  order_id: string
+  event_type: string
+  message?: string
+  created_at: string
+}
+
+export interface OrderProgress {
+  order_id: string
+  total_items: number
+  completed_items: number
+  total_jobs: number
+  completed_jobs: number
+  progress_percent: number
+}
+
+export interface OrderCounts {
+  pending: number
+  in_progress: number
+  completed: number
+  shipped: number
+  cancelled: number
+}
+
+// ============================================
+// Shopify Integration (Phase 3)
+// ============================================
+
+export interface ShopifyIntegrationStatus {
+  connected: boolean
+  shop_domain?: string
+  last_sync_at?: string
+  order_count?: number
+}
+
+export interface ShopifyOrder {
+  id: string
+  shopify_order_id: string
+  order_id?: string
+  shop_domain: string
+  order_number: string
+  customer_name: string
+  customer_email: string
+  total_cents: number
+  status: string
+  synced_at: string
+  created_at: string
+  updated_at: string
+  items?: ShopifyOrderItem[]
+}
+
+export interface ShopifyOrderItem {
+  id: string
+  shopify_order_id: string
+  shopify_line_item_id: string
+  sku: string
+  title: string
+  quantity: number
+  price_cents: number
+  created_at: string
+}
+
+// ============================================
+// Timeline / Gantt View (Phase 4)
+// ============================================
+
+export interface TimelineItem {
+  id: string
+  type: 'order' | 'project' | 'job'
+  name: string
+  status: string
+  start_date?: string
+  due_date?: string
+  end_date?: string
+  progress: number
+  parent_id?: string
+  children?: TimelineItem[]
+}
+
+// ============================================
+// Tags (Phase 5)
+// ============================================
+
+export interface Tag {
+  id: string
+  name: string
+  color: string
+  created_at: string
+}
+

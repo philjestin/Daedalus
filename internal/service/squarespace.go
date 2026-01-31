@@ -296,8 +296,64 @@ func (s *SquarespaceService) GetOrder(ctx context.Context, id uuid.UUID) (*model
 	return order, nil
 }
 
-// ProcessOrder creates a project from a Squarespace order.
-func (s *SquarespaceService) ProcessOrder(ctx context.Context, orderID uuid.UUID) (*model.Project, error) {
+// ProcessOrder creates a unified Order from a Squarespace order.
+func (s *SquarespaceService) ProcessOrder(ctx context.Context, sqOrderID uuid.UUID, orderSvc *OrderService) (*model.Order, error) {
+	sqOrder, err := s.GetOrder(ctx, sqOrderID)
+	if err != nil {
+		return nil, fmt.Errorf("getting order: %w", err)
+	}
+	if sqOrder == nil {
+		return nil, fmt.Errorf("order not found")
+	}
+	if sqOrder.IsProcessed {
+		return nil, fmt.Errorf("order already processed")
+	}
+
+	// Build order items from Squarespace order items
+	var orderItems []model.OrderItem
+	for _, item := range sqOrder.Items {
+		orderItem := model.OrderItem{
+			SKU:      item.SKU,
+			Quantity: item.Quantity,
+		}
+
+		// Look up template by SKU
+		if item.SKU != "" {
+			links, err := s.repo.GetProductTemplatesBySKU(ctx, item.SKU)
+			if err != nil {
+				slog.Warn("failed to lookup template by SKU", "sku", item.SKU, "error", err)
+			} else if len(links) > 0 {
+				orderItem.TemplateID = &links[0].TemplateID
+			}
+		}
+
+		orderItems = append(orderItems, orderItem)
+	}
+
+	// Create unified order
+	order, err := orderSvc.CreateFromExternalOrder(
+		ctx,
+		model.OrderSourceSquarespace,
+		sqOrder.SquarespaceOrderID,
+		sqOrder.CustomerName,
+		sqOrder.CustomerEmail,
+		orderItems,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("creating unified order: %w", err)
+	}
+
+	// Mark Squarespace order as processed
+	if err := s.repo.UpdateOrderProcessed(ctx, sqOrder.ID, nil); err != nil {
+		return nil, fmt.Errorf("marking order processed: %w", err)
+	}
+
+	slog.Info("Squarespace order processed to unified order", "sq_order_id", sqOrder.ID, "order_id", order.ID)
+	return order, nil
+}
+
+// ProcessOrderLegacy creates a project directly from a Squarespace order (kept for backward compatibility).
+func (s *SquarespaceService) ProcessOrderLegacy(ctx context.Context, orderID uuid.UUID) (*model.Project, error) {
 	order, err := s.GetOrder(ctx, orderID)
 	if err != nil {
 		return nil, fmt.Errorf("getting order: %w", err)

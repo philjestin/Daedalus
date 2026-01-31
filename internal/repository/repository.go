@@ -40,6 +40,11 @@ type Repositories struct {
 	ProjectSupplies      *ProjectSupplyRepository
 	Dispatch             *DispatchRepository
 	AutoDispatchSettings *AutoDispatchSettingsRepository
+	// New repositories for feature gaps
+	Orders          *OrderRepository
+	Tags            *TagRepository
+	AlertDismissals *AlertDismissalRepository
+	Shopify         *ShopifyRepository
 }
 
 // WithTransaction executes a function within a database transaction.
@@ -84,6 +89,11 @@ func NewRepositories(db *sql.DB) *Repositories {
 		ProjectSupplies:      &ProjectSupplyRepository{db: db},
 		Dispatch:             &DispatchRepository{db: db},
 		AutoDispatchSettings: &AutoDispatchSettingsRepository{db: db},
+		// New repositories for feature gaps
+		Orders:          &OrderRepository{db: db},
+		Tags:            &TagRepository{db: db},
+		AlertDismissals: &AlertDismissalRepository{db: db},
+		Shopify:         &ShopifyRepository{db: db},
 	}
 }
 
@@ -129,9 +139,9 @@ func (r *ProjectRepository) Create(ctx context.Context, p *model.Project) error 
 	tagsJSON := marshalStringArray(p.Tags)
 
 	_, err := r.db.ExecContext(ctx, `
-		INSERT INTO projects (id, name, description, target_date, tags, template_id, source, external_order_id, customer_notes, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, p.ID, p.Name, p.Description, p.TargetDate, tagsJSON, p.TemplateID, p.Source, p.ExternalOrderID, p.CustomerNotes, p.CreatedAt, p.UpdatedAt)
+		INSERT INTO projects (id, name, description, target_date, tags, template_id, source, external_order_id, customer_notes, order_id, order_item_id, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, p.ID, p.Name, p.Description, p.TargetDate, tagsJSON, p.TemplateID, p.Source, p.ExternalOrderID, p.CustomerNotes, p.OrderID, p.OrderItemID, p.CreatedAt, p.UpdatedAt)
 	return err
 }
 
@@ -140,9 +150,9 @@ func (r *ProjectRepository) GetByID(ctx context.Context, id uuid.UUID) (*model.P
 	var p model.Project
 	var tagsJSON []byte
 	err := scanRow(r.db.QueryRowContext(ctx, `
-		SELECT id, name, description, target_date, tags, template_id, source, external_order_id, customer_notes, created_at, updated_at
+		SELECT id, name, description, target_date, tags, template_id, source, external_order_id, customer_notes, order_id, order_item_id, created_at, updated_at
 		FROM projects WHERE id = ?
-	`, id), &p.ID, &p.Name, &p.Description, &p.TargetDate, &tagsJSON, &p.TemplateID, &p.Source, &p.ExternalOrderID, &p.CustomerNotes, &p.CreatedAt, &p.UpdatedAt)
+	`, id), &p.ID, &p.Name, &p.Description, &p.TargetDate, &tagsJSON, &p.TemplateID, &p.Source, &p.ExternalOrderID, &p.CustomerNotes, &p.OrderID, &p.OrderItemID, &p.CreatedAt, &p.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -153,7 +163,7 @@ func (r *ProjectRepository) GetByID(ctx context.Context, id uuid.UUID) (*model.P
 // List retrieves all projects.
 func (r *ProjectRepository) List(ctx context.Context) ([]model.Project, error) {
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT id, name, description, target_date, tags, template_id, source, external_order_id, customer_notes, created_at, updated_at
+		SELECT id, name, description, target_date, tags, template_id, source, external_order_id, customer_notes, order_id, order_item_id, created_at, updated_at
 		FROM projects ORDER BY updated_at DESC
 	`)
 	if err != nil {
@@ -165,7 +175,7 @@ func (r *ProjectRepository) List(ctx context.Context) ([]model.Project, error) {
 	for rows.Next() {
 		var p model.Project
 		var tagsJSON []byte
-		if err := scanRow(rows, &p.ID, &p.Name, &p.Description, &p.TargetDate, &tagsJSON, &p.TemplateID, &p.Source, &p.ExternalOrderID, &p.CustomerNotes, &p.CreatedAt, &p.UpdatedAt); err != nil {
+		if err := scanRow(rows, &p.ID, &p.Name, &p.Description, &p.TargetDate, &tagsJSON, &p.TemplateID, &p.Source, &p.ExternalOrderID, &p.CustomerNotes, &p.OrderID, &p.OrderItemID, &p.CreatedAt, &p.UpdatedAt); err != nil {
 			return nil, err
 		}
 		p.Tags = unmarshalStringArray(tagsJSON)
@@ -180,9 +190,9 @@ func (r *ProjectRepository) Update(ctx context.Context, p *model.Project) error 
 	tagsJSON := marshalStringArray(p.Tags)
 
 	_, err := r.db.ExecContext(ctx, `
-		UPDATE projects SET name = ?, description = ?, target_date = ?, tags = ?, template_id = ?, source = ?, external_order_id = ?, customer_notes = ?, updated_at = ?
+		UPDATE projects SET name = ?, description = ?, target_date = ?, tags = ?, template_id = ?, source = ?, external_order_id = ?, customer_notes = ?, order_id = ?, order_item_id = ?, updated_at = ?
 		WHERE id = ?
-	`, p.Name, p.Description, p.TargetDate, tagsJSON, p.TemplateID, p.Source, p.ExternalOrderID, p.CustomerNotes, p.UpdatedAt, p.ID)
+	`, p.Name, p.Description, p.TargetDate, tagsJSON, p.TemplateID, p.Source, p.ExternalOrderID, p.CustomerNotes, p.OrderID, p.OrderItemID, p.UpdatedAt, p.ID)
 	return err
 }
 
@@ -195,7 +205,7 @@ func (r *ProjectRepository) Delete(ctx context.Context, id uuid.UUID) error {
 // ListByTemplateID retrieves all projects created from a given template.
 func (r *ProjectRepository) ListByTemplateID(ctx context.Context, templateID uuid.UUID) ([]model.Project, error) {
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT id, name, description, target_date, tags, template_id, source, external_order_id, customer_notes, created_at, updated_at
+		SELECT id, name, description, target_date, tags, template_id, source, external_order_id, customer_notes, order_id, order_item_id, created_at, updated_at
 		FROM projects WHERE template_id = ? ORDER BY created_at DESC
 	`, templateID)
 	if err != nil {
@@ -207,7 +217,31 @@ func (r *ProjectRepository) ListByTemplateID(ctx context.Context, templateID uui
 	for rows.Next() {
 		var p model.Project
 		var tagsJSON []byte
-		if err := scanRow(rows, &p.ID, &p.Name, &p.Description, &p.TargetDate, &tagsJSON, &p.TemplateID, &p.Source, &p.ExternalOrderID, &p.CustomerNotes, &p.CreatedAt, &p.UpdatedAt); err != nil {
+		if err := scanRow(rows, &p.ID, &p.Name, &p.Description, &p.TargetDate, &tagsJSON, &p.TemplateID, &p.Source, &p.ExternalOrderID, &p.CustomerNotes, &p.OrderID, &p.OrderItemID, &p.CreatedAt, &p.UpdatedAt); err != nil {
+			return nil, err
+		}
+		p.Tags = unmarshalStringArray(tagsJSON)
+		projects = append(projects, p)
+	}
+	return projects, rows.Err()
+}
+
+// ListByOrderID retrieves all projects linked to an order.
+func (r *ProjectRepository) ListByOrderID(ctx context.Context, orderID uuid.UUID) ([]model.Project, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT id, name, description, target_date, tags, template_id, source, external_order_id, customer_notes, order_id, order_item_id, created_at, updated_at
+		FROM projects WHERE order_id = ? ORDER BY created_at DESC
+	`, orderID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var projects []model.Project
+	for rows.Next() {
+		var p model.Project
+		var tagsJSON []byte
+		if err := scanRow(rows, &p.ID, &p.Name, &p.Description, &p.TargetDate, &tagsJSON, &p.TemplateID, &p.Source, &p.ExternalOrderID, &p.CustomerNotes, &p.OrderID, &p.OrderItemID, &p.CreatedAt, &p.UpdatedAt); err != nil {
 			return nil, err
 		}
 		p.Tags = unmarshalStringArray(tagsJSON)
@@ -599,9 +633,9 @@ func (r *MaterialRepository) GetByID(ctx context.Context, id uuid.UUID) (*model.
 	var m model.Material
 	var printTempJSON, bedTempJSON []byte
 	err := scanRow(r.db.QueryRowContext(ctx, `
-		SELECT id, name, type, manufacturer, color, color_hex, density, cost_per_kg, print_temp, bed_temp, notes, created_at, updated_at
+		SELECT id, name, type, manufacturer, color, color_hex, density, cost_per_kg, print_temp, bed_temp, notes, low_threshold_grams, created_at, updated_at
 		FROM materials WHERE id = ?
-	`, id), &m.ID, &m.Name, &m.Type, &m.Manufacturer, &m.Color, &m.ColorHex, &m.Density, &m.CostPerKg, &printTempJSON, &bedTempJSON, &m.Notes, &m.CreatedAt, &m.UpdatedAt)
+	`, id), &m.ID, &m.Name, &m.Type, &m.Manufacturer, &m.Color, &m.ColorHex, &m.Density, &m.CostPerKg, &printTempJSON, &bedTempJSON, &m.Notes, &m.LowThresholdGrams, &m.CreatedAt, &m.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -620,7 +654,7 @@ func (r *MaterialRepository) GetByID(ctx context.Context, id uuid.UUID) (*model.
 // List retrieves all materials.
 func (r *MaterialRepository) List(ctx context.Context) ([]model.Material, error) {
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT id, name, type, manufacturer, color, color_hex, density, cost_per_kg, print_temp, bed_temp, notes, created_at, updated_at
+		SELECT id, name, type, manufacturer, color, color_hex, density, cost_per_kg, print_temp, bed_temp, notes, low_threshold_grams, created_at, updated_at
 		FROM materials ORDER BY name ASC
 	`)
 	if err != nil {
@@ -632,7 +666,7 @@ func (r *MaterialRepository) List(ctx context.Context) ([]model.Material, error)
 	for rows.Next() {
 		var m model.Material
 		var printTempJSON, bedTempJSON []byte
-		if err := scanRow(rows, &m.ID, &m.Name, &m.Type, &m.Manufacturer, &m.Color, &m.ColorHex, &m.Density, &m.CostPerKg, &printTempJSON, &bedTempJSON, &m.Notes, &m.CreatedAt, &m.UpdatedAt); err != nil {
+		if err := scanRow(rows, &m.ID, &m.Name, &m.Type, &m.Manufacturer, &m.Color, &m.ColorHex, &m.Density, &m.CostPerKg, &printTempJSON, &bedTempJSON, &m.Notes, &m.LowThresholdGrams, &m.CreatedAt, &m.UpdatedAt); err != nil {
 			return nil, err
 		}
 		if printTempJSON != nil {
@@ -674,16 +708,29 @@ func (r *MaterialRepository) Delete(ctx context.Context, id uuid.UUID) error {
 	return tx.Commit()
 }
 
+// Update updates an existing material.
+func (r *MaterialRepository) Update(ctx context.Context, m *model.Material) error {
+	printTempJSON, _ := json.Marshal(m.PrintTemp)
+	bedTempJSON, _ := json.Marshal(m.BedTemp)
+	m.UpdatedAt = time.Now()
+	_, err := r.db.ExecContext(ctx, `
+		UPDATE materials SET name = ?, type = ?, manufacturer = ?, color = ?, color_hex = ?, density = ?,
+			cost_per_kg = ?, print_temp = ?, bed_temp = ?, notes = ?, low_threshold_grams = ?, updated_at = ?
+		WHERE id = ?
+	`, m.Name, m.Type, m.Manufacturer, m.Color, m.ColorHex, m.Density, m.CostPerKg, printTempJSON, bedTempJSON, m.Notes, m.LowThresholdGrams, m.UpdatedAt, m.ID)
+	return err
+}
+
 // FindByTypeManufacturerColor finds a material matching the given type, manufacturer, and color.
 // Returns nil if no match is found.
 func (r *MaterialRepository) FindByTypeManufacturerColor(ctx context.Context, matType model.MaterialType, manufacturer, color string) (*model.Material, error) {
 	var m model.Material
 	var printTempJSON, bedTempJSON []byte
 	err := scanRow(r.db.QueryRowContext(ctx, `
-		SELECT id, name, type, manufacturer, color, color_hex, density, cost_per_kg, print_temp, bed_temp, notes, created_at, updated_at
+		SELECT id, name, type, manufacturer, color, color_hex, density, cost_per_kg, print_temp, bed_temp, notes, low_threshold_grams, created_at, updated_at
 		FROM materials WHERE LOWER(type) = LOWER(?) AND LOWER(manufacturer) = LOWER(?) AND LOWER(color) = LOWER(?)
 		LIMIT 1
-	`, matType, manufacturer, color), &m.ID, &m.Name, &m.Type, &m.Manufacturer, &m.Color, &m.ColorHex, &m.Density, &m.CostPerKg, &printTempJSON, &bedTempJSON, &m.Notes, &m.CreatedAt, &m.UpdatedAt)
+	`, matType, manufacturer, color), &m.ID, &m.Name, &m.Type, &m.Manufacturer, &m.Color, &m.ColorHex, &m.Density, &m.CostPerKg, &printTempJSON, &bedTempJSON, &m.Notes, &m.LowThresholdGrams, &m.CreatedAt, &m.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -705,10 +752,10 @@ func (r *MaterialRepository) FindByTypeAndName(ctx context.Context, matType mode
 	var m model.Material
 	var printTempJSON, bedTempJSON []byte
 	err := scanRow(r.db.QueryRowContext(ctx, `
-		SELECT id, name, type, manufacturer, color, color_hex, density, cost_per_kg, print_temp, bed_temp, notes, created_at, updated_at
+		SELECT id, name, type, manufacturer, color, color_hex, density, cost_per_kg, print_temp, bed_temp, notes, low_threshold_grams, created_at, updated_at
 		FROM materials WHERE LOWER(type) = LOWER(?) AND LOWER(name) = LOWER(?)
 		LIMIT 1
-	`, matType, name), &m.ID, &m.Name, &m.Type, &m.Manufacturer, &m.Color, &m.ColorHex, &m.Density, &m.CostPerKg, &printTempJSON, &bedTempJSON, &m.Notes, &m.CreatedAt, &m.UpdatedAt)
+	`, matType, name), &m.ID, &m.Name, &m.Type, &m.Manufacturer, &m.Color, &m.ColorHex, &m.Density, &m.CostPerKg, &printTempJSON, &bedTempJSON, &m.Notes, &m.LowThresholdGrams, &m.CreatedAt, &m.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -727,7 +774,7 @@ func (r *MaterialRepository) FindByTypeAndName(ctx context.Context, matType mode
 // ListByType retrieves all materials of a given type, ordered by name.
 func (r *MaterialRepository) ListByType(ctx context.Context, matType model.MaterialType) ([]model.Material, error) {
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT id, name, type, manufacturer, color, color_hex, density, cost_per_kg, print_temp, bed_temp, notes, created_at, updated_at
+		SELECT id, name, type, manufacturer, color, color_hex, density, cost_per_kg, print_temp, bed_temp, notes, low_threshold_grams, created_at, updated_at
 		FROM materials WHERE LOWER(type) = LOWER(?) ORDER BY name ASC
 	`, matType)
 	if err != nil {
@@ -739,7 +786,7 @@ func (r *MaterialRepository) ListByType(ctx context.Context, matType model.Mater
 	for rows.Next() {
 		var m model.Material
 		var printTempJSON, bedTempJSON []byte
-		if err := scanRow(rows, &m.ID, &m.Name, &m.Type, &m.Manufacturer, &m.Color, &m.ColorHex, &m.Density, &m.CostPerKg, &printTempJSON, &bedTempJSON, &m.Notes, &m.CreatedAt, &m.UpdatedAt); err != nil {
+		if err := scanRow(rows, &m.ID, &m.Name, &m.Type, &m.Manufacturer, &m.Color, &m.ColorHex, &m.Density, &m.CostPerKg, &printTempJSON, &bedTempJSON, &m.Notes, &m.LowThresholdGrams, &m.CreatedAt, &m.UpdatedAt); err != nil {
 			return nil, err
 		}
 		if printTempJSON != nil {

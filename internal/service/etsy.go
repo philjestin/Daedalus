@@ -404,8 +404,64 @@ func (s *EtsyService) GetReceipt(ctx context.Context, id uuid.UUID) (*model.Etsy
 	return receipt, nil
 }
 
-// ProcessReceipt matches a receipt to templates and creates a project.
-func (s *EtsyService) ProcessReceipt(ctx context.Context, id uuid.UUID, templateSvc *TemplateService) (*model.Project, error) {
+// ProcessReceipt matches a receipt to templates and creates a unified order.
+func (s *EtsyService) ProcessReceipt(ctx context.Context, id uuid.UUID, templateSvc *TemplateService, orderSvc *OrderService) (*model.Order, error) {
+	receipt, err := s.GetReceipt(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if receipt == nil {
+		return nil, fmt.Errorf("receipt not found")
+	}
+	if receipt.IsProcessed {
+		return nil, fmt.Errorf("receipt already processed")
+	}
+
+	// Build order items from receipt items
+	var orderItems []model.OrderItem
+	for _, item := range receipt.Items {
+		orderItem := model.OrderItem{
+			SKU:      item.SKU,
+			Quantity: item.Quantity,
+		}
+
+		// Try to match to template by SKU
+		if item.SKU != "" {
+			template, err := templateSvc.GetBySKU(ctx, item.SKU)
+			if err != nil {
+				slog.Warn("error looking up template by SKU", "sku", item.SKU, "error", err)
+			} else if template != nil {
+				orderItem.TemplateID = &template.ID
+			}
+		}
+
+		orderItems = append(orderItems, orderItem)
+	}
+
+	// Create unified order
+	order, err := orderSvc.CreateFromExternalOrder(
+		ctx,
+		model.OrderSourceEtsy,
+		fmt.Sprintf("%d", receipt.EtsyReceiptID),
+		receipt.Name,
+		receipt.BuyerEmail,
+		orderItems,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("creating unified order: %w", err)
+	}
+
+	// Mark receipt as processed and link to order
+	if err := s.repo.UpdateReceiptProcessed(ctx, id, nil); err != nil {
+		slog.Warn("failed to mark receipt as processed", "receipt_id", id, "error", err)
+	}
+
+	slog.Info("processed Etsy receipt to unified order", "receipt_id", receipt.EtsyReceiptID, "order_id", order.ID)
+	return order, nil
+}
+
+// ProcessReceiptLegacy is the old method that creates a project directly (kept for backward compatibility).
+func (s *EtsyService) ProcessReceiptLegacy(ctx context.Context, id uuid.UUID, templateSvc *TemplateService) (*model.Project, error) {
 	receipt, err := s.GetReceipt(ctx, id)
 	if err != nil {
 		return nil, err
