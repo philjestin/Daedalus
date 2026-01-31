@@ -7,21 +7,70 @@ import (
 	"github.com/google/uuid"
 )
 
-// Project represents a maker project/product that tracks lifetime performance.
+// Project represents a product in the catalog that tracks lifetime performance.
+// Projects now serve as both the product catalog and the blueprint for tasks.
 type Project struct {
 	ID              uuid.UUID  `json:"id"`
 	Name            string     `json:"name"`
 	Description     string     `json:"description"`
 	TargetDate      *time.Time `json:"target_date,omitempty"`
 	Tags            []string   `json:"tags"`
-	TemplateID      *uuid.UUID `json:"template_id,omitempty"`
+	TemplateID      *uuid.UUID `json:"template_id,omitempty"` // Legacy: kept for migration
 	Source          string     `json:"source"`
 	ExternalOrderID string     `json:"external_order_id,omitempty"`
 	CustomerNotes   string     `json:"customer_notes,omitempty"`
-	OrderID         *uuid.UUID `json:"order_id,omitempty"`
-	OrderItemID     *uuid.UUID `json:"order_item_id,omitempty"`
-	CreatedAt       time.Time  `json:"created_at"`
-	UpdatedAt       time.Time  `json:"updated_at"`
+	// Template-like fields for product catalog
+	SKU               string                 `json:"sku,omitempty"`
+	PriceCents        *int                   `json:"price_cents,omitempty"`
+	PrinterType       string                 `json:"printer_type,omitempty"`
+	AllowedPrinterIDs []uuid.UUID            `json:"allowed_printer_ids,omitempty"`
+	DefaultSettings   map[string]interface{} `json:"default_settings,omitempty"`
+	Notes             string                 `json:"notes,omitempty"`
+	CreatedAt         time.Time              `json:"created_at"`
+	UpdatedAt         time.Time              `json:"updated_at"`
+	// Aggregated stats from tasks (computed, not stored)
+	TotalTasks     int `json:"total_tasks,omitempty"`
+	CompletedTasks int `json:"completed_tasks,omitempty"`
+}
+
+// TaskStatus represents the status of a task.
+type TaskStatus string
+
+const (
+	TaskStatusPending    TaskStatus = "pending"
+	TaskStatusInProgress TaskStatus = "in_progress"
+	TaskStatusCompleted  TaskStatus = "completed"
+	TaskStatusCancelled  TaskStatus = "cancelled"
+)
+
+// Task represents a work instance created when processing an order.
+// Tasks are created from Projects (the product catalog) and contain PrintJobs.
+type Task struct {
+	ID          uuid.UUID  `json:"id"`
+	ProjectID   uuid.UUID  `json:"project_id"`
+	OrderID     *uuid.UUID `json:"order_id,omitempty"`
+	OrderItemID *uuid.UUID `json:"order_item_id,omitempty"`
+	Name        string     `json:"name"`
+	Status      TaskStatus `json:"status"`
+	Quantity    int        `json:"quantity"`
+	Notes       string     `json:"notes,omitempty"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
+	StartedAt   *time.Time `json:"started_at,omitempty"`
+	CompletedAt *time.Time `json:"completed_at,omitempty"`
+	// Loaded relations
+	Project  *Project   `json:"project,omitempty"`
+	Jobs     []PrintJob `json:"jobs,omitempty"`
+	Progress float64    `json:"progress,omitempty"`
+}
+
+// TaskFilters defines filter options for listing tasks.
+type TaskFilters struct {
+	ProjectID *uuid.UUID  `json:"project_id,omitempty"`
+	OrderID   *uuid.UUID  `json:"order_id,omitempty"`
+	Status    *TaskStatus `json:"status,omitempty"`
+	Limit     int         `json:"limit,omitempty"`
+	Offset    int         `json:"offset,omitempty"`
 }
 
 // ProjectSummary is a derived analytics object for a project.
@@ -609,6 +658,7 @@ type PrintJob struct {
 	PrinterID       *uuid.UUID `json:"printer_id,omitempty"`
 	MaterialSpoolID *uuid.UUID `json:"material_spool_id,omitempty"`
 	ProjectID       *uuid.UUID `json:"project_id,omitempty"`
+	TaskID          *uuid.UUID `json:"task_id,omitempty"` // Link to task (work instance)
 	Notes           string     `json:"notes"`
 	CreatedAt       time.Time  `json:"created_at"`
 
@@ -1131,21 +1181,21 @@ const (
 
 // Order represents a unified order from any source.
 type Order struct {
-	ID            uuid.UUID   `json:"id"`
-	Source        OrderSource `json:"source"`
-	SourceOrderID string      `json:"source_order_id,omitempty"`
-	CustomerName  string      `json:"customer_name"`
-	CustomerEmail string      `json:"customer_email,omitempty"`
-	Status        OrderStatus `json:"status"`
-	Priority      int         `json:"priority"`
-	DueDate       *time.Time  `json:"due_date,omitempty"`
-	Notes         string      `json:"notes,omitempty"`
-	CreatedAt     time.Time   `json:"created_at"`
-	UpdatedAt     time.Time   `json:"updated_at"`
-	CompletedAt   *time.Time  `json:"completed_at,omitempty"`
-	ShippedAt     *time.Time  `json:"shipped_at,omitempty"`
-	Items         []OrderItem `json:"items,omitempty"`
-	Projects      []Project   `json:"projects,omitempty"`
+	ID            uuid.UUID    `json:"id"`
+	Source        OrderSource  `json:"source"`
+	SourceOrderID string       `json:"source_order_id,omitempty"`
+	CustomerName  string       `json:"customer_name"`
+	CustomerEmail string       `json:"customer_email,omitempty"`
+	Status        OrderStatus  `json:"status"`
+	Priority      int          `json:"priority"`
+	DueDate       *time.Time   `json:"due_date,omitempty"`
+	Notes         string       `json:"notes,omitempty"`
+	CreatedAt     time.Time    `json:"created_at"`
+	UpdatedAt     time.Time    `json:"updated_at"`
+	CompletedAt   *time.Time   `json:"completed_at,omitempty"`
+	ShippedAt     *time.Time   `json:"shipped_at,omitempty"`
+	Items         []OrderItem  `json:"items,omitempty"`
+	Tasks         []Task       `json:"tasks,omitempty"`
 	Events        []OrderEvent `json:"events,omitempty"`
 }
 
@@ -1153,7 +1203,8 @@ type Order struct {
 type OrderItem struct {
 	ID         uuid.UUID  `json:"id"`
 	OrderID    uuid.UUID  `json:"order_id"`
-	TemplateID *uuid.UUID `json:"template_id,omitempty"`
+	TemplateID *uuid.UUID `json:"template_id,omitempty"` // Legacy: kept for migration
+	ProjectID  *uuid.UUID `json:"project_id,omitempty"`  // Link to project (product catalog)
 	SKU        string     `json:"sku,omitempty"`
 	Quantity   int        `json:"quantity"`
 	Notes      string     `json:"notes,omitempty"`

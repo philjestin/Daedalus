@@ -45,6 +45,7 @@ type Repositories struct {
 	Tags            *TagRepository
 	AlertDismissals *AlertDismissalRepository
 	Shopify         *ShopifyRepository
+	Tasks           *TaskRepository
 }
 
 // WithTransaction executes a function within a database transaction.
@@ -94,6 +95,7 @@ func NewRepositories(db *sql.DB) *Repositories {
 		Tags:            &TagRepository{db: db},
 		AlertDismissals: &AlertDismissalRepository{db: db},
 		Shopify:         &ShopifyRepository{db: db},
+		Tasks:           &TaskRepository{db: db},
 	}
 }
 
@@ -137,33 +139,44 @@ func (r *ProjectRepository) Create(ctx context.Context, p *model.Project) error 
 	}
 
 	tagsJSON := marshalStringArray(p.Tags)
+	allowedPrinterIDsJSON, _ := json.Marshal(p.AllowedPrinterIDs)
+	defaultSettingsJSON, _ := json.Marshal(p.DefaultSettings)
 
 	_, err := r.db.ExecContext(ctx, `
-		INSERT INTO projects (id, name, description, target_date, tags, template_id, source, external_order_id, customer_notes, order_id, order_item_id, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, p.ID, p.Name, p.Description, p.TargetDate, tagsJSON, p.TemplateID, p.Source, p.ExternalOrderID, p.CustomerNotes, p.OrderID, p.OrderItemID, p.CreatedAt, p.UpdatedAt)
+		INSERT INTO projects (id, name, description, target_date, tags, template_id, source, external_order_id, customer_notes, sku, price_cents, printer_type, allowed_printer_ids, default_settings, notes, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, p.ID, p.Name, p.Description, p.TargetDate, tagsJSON, p.TemplateID, p.Source, p.ExternalOrderID, p.CustomerNotes, p.SKU, p.PriceCents, p.PrinterType, allowedPrinterIDsJSON, defaultSettingsJSON, p.Notes, p.CreatedAt, p.UpdatedAt)
 	return err
 }
 
 // GetByID retrieves a project by ID.
 func (r *ProjectRepository) GetByID(ctx context.Context, id uuid.UUID) (*model.Project, error) {
 	var p model.Project
-	var tagsJSON []byte
+	var tagsJSON, allowedPrinterIDsJSON, defaultSettingsJSON []byte
 	err := scanRow(r.db.QueryRowContext(ctx, `
-		SELECT id, name, description, target_date, tags, template_id, source, external_order_id, customer_notes, order_id, order_item_id, created_at, updated_at
+		SELECT id, name, description, target_date, tags, template_id, source, external_order_id, customer_notes, sku, price_cents, printer_type, allowed_printer_ids, default_settings, notes, created_at, updated_at
 		FROM projects WHERE id = ?
-	`, id), &p.ID, &p.Name, &p.Description, &p.TargetDate, &tagsJSON, &p.TemplateID, &p.Source, &p.ExternalOrderID, &p.CustomerNotes, &p.OrderID, &p.OrderItemID, &p.CreatedAt, &p.UpdatedAt)
+	`, id), &p.ID, &p.Name, &p.Description, &p.TargetDate, &tagsJSON, &p.TemplateID, &p.Source, &p.ExternalOrderID, &p.CustomerNotes, &p.SKU, &p.PriceCents, &p.PrinterType, &allowedPrinterIDsJSON, &defaultSettingsJSON, &p.Notes, &p.CreatedAt, &p.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
+	if err != nil {
+		return nil, err
+	}
 	p.Tags = unmarshalStringArray(tagsJSON)
-	return &p, err
+	if allowedPrinterIDsJSON != nil {
+		json.Unmarshal(allowedPrinterIDsJSON, &p.AllowedPrinterIDs)
+	}
+	if defaultSettingsJSON != nil {
+		json.Unmarshal(defaultSettingsJSON, &p.DefaultSettings)
+	}
+	return &p, nil
 }
 
 // List retrieves all projects.
 func (r *ProjectRepository) List(ctx context.Context) ([]model.Project, error) {
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT id, name, description, target_date, tags, template_id, source, external_order_id, customer_notes, order_id, order_item_id, created_at, updated_at
+		SELECT id, name, description, target_date, tags, template_id, source, external_order_id, customer_notes, sku, price_cents, printer_type, allowed_printer_ids, default_settings, notes, created_at, updated_at
 		FROM projects ORDER BY updated_at DESC
 	`)
 	if err != nil {
@@ -174,11 +187,17 @@ func (r *ProjectRepository) List(ctx context.Context) ([]model.Project, error) {
 	var projects []model.Project
 	for rows.Next() {
 		var p model.Project
-		var tagsJSON []byte
-		if err := scanRow(rows, &p.ID, &p.Name, &p.Description, &p.TargetDate, &tagsJSON, &p.TemplateID, &p.Source, &p.ExternalOrderID, &p.CustomerNotes, &p.OrderID, &p.OrderItemID, &p.CreatedAt, &p.UpdatedAt); err != nil {
+		var tagsJSON, allowedPrinterIDsJSON, defaultSettingsJSON []byte
+		if err := scanRow(rows, &p.ID, &p.Name, &p.Description, &p.TargetDate, &tagsJSON, &p.TemplateID, &p.Source, &p.ExternalOrderID, &p.CustomerNotes, &p.SKU, &p.PriceCents, &p.PrinterType, &allowedPrinterIDsJSON, &defaultSettingsJSON, &p.Notes, &p.CreatedAt, &p.UpdatedAt); err != nil {
 			return nil, err
 		}
 		p.Tags = unmarshalStringArray(tagsJSON)
+		if allowedPrinterIDsJSON != nil {
+			json.Unmarshal(allowedPrinterIDsJSON, &p.AllowedPrinterIDs)
+		}
+		if defaultSettingsJSON != nil {
+			json.Unmarshal(defaultSettingsJSON, &p.DefaultSettings)
+		}
 		projects = append(projects, p)
 	}
 	return projects, rows.Err()
@@ -188,11 +207,13 @@ func (r *ProjectRepository) List(ctx context.Context) ([]model.Project, error) {
 func (r *ProjectRepository) Update(ctx context.Context, p *model.Project) error {
 	p.UpdatedAt = time.Now()
 	tagsJSON := marshalStringArray(p.Tags)
+	allowedPrinterIDsJSON, _ := json.Marshal(p.AllowedPrinterIDs)
+	defaultSettingsJSON, _ := json.Marshal(p.DefaultSettings)
 
 	_, err := r.db.ExecContext(ctx, `
-		UPDATE projects SET name = ?, description = ?, target_date = ?, tags = ?, template_id = ?, source = ?, external_order_id = ?, customer_notes = ?, order_id = ?, order_item_id = ?, updated_at = ?
+		UPDATE projects SET name = ?, description = ?, target_date = ?, tags = ?, template_id = ?, source = ?, external_order_id = ?, customer_notes = ?, sku = ?, price_cents = ?, printer_type = ?, allowed_printer_ids = ?, default_settings = ?, notes = ?, updated_at = ?
 		WHERE id = ?
-	`, p.Name, p.Description, p.TargetDate, tagsJSON, p.TemplateID, p.Source, p.ExternalOrderID, p.CustomerNotes, p.OrderID, p.OrderItemID, p.UpdatedAt, p.ID)
+	`, p.Name, p.Description, p.TargetDate, tagsJSON, p.TemplateID, p.Source, p.ExternalOrderID, p.CustomerNotes, p.SKU, p.PriceCents, p.PrinterType, allowedPrinterIDsJSON, defaultSettingsJSON, p.Notes, p.UpdatedAt, p.ID)
 	return err
 }
 
@@ -202,10 +223,10 @@ func (r *ProjectRepository) Delete(ctx context.Context, id uuid.UUID) error {
 	return err
 }
 
-// ListByTemplateID retrieves all projects created from a given template.
+// ListByTemplateID retrieves all projects created from a given template (legacy).
 func (r *ProjectRepository) ListByTemplateID(ctx context.Context, templateID uuid.UUID) ([]model.Project, error) {
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT id, name, description, target_date, tags, template_id, source, external_order_id, customer_notes, order_id, order_item_id, created_at, updated_at
+		SELECT id, name, description, target_date, tags, template_id, source, external_order_id, customer_notes, sku, price_cents, printer_type, allowed_printer_ids, default_settings, notes, created_at, updated_at
 		FROM projects WHERE template_id = ? ORDER BY created_at DESC
 	`, templateID)
 	if err != nil {
@@ -216,38 +237,44 @@ func (r *ProjectRepository) ListByTemplateID(ctx context.Context, templateID uui
 	var projects []model.Project
 	for rows.Next() {
 		var p model.Project
-		var tagsJSON []byte
-		if err := scanRow(rows, &p.ID, &p.Name, &p.Description, &p.TargetDate, &tagsJSON, &p.TemplateID, &p.Source, &p.ExternalOrderID, &p.CustomerNotes, &p.OrderID, &p.OrderItemID, &p.CreatedAt, &p.UpdatedAt); err != nil {
+		var tagsJSON, allowedPrinterIDsJSON, defaultSettingsJSON []byte
+		if err := scanRow(rows, &p.ID, &p.Name, &p.Description, &p.TargetDate, &tagsJSON, &p.TemplateID, &p.Source, &p.ExternalOrderID, &p.CustomerNotes, &p.SKU, &p.PriceCents, &p.PrinterType, &allowedPrinterIDsJSON, &defaultSettingsJSON, &p.Notes, &p.CreatedAt, &p.UpdatedAt); err != nil {
 			return nil, err
 		}
 		p.Tags = unmarshalStringArray(tagsJSON)
+		if allowedPrinterIDsJSON != nil {
+			json.Unmarshal(allowedPrinterIDsJSON, &p.AllowedPrinterIDs)
+		}
+		if defaultSettingsJSON != nil {
+			json.Unmarshal(defaultSettingsJSON, &p.DefaultSettings)
+		}
 		projects = append(projects, p)
 	}
 	return projects, rows.Err()
 }
 
-// ListByOrderID retrieves all projects linked to an order.
-func (r *ProjectRepository) ListByOrderID(ctx context.Context, orderID uuid.UUID) ([]model.Project, error) {
-	rows, err := r.db.QueryContext(ctx, `
-		SELECT id, name, description, target_date, tags, template_id, source, external_order_id, customer_notes, order_id, order_item_id, created_at, updated_at
-		FROM projects WHERE order_id = ? ORDER BY created_at DESC
-	`, orderID)
+// GetBySKU retrieves a project by SKU.
+func (r *ProjectRepository) GetBySKU(ctx context.Context, sku string) (*model.Project, error) {
+	var p model.Project
+	var tagsJSON, allowedPrinterIDsJSON, defaultSettingsJSON []byte
+	err := scanRow(r.db.QueryRowContext(ctx, `
+		SELECT id, name, description, target_date, tags, template_id, source, external_order_id, customer_notes, sku, price_cents, printer_type, allowed_printer_ids, default_settings, notes, created_at, updated_at
+		FROM projects WHERE sku = ?
+	`, sku), &p.ID, &p.Name, &p.Description, &p.TargetDate, &tagsJSON, &p.TemplateID, &p.Source, &p.ExternalOrderID, &p.CustomerNotes, &p.SKU, &p.PriceCents, &p.PrinterType, &allowedPrinterIDsJSON, &defaultSettingsJSON, &p.Notes, &p.CreatedAt, &p.UpdatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-
-	var projects []model.Project
-	for rows.Next() {
-		var p model.Project
-		var tagsJSON []byte
-		if err := scanRow(rows, &p.ID, &p.Name, &p.Description, &p.TargetDate, &tagsJSON, &p.TemplateID, &p.Source, &p.ExternalOrderID, &p.CustomerNotes, &p.OrderID, &p.OrderItemID, &p.CreatedAt, &p.UpdatedAt); err != nil {
-			return nil, err
-		}
-		p.Tags = unmarshalStringArray(tagsJSON)
-		projects = append(projects, p)
+	p.Tags = unmarshalStringArray(tagsJSON)
+	if allowedPrinterIDsJSON != nil {
+		json.Unmarshal(allowedPrinterIDsJSON, &p.AllowedPrinterIDs)
 	}
-	return projects, rows.Err()
+	if defaultSettingsJSON != nil {
+		json.Unmarshal(defaultSettingsJSON, &p.DefaultSettings)
+	}
+	return &p, nil
 }
 
 // PartRepository handles part database operations.
@@ -323,6 +350,145 @@ func (r *PartRepository) Update(ctx context.Context, p *model.Part) error {
 func (r *PartRepository) Delete(ctx context.Context, id uuid.UUID) error {
 	_, err := r.db.ExecContext(ctx, `DELETE FROM parts WHERE id = ?`, id)
 	return err
+}
+
+// TaskRepository handles task database operations.
+type TaskRepository struct {
+	db *sql.DB
+}
+
+// Create inserts a new task.
+func (r *TaskRepository) Create(ctx context.Context, t *model.Task) error {
+	t.ID = uuid.New()
+	t.CreatedAt = time.Now()
+	t.UpdatedAt = time.Now()
+	if t.Status == "" {
+		t.Status = model.TaskStatusPending
+	}
+	if t.Quantity == 0 {
+		t.Quantity = 1
+	}
+
+	_, err := r.db.ExecContext(ctx, `
+		INSERT INTO tasks (id, project_id, order_id, order_item_id, name, status, quantity, notes, created_at, updated_at, started_at, completed_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, t.ID, t.ProjectID, t.OrderID, t.OrderItemID, t.Name, t.Status, t.Quantity, t.Notes, t.CreatedAt, t.UpdatedAt, t.StartedAt, t.CompletedAt)
+	return err
+}
+
+// GetByID retrieves a task by ID.
+func (r *TaskRepository) GetByID(ctx context.Context, id uuid.UUID) (*model.Task, error) {
+	var t model.Task
+	err := scanRow(r.db.QueryRowContext(ctx, `
+		SELECT id, project_id, order_id, order_item_id, name, status, quantity, notes, created_at, updated_at, started_at, completed_at
+		FROM tasks WHERE id = ?
+	`, id), &t.ID, &t.ProjectID, &t.OrderID, &t.OrderItemID, &t.Name, &t.Status, &t.Quantity, &t.Notes, &t.CreatedAt, &t.UpdatedAt, &t.StartedAt, &t.CompletedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	return &t, err
+}
+
+// List retrieves tasks with optional filters.
+func (r *TaskRepository) List(ctx context.Context, filters model.TaskFilters) ([]model.Task, error) {
+	query := `SELECT id, project_id, order_id, order_item_id, name, status, quantity, notes, created_at, updated_at, started_at, completed_at FROM tasks WHERE 1=1`
+	args := []interface{}{}
+
+	if filters.ProjectID != nil {
+		query += ` AND project_id = ?`
+		args = append(args, *filters.ProjectID)
+	}
+	if filters.OrderID != nil {
+		query += ` AND order_id = ?`
+		args = append(args, *filters.OrderID)
+	}
+	if filters.Status != nil {
+		query += ` AND status = ?`
+		args = append(args, *filters.Status)
+	}
+
+	query += ` ORDER BY created_at DESC`
+
+	if filters.Limit > 0 {
+		query += ` LIMIT ?`
+		args = append(args, filters.Limit)
+	}
+	if filters.Offset > 0 {
+		query += ` OFFSET ?`
+		args = append(args, filters.Offset)
+	}
+
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var tasks []model.Task
+	for rows.Next() {
+		var t model.Task
+		if err := scanRow(rows, &t.ID, &t.ProjectID, &t.OrderID, &t.OrderItemID, &t.Name, &t.Status, &t.Quantity, &t.Notes, &t.CreatedAt, &t.UpdatedAt, &t.StartedAt, &t.CompletedAt); err != nil {
+			return nil, err
+		}
+		tasks = append(tasks, t)
+	}
+	return tasks, rows.Err()
+}
+
+// ListByProject retrieves all tasks for a project.
+func (r *TaskRepository) ListByProject(ctx context.Context, projectID uuid.UUID) ([]model.Task, error) {
+	return r.List(ctx, model.TaskFilters{ProjectID: &projectID})
+}
+
+// ListByOrder retrieves all tasks for an order.
+func (r *TaskRepository) ListByOrder(ctx context.Context, orderID uuid.UUID) ([]model.Task, error) {
+	return r.List(ctx, model.TaskFilters{OrderID: &orderID})
+}
+
+// Update updates a task.
+func (r *TaskRepository) Update(ctx context.Context, t *model.Task) error {
+	t.UpdatedAt = time.Now()
+	_, err := r.db.ExecContext(ctx, `
+		UPDATE tasks SET project_id = ?, order_id = ?, order_item_id = ?, name = ?, status = ?, quantity = ?, notes = ?, updated_at = ?, started_at = ?, completed_at = ?
+		WHERE id = ?
+	`, t.ProjectID, t.OrderID, t.OrderItemID, t.Name, t.Status, t.Quantity, t.Notes, t.UpdatedAt, t.StartedAt, t.CompletedAt, t.ID)
+	return err
+}
+
+// UpdateStatus updates only the task status and related timestamps.
+func (r *TaskRepository) UpdateStatus(ctx context.Context, id uuid.UUID, status model.TaskStatus) error {
+	now := time.Now()
+	var startedAt, completedAt interface{}
+
+	switch status {
+	case model.TaskStatusInProgress:
+		startedAt = now
+	case model.TaskStatusCompleted, model.TaskStatusCancelled:
+		completedAt = now
+	}
+
+	_, err := r.db.ExecContext(ctx, `
+		UPDATE tasks SET status = ?, updated_at = ?,
+			started_at = COALESCE(?, started_at),
+			completed_at = COALESCE(?, completed_at)
+		WHERE id = ?
+	`, status, now, startedAt, completedAt, id)
+	return err
+}
+
+// Delete removes a task.
+func (r *TaskRepository) Delete(ctx context.Context, id uuid.UUID) error {
+	_, err := r.db.ExecContext(ctx, `DELETE FROM tasks WHERE id = ?`, id)
+	return err
+}
+
+// GetProjectTaskStats returns task statistics for a project.
+func (r *TaskRepository) GetProjectTaskStats(ctx context.Context, projectID uuid.UUID) (total int, completed int, err error) {
+	err = r.db.QueryRowContext(ctx, `
+		SELECT COUNT(*), COALESCE(SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END), 0)
+		FROM tasks WHERE project_id = ?
+	`, projectID).Scan(&total, &completed)
+	return
 }
 
 // DesignRepository handles design database operations.
@@ -900,9 +1066,9 @@ func (r *PrintJobRepository) Create(ctx context.Context, j *model.PrintJob) erro
 
 	// Insert the job record
 	_, err := r.db.ExecContext(ctx, `
-		INSERT INTO print_jobs (id, design_id, printer_id, material_spool_id, project_id, status, progress, started_at, completed_at, outcome, notes, created_at, recipe_id, attempt_number, parent_job_id, estimated_seconds, material_snapshot, priority, auto_dispatch_enabled)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, j.ID, j.DesignID, j.PrinterID, j.MaterialSpoolID, j.ProjectID, j.Status, j.Progress, j.StartedAt, j.CompletedAt, outcomeJSON, j.Notes, j.CreatedAt, j.RecipeID, j.AttemptNumber, j.ParentJobID, j.EstimatedSeconds, snapshotJSON, j.Priority, j.AutoDispatchEnabled)
+		INSERT INTO print_jobs (id, design_id, printer_id, material_spool_id, project_id, task_id, status, progress, started_at, completed_at, outcome, notes, created_at, recipe_id, attempt_number, parent_job_id, estimated_seconds, material_snapshot, priority, auto_dispatch_enabled)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, j.ID, j.DesignID, j.PrinterID, j.MaterialSpoolID, j.ProjectID, j.TaskID, j.Status, j.Progress, j.StartedAt, j.CompletedAt, outcomeJSON, j.Notes, j.CreatedAt, j.RecipeID, j.AttemptNumber, j.ParentJobID, j.EstimatedSeconds, snapshotJSON, j.Priority, j.AutoDispatchEnabled)
 	if err != nil {
 		return err
 	}
@@ -918,10 +1084,10 @@ func (r *PrintJobRepository) GetByID(ctx context.Context, id uuid.UUID) (*model.
 	var j model.PrintJob
 	var outcomeJSON, snapshotJSON []byte
 	err := scanRow(r.db.QueryRowContext(ctx, `
-		SELECT id, design_id, printer_id, material_spool_id, project_id, status, progress, started_at, completed_at, outcome, notes, created_at,
+		SELECT id, design_id, printer_id, material_spool_id, project_id, task_id, status, progress, started_at, completed_at, outcome, notes, created_at,
 		       recipe_id, attempt_number, parent_job_id, failure_category, estimated_seconds, actual_seconds, material_used_grams, cost_cents, printer_time_cost_cents, material_cost_cents, material_snapshot, priority, auto_dispatch_enabled
 		FROM print_jobs WHERE id = ?
-	`, id), &j.ID, &j.DesignID, &j.PrinterID, &j.MaterialSpoolID, &j.ProjectID, &j.Status, &j.Progress, &j.StartedAt, &j.CompletedAt, &outcomeJSON, &j.Notes, &j.CreatedAt,
+	`, id), &j.ID, &j.DesignID, &j.PrinterID, &j.MaterialSpoolID, &j.ProjectID, &j.TaskID, &j.Status, &j.Progress, &j.StartedAt, &j.CompletedAt, &outcomeJSON, &j.Notes, &j.CreatedAt,
 		&j.RecipeID, &j.AttemptNumber, &j.ParentJobID, &j.FailureCategory, &j.EstimatedSeconds, &j.ActualSeconds, &j.MaterialUsedGrams, &j.CostCents, &j.PrinterTimeCostCents, &j.MaterialCostCents, &snapshotJSON, &j.Priority, &j.AutoDispatchEnabled)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -966,7 +1132,7 @@ func (r *PrintJobRepository) GetByIDWithEvents(ctx context.Context, id uuid.UUID
 
 // List retrieves print jobs with optional filters.
 func (r *PrintJobRepository) List(ctx context.Context, printerID *uuid.UUID, status *model.PrintJobStatus) ([]model.PrintJob, error) {
-	query := `SELECT pj.id, pj.design_id, pj.printer_id, pj.material_spool_id, pj.project_id, pj.status, pj.progress, pj.started_at, pj.completed_at, pj.outcome, pj.notes, pj.created_at,
+	query := `SELECT pj.id, pj.design_id, pj.printer_id, pj.material_spool_id, pj.project_id, pj.task_id, pj.status, pj.progress, pj.started_at, pj.completed_at, pj.outcome, pj.notes, pj.created_at,
 	                 pj.recipe_id, pj.attempt_number, pj.parent_job_id, pj.failure_category, pj.estimated_seconds, pj.actual_seconds, pj.material_used_grams, pj.cost_cents, pj.printer_time_cost_cents, pj.material_cost_cents, pj.material_snapshot, pj.priority, pj.auto_dispatch_enabled
 	          FROM print_jobs pj WHERE 1=1`
 	args := []interface{}{}
@@ -991,7 +1157,7 @@ func (r *PrintJobRepository) List(ctx context.Context, printerID *uuid.UUID, sta
 	for rows.Next() {
 		var j model.PrintJob
 		var outcomeJSON, snapshotJSON []byte
-		if err := scanRow(rows, &j.ID, &j.DesignID, &j.PrinterID, &j.MaterialSpoolID, &j.ProjectID, &j.Status, &j.Progress, &j.StartedAt, &j.CompletedAt, &outcomeJSON, &j.Notes, &j.CreatedAt,
+		if err := scanRow(rows, &j.ID, &j.DesignID, &j.PrinterID, &j.MaterialSpoolID, &j.ProjectID, &j.TaskID, &j.Status, &j.Progress, &j.StartedAt, &j.CompletedAt, &outcomeJSON, &j.Notes, &j.CreatedAt,
 			&j.RecipeID, &j.AttemptNumber, &j.ParentJobID, &j.FailureCategory, &j.EstimatedSeconds, &j.ActualSeconds, &j.MaterialUsedGrams, &j.CostCents, &j.PrinterTimeCostCents, &j.MaterialCostCents, &snapshotJSON, &j.Priority, &j.AutoDispatchEnabled); err != nil {
 			return nil, err
 		}
@@ -1009,7 +1175,7 @@ func (r *PrintJobRepository) List(ctx context.Context, printerID *uuid.UUID, sta
 // ListByDesign retrieves all print jobs for a design.
 func (r *PrintJobRepository) ListByDesign(ctx context.Context, designID uuid.UUID) ([]model.PrintJob, error) {
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT id, design_id, printer_id, material_spool_id, project_id, status, progress, started_at, completed_at, outcome, notes, created_at,
+		SELECT id, design_id, printer_id, material_spool_id, project_id, task_id, status, progress, started_at, completed_at, outcome, notes, created_at,
 		       recipe_id, attempt_number, parent_job_id, failure_category, estimated_seconds, actual_seconds, material_used_grams, cost_cents, printer_time_cost_cents, material_cost_cents, material_snapshot, priority, auto_dispatch_enabled
 		FROM print_jobs WHERE design_id = ? ORDER BY created_at DESC
 	`, designID)
@@ -1022,7 +1188,7 @@ func (r *PrintJobRepository) ListByDesign(ctx context.Context, designID uuid.UUI
 	for rows.Next() {
 		var j model.PrintJob
 		var outcomeJSON, snapshotJSON []byte
-		if err := scanRow(rows, &j.ID, &j.DesignID, &j.PrinterID, &j.MaterialSpoolID, &j.ProjectID, &j.Status, &j.Progress, &j.StartedAt, &j.CompletedAt, &outcomeJSON, &j.Notes, &j.CreatedAt,
+		if err := scanRow(rows, &j.ID, &j.DesignID, &j.PrinterID, &j.MaterialSpoolID, &j.ProjectID, &j.TaskID, &j.Status, &j.Progress, &j.StartedAt, &j.CompletedAt, &outcomeJSON, &j.Notes, &j.CreatedAt,
 			&j.RecipeID, &j.AttemptNumber, &j.ParentJobID, &j.FailureCategory, &j.EstimatedSeconds, &j.ActualSeconds, &j.MaterialUsedGrams, &j.CostCents, &j.PrinterTimeCostCents, &j.MaterialCostCents, &snapshotJSON, &j.Priority, &j.AutoDispatchEnabled); err != nil {
 			return nil, err
 		}
@@ -1151,11 +1317,11 @@ func (r *PrintJobRepository) GetRetryChain(ctx context.Context, jobID uuid.UUID)
 	// Now get all jobs in the chain
 	rows, err := r.db.QueryContext(ctx, `
 		WITH RECURSIVE chain AS (
-			SELECT id, design_id, printer_id, material_spool_id, project_id, status, progress, started_at, completed_at, outcome, notes, created_at,
+			SELECT id, design_id, printer_id, material_spool_id, project_id, task_id, status, progress, started_at, completed_at, outcome, notes, created_at,
 			       recipe_id, attempt_number, parent_job_id, failure_category, estimated_seconds, actual_seconds, material_used_grams, cost_cents, printer_time_cost_cents, material_cost_cents, material_snapshot, priority, auto_dispatch_enabled
 			FROM print_jobs WHERE id = ?
 			UNION ALL
-			SELECT pj.id, pj.design_id, pj.printer_id, pj.material_spool_id, pj.project_id, pj.status, pj.progress, pj.started_at, pj.completed_at, pj.outcome, pj.notes, pj.created_at,
+			SELECT pj.id, pj.design_id, pj.printer_id, pj.material_spool_id, pj.project_id, pj.task_id, pj.status, pj.progress, pj.started_at, pj.completed_at, pj.outcome, pj.notes, pj.created_at,
 			       pj.recipe_id, pj.attempt_number, pj.parent_job_id, pj.failure_category, pj.estimated_seconds, pj.actual_seconds, pj.material_used_grams, pj.cost_cents, pj.printer_time_cost_cents, pj.material_cost_cents, pj.material_snapshot, pj.priority, pj.auto_dispatch_enabled
 			FROM print_jobs pj INNER JOIN chain c ON pj.parent_job_id = c.id
 		)
@@ -1170,7 +1336,7 @@ func (r *PrintJobRepository) GetRetryChain(ctx context.Context, jobID uuid.UUID)
 	for rows.Next() {
 		var j model.PrintJob
 		var outcomeJSON, snapshotJSON []byte
-		if err := scanRow(rows, &j.ID, &j.DesignID, &j.PrinterID, &j.MaterialSpoolID, &j.ProjectID, &j.Status, &j.Progress, &j.StartedAt, &j.CompletedAt, &outcomeJSON, &j.Notes, &j.CreatedAt,
+		if err := scanRow(rows, &j.ID, &j.DesignID, &j.PrinterID, &j.MaterialSpoolID, &j.ProjectID, &j.TaskID, &j.Status, &j.Progress, &j.StartedAt, &j.CompletedAt, &outcomeJSON, &j.Notes, &j.CreatedAt,
 			&j.RecipeID, &j.AttemptNumber, &j.ParentJobID, &j.FailureCategory, &j.EstimatedSeconds, &j.ActualSeconds, &j.MaterialUsedGrams, &j.CostCents, &j.PrinterTimeCostCents, &j.MaterialCostCents, &snapshotJSON, &j.Priority, &j.AutoDispatchEnabled); err != nil {
 			return nil, err
 		}
@@ -1188,7 +1354,7 @@ func (r *PrintJobRepository) GetRetryChain(ctx context.Context, jobID uuid.UUID)
 // ListByRecipe retrieves all print jobs for a recipe/template.
 func (r *PrintJobRepository) ListByRecipe(ctx context.Context, recipeID uuid.UUID) ([]model.PrintJob, error) {
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT id, design_id, printer_id, material_spool_id, project_id, status, progress, started_at, completed_at, outcome, notes, created_at,
+		SELECT id, design_id, printer_id, material_spool_id, project_id, task_id, status, progress, started_at, completed_at, outcome, notes, created_at,
 		       recipe_id, attempt_number, parent_job_id, failure_category, estimated_seconds, actual_seconds, material_used_grams, cost_cents, printer_time_cost_cents, material_cost_cents, material_snapshot, priority, auto_dispatch_enabled
 		FROM print_jobs WHERE recipe_id = ? ORDER BY created_at DESC
 	`, recipeID)
@@ -1201,7 +1367,7 @@ func (r *PrintJobRepository) ListByRecipe(ctx context.Context, recipeID uuid.UUI
 	for rows.Next() {
 		var j model.PrintJob
 		var outcomeJSON, snapshotJSON []byte
-		if err := scanRow(rows, &j.ID, &j.DesignID, &j.PrinterID, &j.MaterialSpoolID, &j.ProjectID, &j.Status, &j.Progress, &j.StartedAt, &j.CompletedAt, &outcomeJSON, &j.Notes, &j.CreatedAt,
+		if err := scanRow(rows, &j.ID, &j.DesignID, &j.PrinterID, &j.MaterialSpoolID, &j.ProjectID, &j.TaskID, &j.Status, &j.Progress, &j.StartedAt, &j.CompletedAt, &outcomeJSON, &j.Notes, &j.CreatedAt,
 			&j.RecipeID, &j.AttemptNumber, &j.ParentJobID, &j.FailureCategory, &j.EstimatedSeconds, &j.ActualSeconds, &j.MaterialUsedGrams, &j.CostCents, &j.PrinterTimeCostCents, &j.MaterialCostCents, &snapshotJSON, &j.Priority, &j.AutoDispatchEnabled); err != nil {
 			return nil, err
 		}
@@ -1219,7 +1385,7 @@ func (r *PrintJobRepository) ListByRecipe(ctx context.Context, recipeID uuid.UUI
 // ListByProject retrieves all print jobs for a project.
 func (r *PrintJobRepository) ListByProject(ctx context.Context, projectID uuid.UUID) ([]model.PrintJob, error) {
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT id, design_id, printer_id, material_spool_id, project_id, status, progress, started_at, completed_at, outcome, notes, created_at,
+		SELECT id, design_id, printer_id, material_spool_id, project_id, task_id, status, progress, started_at, completed_at, outcome, notes, created_at,
 		       recipe_id, attempt_number, parent_job_id, failure_category, estimated_seconds, actual_seconds, material_used_grams, cost_cents, printer_time_cost_cents, material_cost_cents, material_snapshot, priority, auto_dispatch_enabled
 		FROM print_jobs WHERE project_id = ? ORDER BY created_at DESC
 	`, projectID)
@@ -1232,7 +1398,38 @@ func (r *PrintJobRepository) ListByProject(ctx context.Context, projectID uuid.U
 	for rows.Next() {
 		var j model.PrintJob
 		var outcomeJSON, snapshotJSON []byte
-		if err := scanRow(rows, &j.ID, &j.DesignID, &j.PrinterID, &j.MaterialSpoolID, &j.ProjectID, &j.Status, &j.Progress, &j.StartedAt, &j.CompletedAt, &outcomeJSON, &j.Notes, &j.CreatedAt,
+		if err := scanRow(rows, &j.ID, &j.DesignID, &j.PrinterID, &j.MaterialSpoolID, &j.ProjectID, &j.TaskID, &j.Status, &j.Progress, &j.StartedAt, &j.CompletedAt, &outcomeJSON, &j.Notes, &j.CreatedAt,
+			&j.RecipeID, &j.AttemptNumber, &j.ParentJobID, &j.FailureCategory, &j.EstimatedSeconds, &j.ActualSeconds, &j.MaterialUsedGrams, &j.CostCents, &j.PrinterTimeCostCents, &j.MaterialCostCents, &snapshotJSON, &j.Priority, &j.AutoDispatchEnabled); err != nil {
+			return nil, err
+		}
+		if outcomeJSON != nil {
+			json.Unmarshal(outcomeJSON, &j.Outcome)
+		}
+		if snapshotJSON != nil {
+			json.Unmarshal(snapshotJSON, &j.MaterialSnapshot)
+		}
+		jobs = append(jobs, j)
+	}
+	return jobs, rows.Err()
+}
+
+// ListByTask retrieves all print jobs for a task.
+func (r *PrintJobRepository) ListByTask(ctx context.Context, taskID uuid.UUID) ([]model.PrintJob, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT id, design_id, printer_id, material_spool_id, project_id, task_id, status, progress, started_at, completed_at, outcome, notes, created_at,
+		       recipe_id, attempt_number, parent_job_id, failure_category, estimated_seconds, actual_seconds, material_used_grams, cost_cents, printer_time_cost_cents, material_cost_cents, material_snapshot, priority, auto_dispatch_enabled
+		FROM print_jobs WHERE task_id = ? ORDER BY created_at DESC
+	`, taskID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var jobs []model.PrintJob
+	for rows.Next() {
+		var j model.PrintJob
+		var outcomeJSON, snapshotJSON []byte
+		if err := scanRow(rows, &j.ID, &j.DesignID, &j.PrinterID, &j.MaterialSpoolID, &j.ProjectID, &j.TaskID, &j.Status, &j.Progress, &j.StartedAt, &j.CompletedAt, &outcomeJSON, &j.Notes, &j.CreatedAt,
 			&j.RecipeID, &j.AttemptNumber, &j.ParentJobID, &j.FailureCategory, &j.EstimatedSeconds, &j.ActualSeconds, &j.MaterialUsedGrams, &j.CostCents, &j.PrinterTimeCostCents, &j.MaterialCostCents, &snapshotJSON, &j.Priority, &j.AutoDispatchEnabled); err != nil {
 			return nil, err
 		}

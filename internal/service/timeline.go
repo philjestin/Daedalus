@@ -12,6 +12,7 @@ import (
 // TimelineService handles timeline/Gantt view business logic.
 type TimelineService struct {
 	orderRepo    *repository.OrderRepository
+	taskRepo     *repository.TaskRepository
 	projectRepo  *repository.ProjectRepository
 	printJobRepo *repository.PrintJobRepository
 }
@@ -19,11 +20,13 @@ type TimelineService struct {
 // NewTimelineService creates a new TimelineService.
 func NewTimelineService(
 	orderRepo *repository.OrderRepository,
+	taskRepo *repository.TaskRepository,
 	projectRepo *repository.ProjectRepository,
 	printJobRepo *repository.PrintJobRepository,
 ) *TimelineService {
 	return &TimelineService{
 		orderRepo:    orderRepo,
+		taskRepo:     taskRepo,
 		projectRepo:  projectRepo,
 		printJobRepo: printJobRepo,
 	}
@@ -46,53 +49,53 @@ func (s *TimelineService) GetTimeline(ctx context.Context, startDate, endDate *t
 	for _, order := range orders {
 		item := s.orderToTimelineItem(order)
 
-		// Get projects for this order
-		projects, err := s.projectRepo.ListByOrderID(ctx, order.ID)
+		// Get tasks for this order
+		tasks, err := s.taskRepo.ListByOrder(ctx, order.ID)
 		if err != nil {
 			continue
 		}
 
-		for _, project := range projects {
-			projectItem := s.projectToTimelineItem(project, &order.ID)
+		for _, task := range tasks {
+			taskItem := s.taskToTimelineItem(task, &order.ID)
 
-			// Get jobs for this project
-			jobs, err := s.printJobRepo.ListByProject(ctx, project.ID)
+			// Get jobs for this task
+			jobs, err := s.printJobRepo.ListByTask(ctx, task.ID)
 			if err != nil {
 				continue
 			}
 
 			for _, job := range jobs {
-				jobItem := s.jobToTimelineItem(job, &project.ID)
-				projectItem.Children = append(projectItem.Children, jobItem)
+				jobItem := s.jobToTimelineItem(job, &task.ID)
+				taskItem.Children = append(taskItem.Children, jobItem)
 			}
 
-			item.Children = append(item.Children, projectItem)
+			item.Children = append(item.Children, taskItem)
 		}
 
 		items = append(items, item)
 	}
 
-	// Also get standalone projects (not linked to orders)
-	allProjects, err := s.projectRepo.List(ctx)
+	// Also get standalone tasks (not linked to orders)
+	allTasks, err := s.taskRepo.List(ctx, model.TaskFilters{})
 	if err != nil {
 		return items, err // Return what we have
 	}
 
-	for _, project := range allProjects {
-		if project.OrderID != nil {
+	for _, task := range allTasks {
+		if task.OrderID != nil {
 			continue // Already included under orders
 		}
 
-		item := s.projectToTimelineItem(project, nil)
+		item := s.taskToTimelineItem(task, nil)
 
-		// Get jobs for this project
-		jobs, err := s.printJobRepo.ListByProject(ctx, project.ID)
+		// Get jobs for this task
+		jobs, err := s.printJobRepo.ListByTask(ctx, task.ID)
 		if err != nil {
 			continue
 		}
 
 		for _, job := range jobs {
-			jobItem := s.jobToTimelineItem(job, &project.ID)
+			jobItem := s.jobToTimelineItem(job, &task.ID)
 			item.Children = append(item.Children, jobItem)
 		}
 
@@ -130,10 +133,36 @@ func (s *TimelineService) orderToTimelineItem(order model.Order) model.TimelineI
 	}
 }
 
+// taskToTimelineItem converts a task to a timeline item.
+func (s *TimelineService) taskToTimelineItem(task model.Task, parentID *uuid.UUID) model.TimelineItem {
+	var startDate *time.Time
+	if task.StartedAt != nil {
+		startDate = task.StartedAt
+	} else {
+		startDate = &task.CreatedAt
+	}
+
+	var endDate *time.Time
+	if task.CompletedAt != nil {
+		endDate = task.CompletedAt
+	}
+
+	return model.TimelineItem{
+		ID:        task.ID,
+		Type:      "task",
+		Name:      task.Name,
+		Status:    string(task.Status),
+		StartDate: startDate,
+		EndDate:   endDate,
+		Progress:  task.Progress,
+		ParentID:  parentID,
+	}
+}
+
 // projectToTimelineItem converts a project to a timeline item.
 func (s *TimelineService) projectToTimelineItem(project model.Project, parentID *uuid.UUID) model.TimelineItem {
 	progress := 0.0
-	// Calculate progress based on job status could be added here
+	// Calculate progress based on tasks if needed
 
 	return model.TimelineItem{
 		ID:        project.ID,
@@ -183,8 +212,8 @@ func (s *TimelineService) GetOrderTimeline(ctx context.Context, orderID uuid.UUI
 
 	item := s.orderToTimelineItem(*order)
 
-	// Get projects for this order
-	projects, err := s.projectRepo.ListByOrderID(ctx, orderID)
+	// Get tasks for this order
+	tasks, err := s.taskRepo.ListByOrder(ctx, orderID)
 	if err != nil {
 		return &item, nil
 	}
@@ -192,35 +221,35 @@ func (s *TimelineService) GetOrderTimeline(ctx context.Context, orderID uuid.UUI
 	totalJobs := 0
 	completedJobs := 0
 
-	for _, project := range projects {
-		projectItem := s.projectToTimelineItem(project, &order.ID)
+	for _, task := range tasks {
+		taskItem := s.taskToTimelineItem(task, &order.ID)
 
-		// Get jobs for this project
-		jobs, err := s.printJobRepo.ListByProject(ctx, project.ID)
+		// Get jobs for this task
+		jobs, err := s.printJobRepo.ListByTask(ctx, task.ID)
 		if err != nil {
 			continue
 		}
 
-		projectTotalJobs := 0
-		projectCompletedJobs := 0
+		taskTotalJobs := 0
+		taskCompletedJobs := 0
 
 		for _, job := range jobs {
-			jobItem := s.jobToTimelineItem(job, &project.ID)
-			projectItem.Children = append(projectItem.Children, jobItem)
-			projectTotalJobs++
+			jobItem := s.jobToTimelineItem(job, &task.ID)
+			taskItem.Children = append(taskItem.Children, jobItem)
+			taskTotalJobs++
 			totalJobs++
 			if job.Status == model.PrintJobStatusCompleted {
-				projectCompletedJobs++
+				taskCompletedJobs++
 				completedJobs++
 			}
 		}
 
-		// Calculate project progress
-		if projectTotalJobs > 0 {
-			projectItem.Progress = float64(projectCompletedJobs) / float64(projectTotalJobs) * 100
+		// Calculate task progress
+		if taskTotalJobs > 0 {
+			taskItem.Progress = float64(taskCompletedJobs) / float64(taskTotalJobs) * 100
 		}
 
-		item.Children = append(item.Children, projectItem)
+		item.Children = append(item.Children, taskItem)
 	}
 
 	// Calculate order progress
@@ -231,17 +260,17 @@ func (s *TimelineService) GetOrderTimeline(ctx context.Context, orderID uuid.UUI
 	return &item, nil
 }
 
-// GetProjectTimeline retrieves a detailed timeline for a single project.
-func (s *TimelineService) GetProjectTimeline(ctx context.Context, projectID uuid.UUID) (*model.TimelineItem, error) {
-	project, err := s.projectRepo.GetByID(ctx, projectID)
-	if err != nil || project == nil {
+// GetTaskTimeline retrieves a detailed timeline for a single task.
+func (s *TimelineService) GetTaskTimeline(ctx context.Context, taskID uuid.UUID) (*model.TimelineItem, error) {
+	task, err := s.taskRepo.GetByID(ctx, taskID)
+	if err != nil || task == nil {
 		return nil, err
 	}
 
-	item := s.projectToTimelineItem(*project, project.OrderID)
+	item := s.taskToTimelineItem(*task, task.OrderID)
 
-	// Get jobs for this project
-	jobs, err := s.printJobRepo.ListByProject(ctx, projectID)
+	// Get jobs for this task
+	jobs, err := s.printJobRepo.ListByTask(ctx, taskID)
 	if err != nil {
 		return &item, nil
 	}
@@ -250,12 +279,59 @@ func (s *TimelineService) GetProjectTimeline(ctx context.Context, projectID uuid
 	completedJobs := 0
 
 	for _, job := range jobs {
-		jobItem := s.jobToTimelineItem(job, &project.ID)
+		jobItem := s.jobToTimelineItem(job, &task.ID)
 		item.Children = append(item.Children, jobItem)
 		totalJobs++
 		if job.Status == model.PrintJobStatusCompleted {
 			completedJobs++
 		}
+	}
+
+	// Calculate progress
+	if totalJobs > 0 {
+		item.Progress = float64(completedJobs) / float64(totalJobs) * 100
+	}
+
+	return &item, nil
+}
+
+// GetProjectTimeline retrieves a detailed timeline for a project and its tasks.
+func (s *TimelineService) GetProjectTimeline(ctx context.Context, projectID uuid.UUID) (*model.TimelineItem, error) {
+	project, err := s.projectRepo.GetByID(ctx, projectID)
+	if err != nil || project == nil {
+		return nil, err
+	}
+
+	item := s.projectToTimelineItem(*project, nil)
+
+	// Get tasks for this project
+	tasks, err := s.taskRepo.ListByProject(ctx, projectID)
+	if err != nil {
+		return &item, nil
+	}
+
+	totalJobs := 0
+	completedJobs := 0
+
+	for _, task := range tasks {
+		taskItem := s.taskToTimelineItem(task, &project.ID)
+
+		// Get jobs for this task
+		jobs, err := s.printJobRepo.ListByTask(ctx, task.ID)
+		if err != nil {
+			continue
+		}
+
+		for _, job := range jobs {
+			jobItem := s.jobToTimelineItem(job, &task.ID)
+			taskItem.Children = append(taskItem.Children, jobItem)
+			totalJobs++
+			if job.Status == model.PrintJobStatusCompleted {
+				completedJobs++
+			}
+		}
+
+		item.Children = append(item.Children, taskItem)
 	}
 
 	// Calculate progress

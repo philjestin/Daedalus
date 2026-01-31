@@ -42,7 +42,7 @@ func NewRouter(services *service.Services, hub *realtime.Hub) http.Handler {
 
 	// API routes
 	r.Route("/api", func(r chi.Router) {
-		// Projects
+		// Projects (Product Catalog)
 		projectHandler := &ProjectHandler{service: services.Projects}
 		r.Route("/projects", func(r chi.Router) {
 			r.Get("/", projectHandler.List)
@@ -58,6 +58,12 @@ func NewRouter(services *service.Services, hub *realtime.Hub) http.Handler {
 				r.Get("/summary", projectHandler.GetProjectSummary)
 				r.Post("/start-production", projectHandler.StartProduction)
 
+				// Tasks for this project
+				if services.Tasks != nil {
+					taskHandler := NewTaskHandler(services.Tasks)
+					r.Get("/tasks", taskHandler.ListByProject)
+				}
+
 				// Parts nested under project
 				partHandler := &PartHandler{service: services.Parts, designService: services.Designs}
 				r.Get("/parts", partHandler.ListByProject)
@@ -69,6 +75,25 @@ func NewRouter(services *service.Services, hub *realtime.Hub) http.Handler {
 				r.Post("/supplies", supplyHandler.Create)
 			})
 		})
+
+		// Tasks (Work Instances)
+		if services.Tasks != nil {
+			taskHandler := NewTaskHandler(services.Tasks)
+			r.Route("/tasks", func(r chi.Router) {
+				r.Get("/", taskHandler.List)
+				r.Post("/", taskHandler.Create)
+				r.Route("/{id}", func(r chi.Router) {
+					r.Get("/", taskHandler.Get)
+					r.Patch("/", taskHandler.Update)
+					r.Delete("/", taskHandler.Delete)
+					r.Patch("/status", taskHandler.UpdateStatus)
+					r.Get("/progress", taskHandler.GetProgress)
+					r.Post("/start", taskHandler.StartTask)
+					r.Post("/complete", taskHandler.CompleteTask)
+					r.Post("/cancel", taskHandler.CancelTask)
+				})
+			})
+		}
 
 		// Supplies (standalone delete)
 		supplyHandler := &ProjectSupplyHandler{service: services.ProjectSupplies}

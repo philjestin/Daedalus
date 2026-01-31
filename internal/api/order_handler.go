@@ -223,7 +223,8 @@ func (h *OrderHandler) UpdateStatus(w http.ResponseWriter, r *http.Request) {
 
 // AddItemRequest represents a request to add an item to an order.
 type AddItemRequest struct {
-	TemplateID *uuid.UUID `json:"template_id,omitempty"`
+	ProjectID  *uuid.UUID `json:"project_id,omitempty"`  // Link to project (product catalog)
+	TemplateID *uuid.UUID `json:"template_id,omitempty"` // Legacy: for backwards compatibility
 	SKU        string     `json:"sku"`
 	Quantity   int        `json:"quantity"`
 	Notes      string     `json:"notes"`
@@ -245,6 +246,7 @@ func (h *OrderHandler) AddItem(w http.ResponseWriter, r *http.Request) {
 
 	item := &model.OrderItem{
 		OrderID:    orderID,
+		ProjectID:  req.ProjectID,
 		TemplateID: req.TemplateID,
 		SKU:        req.SKU,
 		Quantity:   req.Quantity,
@@ -280,7 +282,7 @@ func (h *OrderHandler) RemoveItem(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// ProcessItem creates a project from an order item's template.
+// ProcessItem creates a task from an order item's project (product catalog entry).
 func (h *OrderHandler) ProcessItem(w http.ResponseWriter, r *http.Request) {
 	orderID, err := parseUUID(r, "id")
 	if err != nil {
@@ -293,13 +295,13 @@ func (h *OrderHandler) ProcessItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	project, err := h.service.ProcessItem(r.Context(), orderID, itemID)
+	task, err := h.service.ProcessItem(r.Context(), orderID, itemID)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	respondJSON(w, http.StatusCreated, project)
+	respondJSON(w, http.StatusCreated, task)
 }
 
 // GetProgress returns the progress of an order.

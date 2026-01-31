@@ -223,20 +223,20 @@ export function OrderDetail() {
             )}
           </div>
 
-          {/* Projects */}
-          {order.projects && order.projects.length > 0 && (
+          {/* Tasks */}
+          {order.tasks && order.tasks.length > 0 && (
             <div className="bg-white rounded-lg border p-6">
-              <h2 className="text-lg font-semibold mb-4">Linked Projects</h2>
+              <h2 className="text-lg font-semibold mb-4">Tasks</h2>
               <div className="space-y-2">
-                {order.projects.map(project => (
+                {order.tasks.map(task => (
                   <Link
-                    key={project.id}
-                    to={`/projects/${project.id}`}
+                    key={task.id}
+                    to={`/tasks/${task.id}`}
                     className="block p-3 border rounded-lg hover:bg-gray-50 transition-colors"
                   >
-                    <div className="font-medium">{project.name}</div>
+                    <div className="font-medium">{task.name}</div>
                     <div className="text-sm text-gray-500">
-                      Created {formatDate(project.created_at)}
+                      Status: {task.status} | Progress: {Math.round(task.progress || 0)}%
                     </div>
                   </Link>
                 ))}

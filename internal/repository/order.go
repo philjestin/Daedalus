@@ -152,16 +152,16 @@ func (r *OrderRepository) AddItem(ctx context.Context, item *model.OrderItem) er
 	}
 
 	_, err := r.db.ExecContext(ctx, `
-		INSERT INTO order_items (id, order_id, template_id, sku, quantity, notes, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
-	`, item.ID, item.OrderID, item.TemplateID, item.SKU, item.Quantity, item.Notes, item.CreatedAt)
+		INSERT INTO order_items (id, order_id, template_id, project_id, sku, quantity, notes, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+	`, item.ID, item.OrderID, item.TemplateID, item.ProjectID, item.SKU, item.Quantity, item.Notes, item.CreatedAt)
 	return err
 }
 
 // GetItems retrieves all items for an order.
 func (r *OrderRepository) GetItems(ctx context.Context, orderID uuid.UUID) ([]model.OrderItem, error) {
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT id, order_id, template_id, sku, quantity, notes, created_at
+		SELECT id, order_id, template_id, project_id, sku, quantity, notes, created_at
 		FROM order_items WHERE order_id = ?
 	`, orderID)
 	if err != nil {
@@ -172,7 +172,7 @@ func (r *OrderRepository) GetItems(ctx context.Context, orderID uuid.UUID) ([]mo
 	var items []model.OrderItem
 	for rows.Next() {
 		var item model.OrderItem
-		if err := rows.Scan(&item.ID, &item.OrderID, &item.TemplateID, &item.SKU, &item.Quantity, &item.Notes, &item.CreatedAt); err != nil {
+		if err := rows.Scan(&item.ID, &item.OrderID, &item.TemplateID, &item.ProjectID, &item.SKU, &item.Quantity, &item.Notes, &item.CreatedAt); err != nil {
 			return nil, err
 		}
 		items = append(items, item)
@@ -184,9 +184,9 @@ func (r *OrderRepository) GetItems(ctx context.Context, orderID uuid.UUID) ([]mo
 func (r *OrderRepository) GetItem(ctx context.Context, itemID uuid.UUID) (*model.OrderItem, error) {
 	var item model.OrderItem
 	err := r.db.QueryRowContext(ctx, `
-		SELECT id, order_id, template_id, sku, quantity, notes, created_at
+		SELECT id, order_id, template_id, project_id, sku, quantity, notes, created_at
 		FROM order_items WHERE id = ?
-	`, itemID).Scan(&item.ID, &item.OrderID, &item.TemplateID, &item.SKU, &item.Quantity, &item.Notes, &item.CreatedAt)
+	`, itemID).Scan(&item.ID, &item.OrderID, &item.TemplateID, &item.ProjectID, &item.SKU, &item.Quantity, &item.Notes, &item.CreatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -233,28 +233,26 @@ func (r *OrderRepository) GetEvents(ctx context.Context, orderID uuid.UUID) ([]m
 	return events, rows.Err()
 }
 
-// GetProjectsByOrderID retrieves all projects linked to an order.
-func (r *OrderRepository) GetProjectsByOrderID(ctx context.Context, orderID uuid.UUID) ([]model.Project, error) {
+// GetTasksByOrderID retrieves all tasks linked to an order.
+func (r *OrderRepository) GetTasksByOrderID(ctx context.Context, orderID uuid.UUID) ([]model.Task, error) {
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT id, name, description, target_date, tags, template_id, source, external_order_id, customer_notes, order_id, order_item_id, created_at, updated_at
-		FROM projects WHERE order_id = ?
+		SELECT id, project_id, order_id, order_item_id, name, status, quantity, notes, created_at, updated_at, started_at, completed_at
+		FROM tasks WHERE order_id = ?
 	`, orderID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	var projects []model.Project
+	var tasks []model.Task
 	for rows.Next() {
-		var p model.Project
-		var tagsJSON []byte
-		if err := rows.Scan(&p.ID, &p.Name, &p.Description, &p.TargetDate, &tagsJSON, &p.TemplateID, &p.Source, &p.ExternalOrderID, &p.CustomerNotes, &p.OrderID, &p.OrderItemID, &p.CreatedAt, &p.UpdatedAt); err != nil {
+		var t model.Task
+		if err := rows.Scan(&t.ID, &t.ProjectID, &t.OrderID, &t.OrderItemID, &t.Name, &t.Status, &t.Quantity, &t.Notes, &t.CreatedAt, &t.UpdatedAt, &t.StartedAt, &t.CompletedAt); err != nil {
 			return nil, err
 		}
-		p.Tags = unmarshalStringArray(tagsJSON)
-		projects = append(projects, p)
+		tasks = append(tasks, t)
 	}
-	return projects, rows.Err()
+	return tasks, rows.Err()
 }
 
 // CountByStatus returns counts of orders by status.

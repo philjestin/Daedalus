@@ -17,6 +17,7 @@ type OrderService struct {
 	orderRepo    *repository.OrderRepository
 	projectRepo  *repository.ProjectRepository
 	printJobRepo *repository.PrintJobRepository
+	taskRepo     *repository.TaskRepository
 	templateSvc  *TemplateService
 	hub          *realtime.Hub
 }
@@ -36,6 +37,11 @@ func NewOrderService(
 		templateSvc:  templateSvc,
 		hub:          hub,
 	}
+}
+
+// SetTaskRepo sets the task repository (called after initialization to avoid circular dependency).
+func (s *OrderService) SetTaskRepo(taskRepo *repository.TaskRepository) {
+	s.taskRepo = taskRepo
 }
 
 // Create creates a new order.
@@ -64,7 +70,7 @@ func (s *OrderService) Create(ctx context.Context, order *model.Order) error {
 	return nil
 }
 
-// GetByID retrieves an order by ID with items and projects.
+// GetByID retrieves an order by ID with items and tasks.
 func (s *OrderService) GetByID(ctx context.Context, id uuid.UUID) (*model.Order, error) {
 	order, err := s.orderRepo.GetByID(ctx, id)
 	if err != nil || order == nil {
@@ -78,12 +84,14 @@ func (s *OrderService) GetByID(ctx context.Context, id uuid.UUID) (*model.Order,
 	}
 	order.Items = items
 
-	// Load projects
-	projects, err := s.projectRepo.ListByOrderID(ctx, id)
-	if err != nil {
-		return nil, err
+	// Load tasks
+	if s.taskRepo != nil {
+		tasks, err := s.orderRepo.GetTasksByOrderID(ctx, id)
+		if err != nil {
+			slog.Warn("failed to load order tasks", "order_id", id, "error", err)
+		}
+		order.Tasks = tasks
 	}
-	order.Projects = projects
 
 	// Load events
 	events, err := s.orderRepo.GetEvents(ctx, id)
@@ -202,8 +210,8 @@ func (s *OrderService) RemoveItem(ctx context.Context, orderID uuid.UUID, itemID
 	return nil
 }
 
-// ProcessItem creates a project from a template for an order item.
-func (s *OrderService) ProcessItem(ctx context.Context, orderID, itemID uuid.UUID) (*model.Project, error) {
+// ProcessItem creates a task from a project (product catalog entry) for an order item.
+func (s *OrderService) ProcessItem(ctx context.Context, orderID, itemID uuid.UUID) (*model.Task, error) {
 	order, err := s.orderRepo.GetByID(ctx, orderID)
 	if err != nil {
 		return nil, err
@@ -220,35 +228,52 @@ func (s *OrderService) ProcessItem(ctx context.Context, orderID, itemID uuid.UUI
 		return nil, fmt.Errorf("item not found")
 	}
 
-	if item.TemplateID == nil {
-		return nil, fmt.Errorf("item has no template assigned")
+	// Get the project (product catalog entry) - check ProjectID first, then fall back to template
+	var projectID uuid.UUID
+	if item.ProjectID != nil {
+		projectID = *item.ProjectID
+	} else if item.TemplateID != nil {
+		// Legacy: look up projects by template
+		projects, err := s.projectRepo.ListByTemplateID(ctx, *item.TemplateID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to find project for template: %w", err)
+		}
+		if len(projects) == 0 {
+			return nil, fmt.Errorf("no project found for template %s", item.TemplateID)
+		}
+		projectID = projects[0].ID
+	} else {
+		return nil, fmt.Errorf("item has no project or template assigned")
 	}
 
-	// Create project from template
-	opts := CreateFromTemplateOptions{
-		OrderQuantity:   item.Quantity,
-		Source:          string(order.Source),
-		ExternalOrderID: order.SourceOrderID,
-		CustomerNotes:   order.Notes,
-	}
-
-	project, _, err := s.templateSvc.CreateProjectFromTemplate(ctx, *item.TemplateID, opts)
+	project, err := s.projectRepo.GetByID(ctx, projectID)
 	if err != nil {
-		return nil, fmt.Errorf("creating project from template: %w", err)
+		return nil, err
+	}
+	if project == nil {
+		return nil, fmt.Errorf("project not found")
 	}
 
-	// Link project to order
-	project.OrderID = &orderID
-	project.OrderItemID = &itemID
-	if err := s.projectRepo.Update(ctx, project); err != nil {
-		slog.Warn("failed to link project to order", "project_id", project.ID, "order_id", orderID, "error", err)
+	// Create task from project
+	task := &model.Task{
+		ProjectID:   projectID,
+		OrderID:     &orderID,
+		OrderItemID: &itemID,
+		Name:        fmt.Sprintf("%s (Order %s)", project.Name, order.SourceOrderID),
+		Status:      model.TaskStatusPending,
+		Quantity:    item.Quantity,
+		Notes:       order.Notes,
+	}
+
+	if err := s.taskRepo.Create(ctx, task); err != nil {
+		return nil, fmt.Errorf("creating task: %w", err)
 	}
 
 	// Add event
 	event := &model.OrderEvent{
 		OrderID:   orderID,
-		EventType: "project_created",
-		Message:   fmt.Sprintf("Created project %s from item %s", project.Name, item.SKU),
+		EventType: "task_created",
+		Message:   fmt.Sprintf("Created task %s from item %s", task.Name, item.SKU),
 	}
 	s.orderRepo.AddEvent(ctx, event)
 
@@ -257,8 +282,8 @@ func (s *OrderService) ProcessItem(ctx context.Context, orderID, itemID uuid.UUI
 		s.UpdateStatus(ctx, orderID, model.OrderStatusInProgress)
 	}
 
-	slog.Info("processed order item", "order_id", orderID, "item_id", itemID, "project_id", project.ID)
-	return project, nil
+	slog.Info("processed order item", "order_id", orderID, "item_id", itemID, "task_id", task.ID)
+	return task, nil
 }
 
 // GetProgress calculates the completion progress of an order.
@@ -273,22 +298,25 @@ func (s *OrderService) GetProgress(ctx context.Context, id uuid.UUID) (*model.Or
 		TotalItems: len(order.Items),
 	}
 
-	// Count completed items based on linked projects
-	projectIDs := make(map[uuid.UUID]bool)
-	for _, project := range order.Projects {
-		projectIDs[project.ID] = true
-	}
-	progress.CompletedItems = len(projectIDs)
-
-	// Count jobs
-	for _, project := range order.Projects {
-		stats, err := s.printJobRepo.GetProjectJobStats(ctx, project.ID)
+	// Count completed items based on linked tasks
+	var completedTasks int
+	for _, task := range order.Tasks {
+		if task.Status == model.TaskStatusCompleted {
+			completedTasks++
+		}
+		// Count jobs for each task
+		jobs, err := s.printJobRepo.ListByTask(ctx, task.ID)
 		if err != nil {
 			continue
 		}
-		progress.TotalJobs += stats.Total
-		progress.CompletedJobs += stats.Completed
+		for _, job := range jobs {
+			progress.TotalJobs++
+			if job.Status == model.PrintJobStatusCompleted {
+				progress.CompletedJobs++
+			}
+		}
 	}
+	progress.CompletedItems = completedTasks
 
 	// Calculate percentage
 	if progress.TotalItems > 0 {
@@ -356,16 +384,23 @@ func (s *OrderService) broadcastUpdate(eventType string, data interface{}) {
 	}
 }
 
-// CheckOrderCompletion checks if all jobs for an order are complete and updates status.
+// CheckOrderCompletion checks if all tasks for an order are complete and updates status.
 func (s *OrderService) CheckOrderCompletion(ctx context.Context, orderID uuid.UUID) error {
-	progress, err := s.GetProgress(ctx, orderID)
-	if err != nil {
+	order, err := s.GetByID(ctx, orderID)
+	if err != nil || order == nil {
 		return err
 	}
 
-	// If all items have been processed and all jobs completed
-	if progress.TotalItems > 0 && progress.CompletedItems == progress.TotalItems {
-		if progress.TotalJobs > 0 && progress.CompletedJobs == progress.TotalJobs {
+	// If all tasks are completed, mark order as completed
+	if len(order.Tasks) > 0 {
+		allCompleted := true
+		for _, task := range order.Tasks {
+			if task.Status != model.TaskStatusCompleted {
+				allCompleted = false
+				break
+			}
+		}
+		if allCompleted {
 			return s.UpdateStatus(ctx, orderID, model.OrderStatusCompleted)
 		}
 	}

@@ -3,8 +3,8 @@ import Layout from './components/Layout'
 import Dashboard from './pages/Dashboard'
 import Projects from './pages/Projects'
 import ProjectDetail from './pages/ProjectDetail'
-import Templates from './pages/Templates'
-import TemplateDetail from './pages/TemplateDetail'
+import { Tasks } from './pages/Tasks'
+import { TaskDetail } from './pages/TaskDetail'
 import Printers from './pages/Printers'
 import PrinterDetail from './pages/PrinterDetail'
 import Materials from './pages/Materials'
@@ -36,8 +36,10 @@ function App() {
         <Route path="/timeline" element={<Timeline />} />
         <Route path="/projects" element={<Projects />} />
         <Route path="/projects/:id" element={<ProjectDetail />} />
-        <Route path="/templates" element={<Templates />} />
-        <Route path="/templates/:id" element={<TemplateDetail />} />
+        <Route path="/tasks" element={<Tasks />} />
+        <Route path="/tasks/:id" element={<TaskDetail />} />
+        {/* Legacy template routes redirect to projects */}
+        <Route path="/templates/*" element={<Navigate to="/projects" replace />} />
         <Route path="/printers" element={<Printers />} />
         <Route path="/printers/:id" element={<PrinterDetail />} />
         <Route path="/materials" element={<Materials />} />

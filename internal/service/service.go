@@ -53,6 +53,7 @@ type Services struct {
 	Tags     *TagService
 	Shopify  *ShopifyService
 	Timeline *TimelineService
+	Tasks    *TaskService
 }
 
 // EtsyConfig holds Etsy OAuth configuration.
@@ -114,7 +115,11 @@ func NewServices(repos *repository.Repositories, store storage.Storage, printerM
 	services.Alerts = NewAlertService(repos.Spools, repos.Materials, repos.Orders, repos.AlertDismissals, hub)
 	services.Tags = NewTagService(repos.Tags, repos.Parts, repos.Designs)
 	services.Shopify = NewShopifyService(repos.Shopify, services.Orders, services.Templates, hub)
-	services.Timeline = NewTimelineService(repos.Orders, repos.Projects, repos.PrintJobs)
+	services.Timeline = NewTimelineService(repos.Orders, repos.Tasks, repos.Projects, repos.PrintJobs)
+	services.Tasks = NewTaskService(repos.Tasks, repos.Projects, repos.PrintJobs, hub)
+
+	// Wire task repo to order service (needed for ProcessItem)
+	services.Orders.SetTaskRepo(repos.Tasks)
 
 	return services
 }

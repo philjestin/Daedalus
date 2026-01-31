@@ -3,13 +3,13 @@ import { Outlet, NavLink } from 'react-router-dom'
 import {
   LayoutDashboard,
   FolderKanban,
+  ListTodo,
   Printer,
   Package,
   Settings,
   Layers,
   Receipt,
   DollarSign,
-  FileStack,
   ShoppingBag,
   PanelLeftClose,
   PanelLeftOpen,
@@ -20,7 +20,7 @@ import DispatchNotificationProvider from './DispatchNotificationProvider'
 const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
   { name: 'Projects', href: '/projects', icon: FolderKanban },
-  { name: 'Templates', href: '/templates', icon: FileStack },
+  { name: 'Tasks', href: '/tasks', icon: ListTodo },
   { name: 'Printers', href: '/printers', icon: Printer },
   { name: 'Materials', href: '/materials', icon: Package },
   { name: 'Expenses', href: '/expenses', icon: Receipt },

@@ -85,17 +85,24 @@ CREATE TABLE IF NOT EXISTS templates (
 CREATE INDEX IF NOT EXISTS idx_templates_sku ON templates(sku);
 CREATE INDEX IF NOT EXISTS idx_templates_active ON templates(is_active);
 
--- Projects table
+-- Projects table (Product Catalog - extended with template-like fields)
 CREATE TABLE IF NOT EXISTS projects (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     description TEXT DEFAULT '',
     target_date TEXT,
     tags TEXT DEFAULT '[]',
-    template_id TEXT REFERENCES templates(id),
+    template_id TEXT REFERENCES templates(id),  -- Legacy: kept for migration
     source TEXT DEFAULT 'manual',
     external_order_id TEXT,
     customer_notes TEXT DEFAULT '',
+    -- Template-like fields for product catalog
+    sku TEXT,
+    price_cents INTEGER,
+    printer_type TEXT,
+    allowed_printer_ids TEXT DEFAULT '[]',  -- JSON array of printer UUIDs
+    default_settings TEXT DEFAULT '{}',     -- JSON object for print settings
+    notes TEXT DEFAULT '',
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -103,6 +110,27 @@ CREATE TABLE IF NOT EXISTS projects (
 CREATE INDEX IF NOT EXISTS idx_projects_updated_at ON projects(updated_at);
 CREATE INDEX IF NOT EXISTS idx_projects_template ON projects(template_id);
 CREATE INDEX IF NOT EXISTS idx_projects_external_order ON projects(external_order_id);
+CREATE INDEX IF NOT EXISTS idx_projects_sku ON projects(sku);
+
+-- Tasks table (Work Instances - created when processing orders)
+CREATE TABLE IF NOT EXISTS tasks (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL REFERENCES projects(id),
+    order_id TEXT REFERENCES orders(id),
+    order_item_id TEXT REFERENCES order_items(id),
+    name TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',  -- pending, in_progress, completed, cancelled
+    quantity INTEGER NOT NULL DEFAULT 1,
+    notes TEXT DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    started_at TEXT,
+    completed_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_tasks_project ON tasks(project_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_order ON tasks(order_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
 
 -- Parts table
 CREATE TABLE IF NOT EXISTS parts (
@@ -178,6 +206,7 @@ CREATE TABLE IF NOT EXISTS print_jobs (
     printer_id TEXT REFERENCES printers(id),
     material_spool_id TEXT REFERENCES material_spools(id),
     project_id TEXT REFERENCES projects(id),
+    task_id TEXT REFERENCES tasks(id),  -- Link to task (work instance)
     status TEXT NOT NULL DEFAULT 'queued',
     progress REAL DEFAULT 0,
     started_at TEXT,
@@ -207,6 +236,7 @@ CREATE INDEX IF NOT EXISTS idx_print_jobs_created_at ON print_jobs(created_at);
 CREATE INDEX IF NOT EXISTS idx_print_jobs_parent ON print_jobs(parent_job_id);
 CREATE INDEX IF NOT EXISTS idx_print_jobs_recipe ON print_jobs(recipe_id);
 CREATE INDEX IF NOT EXISTS idx_print_jobs_project ON print_jobs(project_id);
+CREATE INDEX IF NOT EXISTS idx_print_jobs_task ON print_jobs(task_id);
 CREATE INDEX IF NOT EXISTS idx_print_jobs_material_spool ON print_jobs(material_spool_id);
 
 -- Dispatch requests table (for auto-dispatch confirmation)
@@ -699,7 +729,8 @@ CREATE INDEX IF NOT EXISTS idx_orders_due_date ON orders(due_date);
 CREATE TABLE IF NOT EXISTS order_items (
     id TEXT PRIMARY KEY,
     order_id TEXT NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
-    template_id TEXT REFERENCES templates(id),
+    template_id TEXT REFERENCES templates(id),  -- Legacy: kept for migration
+    project_id TEXT REFERENCES projects(id),    -- New: link to project (product catalog)
     sku TEXT,
     quantity INTEGER NOT NULL DEFAULT 1,
     notes TEXT,
@@ -707,6 +738,7 @@ CREATE TABLE IF NOT EXISTS order_items (
 );
 CREATE INDEX IF NOT EXISTS idx_order_items_order ON order_items(order_id);
 CREATE INDEX IF NOT EXISTS idx_order_items_sku ON order_items(sku);
+CREATE INDEX IF NOT EXISTS idx_order_items_project ON order_items(project_id);
 
 -- Order events for history tracking
 CREATE TABLE IF NOT EXISTS order_events (

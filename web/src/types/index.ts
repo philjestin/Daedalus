@@ -1,16 +1,49 @@
-// Project types
+// Project types (Product Catalog)
 export interface Project {
   id: string
   name: string
   description: string
   target_date?: string
   tags: string[]
-  template_id?: string
+  template_id?: string  // Legacy: kept for migration
   source: string
   external_order_id?: string
   customer_notes?: string
+  // Template-like fields for product catalog
+  sku?: string
+  price_cents?: number
+  printer_type?: string
+  allowed_printer_ids?: string[]
+  default_settings?: Record<string, unknown>
+  notes?: string
   created_at: string
   updated_at: string
+  // Aggregated stats from tasks (computed)
+  total_tasks?: number
+  completed_tasks?: number
+}
+
+// Task status types
+export type TaskStatus = 'pending' | 'in_progress' | 'completed' | 'cancelled'
+
+// Task types (Work Instances)
+export interface Task {
+  id: string
+  project_id: string
+  order_id?: string
+  order_item_id?: string
+  name: string
+  status: TaskStatus
+  quantity: number
+  notes?: string
+  created_at: string
+  updated_at: string
+  started_at?: string
+  completed_at?: string
+  // Loaded relations
+  project?: Project
+  jobs?: PrintJob[]
+  progress?: number
 }
 
 // Job statistics for a project
@@ -1077,14 +1110,15 @@ export interface Order {
   completed_at?: string
   shipped_at?: string
   items?: OrderItem[]
-  projects?: Project[]
+  tasks?: Task[]
   events?: OrderEvent[]
 }
 
 export interface OrderItem {
   id: string
   order_id: string
-  template_id?: string
+  project_id?: string   // Link to project (product catalog)
+  template_id?: string  // Legacy: kept for migration
   sku?: string
   quantity: number
   notes?: string

@@ -94,6 +94,65 @@ export const projectsApi = {
       method: 'POST',
       body: JSON.stringify({ tracking_number: trackingNumber }),
     }),
+
+  // Tasks for this project
+  listTasks: (id: string) =>
+    fetchApi<import('../types').Task[]>(`/projects/${id}/tasks`),
+}
+
+// Tasks API (Work Instances)
+export const tasksApi = {
+  list: (filters?: { project_id?: string; order_id?: string; status?: string }) => {
+    const params = new URLSearchParams()
+    if (filters?.project_id) params.set('project_id', filters.project_id)
+    if (filters?.order_id) params.set('order_id', filters.order_id)
+    if (filters?.status) params.set('status', filters.status)
+    const query = params.toString()
+    return fetchApi<import('../types').Task[]>(`/tasks${query ? `?${query}` : ''}`)
+  },
+
+  get: (id: string) =>
+    fetchApi<import('../types').Task>(`/tasks/${id}`),
+
+  create: (data: {
+    project_id: string
+    order_id?: string
+    order_item_id?: string
+    name: string
+    quantity?: number
+    notes?: string
+  }) =>
+    fetchApi<import('../types').Task>('/tasks', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  update: (id: string, data: Partial<{ name: string; quantity: number; notes: string }>) =>
+    fetchApi<import('../types').Task>(`/tasks/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+
+  delete: (id: string) =>
+    fetchApi<void>(`/tasks/${id}`, { method: 'DELETE' }),
+
+  updateStatus: (id: string, status: import('../types').TaskStatus) =>
+    fetchApi<import('../types').Task>(`/tasks/${id}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
+    }),
+
+  getProgress: (id: string) =>
+    fetchApi<{ progress: number }>(`/tasks/${id}/progress`),
+
+  start: (id: string) =>
+    fetchApi<import('../types').Task>(`/tasks/${id}/start`, { method: 'POST' }),
+
+  complete: (id: string) =>
+    fetchApi<import('../types').Task>(`/tasks/${id}/complete`, { method: 'POST' }),
+
+  cancel: (id: string) =>
+    fetchApi<import('../types').Task>(`/tasks/${id}/cancel`, { method: 'POST' }),
 }
 
 // Parts API
