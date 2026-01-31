@@ -245,6 +245,45 @@ func (c *CloudClient) GetDevices(token string) ([]CloudDevice, error) {
 	return wrapper.Devices, nil
 }
 
+// RefreshToken uses the refresh token to get a new access token.
+func (c *CloudClient) RefreshToken(refreshToken string) (*LoginResponse, error) {
+	body := map[string]string{
+		"refreshToken": refreshToken,
+	}
+	data, err := json.Marshal(body)
+	if err != nil {
+		return nil, fmt.Errorf("marshal refresh request: %w", err)
+	}
+
+	req, err := http.NewRequest("POST", bambuAPIBase+"/v1/user-service/user/refreshtoken", bytes.NewReader(data))
+	if err != nil {
+		return nil, fmt.Errorf("create refresh request: %w", err)
+	}
+	c.setHeaders(req)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("refresh request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read refresh response: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("refresh failed (status %d): %s", resp.StatusCode, string(respBody))
+	}
+
+	var loginResp LoginResponse
+	if err := json.Unmarshal(respBody, &loginResp); err != nil {
+		return nil, fmt.Errorf("parse refresh response: %w", err)
+	}
+
+	return &loginResp, nil
+}
+
 // CloudMQTTBroker returns the cloud MQTT broker address for the given region.
 func CloudMQTTBroker() string {
 	return cloudMQTTBrokerUS

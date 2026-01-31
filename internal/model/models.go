@@ -630,6 +630,10 @@ type PrintJob struct {
 	// Material snapshot (AMS state captured at job start)
 	MaterialSnapshot *MaterialSnapshot `json:"material_snapshot,omitempty"`
 
+	// Queue management
+	Priority            int  `json:"priority"`              // Higher values = higher priority
+	AutoDispatchEnabled bool `json:"auto_dispatch_enabled"` // Whether this job participates in auto-dispatch
+
 	// Computed fields (derived from events, not stored in print_jobs table)
 	Status      PrintJobStatus `json:"status"`                   // computed from latest event
 	Progress    float64        `json:"progress"`                 // computed from latest event
@@ -949,10 +953,24 @@ type BambuCloudAuth struct {
 	ID           uuid.UUID  `json:"id"`
 	Email        string     `json:"email"`
 	AccessToken  string     `json:"access_token"`
+	RefreshToken string     `json:"refresh_token,omitempty"`
 	MQTTUsername string     `json:"mqtt_username"`
 	ExpiresAt    *time.Time `json:"expires_at,omitempty"`
 	CreatedAt    time.Time  `json:"created_at"`
 	UpdatedAt    time.Time  `json:"updated_at"`
+}
+
+// IsExpired returns true if the auth token has expired or will expire within the given buffer.
+func (a *BambuCloudAuth) IsExpired(buffer time.Duration) bool {
+	if a.ExpiresAt == nil {
+		return false // No expiration set, assume valid
+	}
+	return time.Now().Add(buffer).After(*a.ExpiresAt)
+}
+
+// CanRefresh returns true if a refresh token is available.
+func (a *BambuCloudAuth) CanRefresh() bool {
+	return a.RefreshToken != ""
 }
 
 // PrinterUtilization represents utilization metrics for a time period.
@@ -1001,5 +1019,39 @@ type PrinterAnalytics struct {
 	Utilization []PrinterUtilization `json:"utilization"`
 	ROI         *PrinterROI          `json:"roi"`
 	Health      *PrinterHealth       `json:"health"`
+}
+
+// DispatchRequestStatus represents the status of a dispatch request.
+type DispatchRequestStatus string
+
+const (
+	DispatchPending   DispatchRequestStatus = "pending"
+	DispatchConfirmed DispatchRequestStatus = "confirmed"
+	DispatchRejected  DispatchRequestStatus = "rejected"
+	DispatchExpired   DispatchRequestStatus = "expired"
+)
+
+// DispatchRequest represents a pending dispatch request awaiting operator confirmation.
+type DispatchRequest struct {
+	ID          uuid.UUID             `json:"id"`
+	JobID       uuid.UUID             `json:"job_id"`
+	PrinterID   uuid.UUID             `json:"printer_id"`
+	Status      DispatchRequestStatus `json:"status"`
+	CreatedAt   time.Time             `json:"created_at"`
+	ExpiresAt   time.Time             `json:"expires_at"`
+	RespondedAt *time.Time            `json:"responded_at,omitempty"`
+	Reason      string                `json:"reason,omitempty"`
+	Job         *PrintJob             `json:"job,omitempty"`
+	Printer     *Printer              `json:"printer,omitempty"`
+}
+
+// AutoDispatchSettings holds per-printer auto-dispatch configuration.
+type AutoDispatchSettings struct {
+	PrinterID           uuid.UUID `json:"printer_id"`
+	Enabled             bool      `json:"enabled"`
+	RequireConfirmation bool      `json:"require_confirmation"`
+	AutoStart           bool      `json:"auto_start"`
+	TimeoutMinutes      int       `json:"timeout_minutes"`
+	UpdatedAt           time.Time `json:"updated_at"`
 }
 

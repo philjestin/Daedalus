@@ -840,6 +840,51 @@ export const squarespaceApi = {
     }),
 }
 
+// Dispatch API (auto-dispatch queue management)
+export const dispatchApi = {
+  listPending: () =>
+    fetchApi<import('../types').DispatchRequest[]>('/dispatch/requests'),
+
+  confirm: (id: string) =>
+    fetchApi<{ status: string }>(`/dispatch/requests/${id}/confirm`, { method: 'POST' }),
+
+  reject: (id: string, reason?: string) =>
+    fetchApi<{ status: string }>(`/dispatch/requests/${id}/reject`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    }),
+
+  skip: (id: string) =>
+    fetchApi<{ status: string }>(`/dispatch/requests/${id}/skip`, { method: 'POST' }),
+
+  getGlobalSettings: () =>
+    fetchApi<{ enabled: boolean }>('/dispatch/settings'),
+
+  updateGlobalSettings: (enabled: boolean) =>
+    fetchApi<{ status: string }>('/dispatch/settings', {
+      method: 'PUT',
+      body: JSON.stringify({ enabled }),
+    }),
+
+  getPrinterSettings: (printerId: string) =>
+    fetchApi<import('../types').AutoDispatchSettings>(`/printers/${printerId}/dispatch-settings`),
+
+  updatePrinterSettings: (printerId: string, settings: Partial<import('../types').AutoDispatchSettings>) =>
+    fetchApi<import('../types').AutoDispatchSettings>(`/printers/${printerId}/dispatch-settings`, {
+      method: 'PUT',
+      body: JSON.stringify(settings),
+    }),
+}
+
+// Print Jobs API extension for priority
+export const printJobPriorityApi = {
+  updatePriority: (id: string, priority: number) =>
+    fetchApi<{ status: string }>(`/print-jobs/${id}/priority`, {
+      method: 'PATCH',
+      body: JSON.stringify({ priority }),
+    }),
+}
+
 // WebSocket connection for real-time updates
 export function createWebSocket(onMessage: (event: { type: string; data: unknown }) => void) {
   const wsUrl = API_URL.replace('http', 'ws') + '/ws'

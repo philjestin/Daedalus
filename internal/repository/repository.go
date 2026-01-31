@@ -21,23 +21,25 @@ type DBTX interface {
 
 // Repositories holds all repository instances.
 type Repositories struct {
-	db              *sql.DB
-	Projects        *ProjectRepository
-	Parts           *PartRepository
-	Designs         *DesignRepository
-	Printers        *PrinterRepository
-	Materials       *MaterialRepository
-	Spools          *SpoolRepository
-	PrintJobs       *PrintJobRepository
-	Files           *FileRepository
-	Expenses        *ExpenseRepository
-	Sales           *SaleRepository
-	Templates       *TemplateRepository
-	Etsy            *EtsyRepository
-	Squarespace     *SquarespaceRepository
-	BambuCloud      *BambuCloudRepository
-	Settings        *SettingsRepository
-	ProjectSupplies *ProjectSupplyRepository
+	db                   *sql.DB
+	Projects             *ProjectRepository
+	Parts                *PartRepository
+	Designs              *DesignRepository
+	Printers             *PrinterRepository
+	Materials            *MaterialRepository
+	Spools               *SpoolRepository
+	PrintJobs            *PrintJobRepository
+	Files                *FileRepository
+	Expenses             *ExpenseRepository
+	Sales                *SaleRepository
+	Templates            *TemplateRepository
+	Etsy                 *EtsyRepository
+	Squarespace          *SquarespaceRepository
+	BambuCloud           *BambuCloudRepository
+	Settings             *SettingsRepository
+	ProjectSupplies      *ProjectSupplyRepository
+	Dispatch             *DispatchRepository
+	AutoDispatchSettings *AutoDispatchSettingsRepository
 }
 
 // WithTransaction executes a function within a database transaction.
@@ -63,23 +65,25 @@ func (r *Repositories) WithTransaction(ctx context.Context, fn func(tx *sql.Tx) 
 // NewRepositories creates all repository instances.
 func NewRepositories(db *sql.DB) *Repositories {
 	return &Repositories{
-		db:              db,
-		Projects:        &ProjectRepository{db: db},
-		Parts:           &PartRepository{db: db},
-		Designs:         &DesignRepository{db: db},
-		Printers:        &PrinterRepository{db: db},
-		Materials:       &MaterialRepository{db: db},
-		Spools:          &SpoolRepository{db: db},
-		PrintJobs:       &PrintJobRepository{db: db},
-		Files:           &FileRepository{db: db},
-		Expenses:        &ExpenseRepository{db: db},
-		Sales:           &SaleRepository{db: db},
-		Templates:       &TemplateRepository{db: db},
-		Etsy:            &EtsyRepository{db: db},
-		Squarespace:     &SquarespaceRepository{db: db},
-		BambuCloud:      &BambuCloudRepository{db: db},
-		Settings:        &SettingsRepository{db: db},
-		ProjectSupplies: &ProjectSupplyRepository{db: db},
+		db:                   db,
+		Projects:             &ProjectRepository{db: db},
+		Parts:                &PartRepository{db: db},
+		Designs:              &DesignRepository{db: db},
+		Printers:             &PrinterRepository{db: db},
+		Materials:            &MaterialRepository{db: db},
+		Spools:               &SpoolRepository{db: db},
+		PrintJobs:            &PrintJobRepository{db: db},
+		Files:                &FileRepository{db: db},
+		Expenses:             &ExpenseRepository{db: db},
+		Sales:                &SaleRepository{db: db},
+		Templates:            &TemplateRepository{db: db},
+		Etsy:                 &EtsyRepository{db: db},
+		Squarespace:          &SquarespaceRepository{db: db},
+		BambuCloud:           &BambuCloudRepository{db: db},
+		Settings:             &SettingsRepository{db: db},
+		ProjectSupplies:      &ProjectSupplyRepository{db: db},
+		Dispatch:             &DispatchRepository{db: db},
+		AutoDispatchSettings: &AutoDispatchSettingsRepository{db: db},
 	}
 }
 
@@ -842,15 +846,16 @@ func (r *PrintJobRepository) Create(ctx context.Context, j *model.PrintJob) erro
 		j.AttemptNumber = 1
 	}
 	j.Status = model.PrintJobStatusQueued // Always start as queued
+	j.AutoDispatchEnabled = true          // Default to enabled
 
 	outcomeJSON, _ := json.Marshal(j.Outcome)
 	snapshotJSON, _ := json.Marshal(j.MaterialSnapshot)
 
 	// Insert the job record
 	_, err := r.db.ExecContext(ctx, `
-		INSERT INTO print_jobs (id, design_id, printer_id, material_spool_id, project_id, status, progress, started_at, completed_at, outcome, notes, created_at, recipe_id, attempt_number, parent_job_id, estimated_seconds, material_snapshot)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, j.ID, j.DesignID, j.PrinterID, j.MaterialSpoolID, j.ProjectID, j.Status, j.Progress, j.StartedAt, j.CompletedAt, outcomeJSON, j.Notes, j.CreatedAt, j.RecipeID, j.AttemptNumber, j.ParentJobID, j.EstimatedSeconds, snapshotJSON)
+		INSERT INTO print_jobs (id, design_id, printer_id, material_spool_id, project_id, status, progress, started_at, completed_at, outcome, notes, created_at, recipe_id, attempt_number, parent_job_id, estimated_seconds, material_snapshot, priority, auto_dispatch_enabled)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, j.ID, j.DesignID, j.PrinterID, j.MaterialSpoolID, j.ProjectID, j.Status, j.Progress, j.StartedAt, j.CompletedAt, outcomeJSON, j.Notes, j.CreatedAt, j.RecipeID, j.AttemptNumber, j.ParentJobID, j.EstimatedSeconds, snapshotJSON, j.Priority, j.AutoDispatchEnabled)
 	if err != nil {
 		return err
 	}
@@ -867,10 +872,10 @@ func (r *PrintJobRepository) GetByID(ctx context.Context, id uuid.UUID) (*model.
 	var outcomeJSON, snapshotJSON []byte
 	err := scanRow(r.db.QueryRowContext(ctx, `
 		SELECT id, design_id, printer_id, material_spool_id, project_id, status, progress, started_at, completed_at, outcome, notes, created_at,
-		       recipe_id, attempt_number, parent_job_id, failure_category, estimated_seconds, actual_seconds, material_used_grams, cost_cents, printer_time_cost_cents, material_cost_cents, material_snapshot
+		       recipe_id, attempt_number, parent_job_id, failure_category, estimated_seconds, actual_seconds, material_used_grams, cost_cents, printer_time_cost_cents, material_cost_cents, material_snapshot, priority, auto_dispatch_enabled
 		FROM print_jobs WHERE id = ?
 	`, id), &j.ID, &j.DesignID, &j.PrinterID, &j.MaterialSpoolID, &j.ProjectID, &j.Status, &j.Progress, &j.StartedAt, &j.CompletedAt, &outcomeJSON, &j.Notes, &j.CreatedAt,
-		&j.RecipeID, &j.AttemptNumber, &j.ParentJobID, &j.FailureCategory, &j.EstimatedSeconds, &j.ActualSeconds, &j.MaterialUsedGrams, &j.CostCents, &j.PrinterTimeCostCents, &j.MaterialCostCents, &snapshotJSON)
+		&j.RecipeID, &j.AttemptNumber, &j.ParentJobID, &j.FailureCategory, &j.EstimatedSeconds, &j.ActualSeconds, &j.MaterialUsedGrams, &j.CostCents, &j.PrinterTimeCostCents, &j.MaterialCostCents, &snapshotJSON, &j.Priority, &j.AutoDispatchEnabled)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -915,7 +920,7 @@ func (r *PrintJobRepository) GetByIDWithEvents(ctx context.Context, id uuid.UUID
 // List retrieves print jobs with optional filters.
 func (r *PrintJobRepository) List(ctx context.Context, printerID *uuid.UUID, status *model.PrintJobStatus) ([]model.PrintJob, error) {
 	query := `SELECT pj.id, pj.design_id, pj.printer_id, pj.material_spool_id, pj.project_id, pj.status, pj.progress, pj.started_at, pj.completed_at, pj.outcome, pj.notes, pj.created_at,
-	                 pj.recipe_id, pj.attempt_number, pj.parent_job_id, pj.failure_category, pj.estimated_seconds, pj.actual_seconds, pj.material_used_grams, pj.cost_cents, pj.printer_time_cost_cents, pj.material_cost_cents, pj.material_snapshot
+	                 pj.recipe_id, pj.attempt_number, pj.parent_job_id, pj.failure_category, pj.estimated_seconds, pj.actual_seconds, pj.material_used_grams, pj.cost_cents, pj.printer_time_cost_cents, pj.material_cost_cents, pj.material_snapshot, pj.priority, pj.auto_dispatch_enabled
 	          FROM print_jobs pj WHERE 1=1`
 	args := []interface{}{}
 
@@ -940,7 +945,7 @@ func (r *PrintJobRepository) List(ctx context.Context, printerID *uuid.UUID, sta
 		var j model.PrintJob
 		var outcomeJSON, snapshotJSON []byte
 		if err := scanRow(rows, &j.ID, &j.DesignID, &j.PrinterID, &j.MaterialSpoolID, &j.ProjectID, &j.Status, &j.Progress, &j.StartedAt, &j.CompletedAt, &outcomeJSON, &j.Notes, &j.CreatedAt,
-			&j.RecipeID, &j.AttemptNumber, &j.ParentJobID, &j.FailureCategory, &j.EstimatedSeconds, &j.ActualSeconds, &j.MaterialUsedGrams, &j.CostCents, &j.PrinterTimeCostCents, &j.MaterialCostCents, &snapshotJSON); err != nil {
+			&j.RecipeID, &j.AttemptNumber, &j.ParentJobID, &j.FailureCategory, &j.EstimatedSeconds, &j.ActualSeconds, &j.MaterialUsedGrams, &j.CostCents, &j.PrinterTimeCostCents, &j.MaterialCostCents, &snapshotJSON, &j.Priority, &j.AutoDispatchEnabled); err != nil {
 			return nil, err
 		}
 		if outcomeJSON != nil {
@@ -958,7 +963,7 @@ func (r *PrintJobRepository) List(ctx context.Context, printerID *uuid.UUID, sta
 func (r *PrintJobRepository) ListByDesign(ctx context.Context, designID uuid.UUID) ([]model.PrintJob, error) {
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT id, design_id, printer_id, material_spool_id, project_id, status, progress, started_at, completed_at, outcome, notes, created_at,
-		       recipe_id, attempt_number, parent_job_id, failure_category, estimated_seconds, actual_seconds, material_used_grams, cost_cents, printer_time_cost_cents, material_cost_cents, material_snapshot
+		       recipe_id, attempt_number, parent_job_id, failure_category, estimated_seconds, actual_seconds, material_used_grams, cost_cents, printer_time_cost_cents, material_cost_cents, material_snapshot, priority, auto_dispatch_enabled
 		FROM print_jobs WHERE design_id = ? ORDER BY created_at DESC
 	`, designID)
 	if err != nil {
@@ -971,7 +976,7 @@ func (r *PrintJobRepository) ListByDesign(ctx context.Context, designID uuid.UUI
 		var j model.PrintJob
 		var outcomeJSON, snapshotJSON []byte
 		if err := scanRow(rows, &j.ID, &j.DesignID, &j.PrinterID, &j.MaterialSpoolID, &j.ProjectID, &j.Status, &j.Progress, &j.StartedAt, &j.CompletedAt, &outcomeJSON, &j.Notes, &j.CreatedAt,
-			&j.RecipeID, &j.AttemptNumber, &j.ParentJobID, &j.FailureCategory, &j.EstimatedSeconds, &j.ActualSeconds, &j.MaterialUsedGrams, &j.CostCents, &j.PrinterTimeCostCents, &j.MaterialCostCents, &snapshotJSON); err != nil {
+			&j.RecipeID, &j.AttemptNumber, &j.ParentJobID, &j.FailureCategory, &j.EstimatedSeconds, &j.ActualSeconds, &j.MaterialUsedGrams, &j.CostCents, &j.PrinterTimeCostCents, &j.MaterialCostCents, &snapshotJSON, &j.Priority, &j.AutoDispatchEnabled); err != nil {
 			return nil, err
 		}
 		if outcomeJSON != nil {
@@ -994,10 +999,12 @@ func (r *PrintJobRepository) Update(ctx context.Context, j *model.PrintJob) erro
 
 	_, err := r.db.ExecContext(ctx, `
 		UPDATE print_jobs SET printer_id = ?, material_spool_id = ?, status = ?, progress = ?, started_at = ?, completed_at = ?, outcome = ?, notes = ?,
-		       failure_category = ?, actual_seconds = ?, material_used_grams = ?, cost_cents = ?, printer_time_cost_cents = ?, material_cost_cents = ?, material_snapshot = ?
+		       failure_category = ?, actual_seconds = ?, material_used_grams = ?, cost_cents = ?, printer_time_cost_cents = ?, material_cost_cents = ?, material_snapshot = ?,
+		       priority = ?, auto_dispatch_enabled = ?
 		WHERE id = ?
 	`, j.PrinterID, j.MaterialSpoolID, j.Status, j.Progress, j.StartedAt, j.CompletedAt, outcomeJSON, j.Notes,
-		j.FailureCategory, j.ActualSeconds, j.MaterialUsedGrams, j.CostCents, j.PrinterTimeCostCents, j.MaterialCostCents, snapshotJSON, j.ID)
+		j.FailureCategory, j.ActualSeconds, j.MaterialUsedGrams, j.CostCents, j.PrinterTimeCostCents, j.MaterialCostCents, snapshotJSON,
+		j.Priority, j.AutoDispatchEnabled, j.ID)
 	return err
 }
 
@@ -1098,11 +1105,11 @@ func (r *PrintJobRepository) GetRetryChain(ctx context.Context, jobID uuid.UUID)
 	rows, err := r.db.QueryContext(ctx, `
 		WITH RECURSIVE chain AS (
 			SELECT id, design_id, printer_id, material_spool_id, project_id, status, progress, started_at, completed_at, outcome, notes, created_at,
-			       recipe_id, attempt_number, parent_job_id, failure_category, estimated_seconds, actual_seconds, material_used_grams, cost_cents, printer_time_cost_cents, material_cost_cents, material_snapshot
+			       recipe_id, attempt_number, parent_job_id, failure_category, estimated_seconds, actual_seconds, material_used_grams, cost_cents, printer_time_cost_cents, material_cost_cents, material_snapshot, priority, auto_dispatch_enabled
 			FROM print_jobs WHERE id = ?
 			UNION ALL
 			SELECT pj.id, pj.design_id, pj.printer_id, pj.material_spool_id, pj.project_id, pj.status, pj.progress, pj.started_at, pj.completed_at, pj.outcome, pj.notes, pj.created_at,
-			       pj.recipe_id, pj.attempt_number, pj.parent_job_id, pj.failure_category, pj.estimated_seconds, pj.actual_seconds, pj.material_used_grams, pj.cost_cents, pj.printer_time_cost_cents, pj.material_cost_cents, pj.material_snapshot
+			       pj.recipe_id, pj.attempt_number, pj.parent_job_id, pj.failure_category, pj.estimated_seconds, pj.actual_seconds, pj.material_used_grams, pj.cost_cents, pj.printer_time_cost_cents, pj.material_cost_cents, pj.material_snapshot, pj.priority, pj.auto_dispatch_enabled
 			FROM print_jobs pj INNER JOIN chain c ON pj.parent_job_id = c.id
 		)
 		SELECT * FROM chain ORDER BY attempt_number ASC
@@ -1117,7 +1124,7 @@ func (r *PrintJobRepository) GetRetryChain(ctx context.Context, jobID uuid.UUID)
 		var j model.PrintJob
 		var outcomeJSON, snapshotJSON []byte
 		if err := scanRow(rows, &j.ID, &j.DesignID, &j.PrinterID, &j.MaterialSpoolID, &j.ProjectID, &j.Status, &j.Progress, &j.StartedAt, &j.CompletedAt, &outcomeJSON, &j.Notes, &j.CreatedAt,
-			&j.RecipeID, &j.AttemptNumber, &j.ParentJobID, &j.FailureCategory, &j.EstimatedSeconds, &j.ActualSeconds, &j.MaterialUsedGrams, &j.CostCents, &j.PrinterTimeCostCents, &j.MaterialCostCents, &snapshotJSON); err != nil {
+			&j.RecipeID, &j.AttemptNumber, &j.ParentJobID, &j.FailureCategory, &j.EstimatedSeconds, &j.ActualSeconds, &j.MaterialUsedGrams, &j.CostCents, &j.PrinterTimeCostCents, &j.MaterialCostCents, &snapshotJSON, &j.Priority, &j.AutoDispatchEnabled); err != nil {
 			return nil, err
 		}
 		if outcomeJSON != nil {
@@ -1135,7 +1142,7 @@ func (r *PrintJobRepository) GetRetryChain(ctx context.Context, jobID uuid.UUID)
 func (r *PrintJobRepository) ListByRecipe(ctx context.Context, recipeID uuid.UUID) ([]model.PrintJob, error) {
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT id, design_id, printer_id, material_spool_id, project_id, status, progress, started_at, completed_at, outcome, notes, created_at,
-		       recipe_id, attempt_number, parent_job_id, failure_category, estimated_seconds, actual_seconds, material_used_grams, cost_cents, printer_time_cost_cents, material_cost_cents, material_snapshot
+		       recipe_id, attempt_number, parent_job_id, failure_category, estimated_seconds, actual_seconds, material_used_grams, cost_cents, printer_time_cost_cents, material_cost_cents, material_snapshot, priority, auto_dispatch_enabled
 		FROM print_jobs WHERE recipe_id = ? ORDER BY created_at DESC
 	`, recipeID)
 	if err != nil {
@@ -1148,7 +1155,7 @@ func (r *PrintJobRepository) ListByRecipe(ctx context.Context, recipeID uuid.UUI
 		var j model.PrintJob
 		var outcomeJSON, snapshotJSON []byte
 		if err := scanRow(rows, &j.ID, &j.DesignID, &j.PrinterID, &j.MaterialSpoolID, &j.ProjectID, &j.Status, &j.Progress, &j.StartedAt, &j.CompletedAt, &outcomeJSON, &j.Notes, &j.CreatedAt,
-			&j.RecipeID, &j.AttemptNumber, &j.ParentJobID, &j.FailureCategory, &j.EstimatedSeconds, &j.ActualSeconds, &j.MaterialUsedGrams, &j.CostCents, &j.PrinterTimeCostCents, &j.MaterialCostCents, &snapshotJSON); err != nil {
+			&j.RecipeID, &j.AttemptNumber, &j.ParentJobID, &j.FailureCategory, &j.EstimatedSeconds, &j.ActualSeconds, &j.MaterialUsedGrams, &j.CostCents, &j.PrinterTimeCostCents, &j.MaterialCostCents, &snapshotJSON, &j.Priority, &j.AutoDispatchEnabled); err != nil {
 			return nil, err
 		}
 		if outcomeJSON != nil {
@@ -1166,7 +1173,7 @@ func (r *PrintJobRepository) ListByRecipe(ctx context.Context, recipeID uuid.UUI
 func (r *PrintJobRepository) ListByProject(ctx context.Context, projectID uuid.UUID) ([]model.PrintJob, error) {
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT id, design_id, printer_id, material_spool_id, project_id, status, progress, started_at, completed_at, outcome, notes, created_at,
-		       recipe_id, attempt_number, parent_job_id, failure_category, estimated_seconds, actual_seconds, material_used_grams, cost_cents, printer_time_cost_cents, material_cost_cents, material_snapshot
+		       recipe_id, attempt_number, parent_job_id, failure_category, estimated_seconds, actual_seconds, material_used_grams, cost_cents, printer_time_cost_cents, material_cost_cents, material_snapshot, priority, auto_dispatch_enabled
 		FROM print_jobs WHERE project_id = ? ORDER BY created_at DESC
 	`, projectID)
 	if err != nil {
@@ -1179,7 +1186,7 @@ func (r *PrintJobRepository) ListByProject(ctx context.Context, projectID uuid.U
 		var j model.PrintJob
 		var outcomeJSON, snapshotJSON []byte
 		if err := scanRow(rows, &j.ID, &j.DesignID, &j.PrinterID, &j.MaterialSpoolID, &j.ProjectID, &j.Status, &j.Progress, &j.StartedAt, &j.CompletedAt, &outcomeJSON, &j.Notes, &j.CreatedAt,
-			&j.RecipeID, &j.AttemptNumber, &j.ParentJobID, &j.FailureCategory, &j.EstimatedSeconds, &j.ActualSeconds, &j.MaterialUsedGrams, &j.CostCents, &j.PrinterTimeCostCents, &j.MaterialCostCents, &snapshotJSON); err != nil {
+			&j.RecipeID, &j.AttemptNumber, &j.ParentJobID, &j.FailureCategory, &j.EstimatedSeconds, &j.ActualSeconds, &j.MaterialUsedGrams, &j.CostCents, &j.PrinterTimeCostCents, &j.MaterialCostCents, &snapshotJSON, &j.Priority, &j.AutoDispatchEnabled); err != nil {
 			return nil, err
 		}
 		if outcomeJSON != nil {
@@ -1274,6 +1281,46 @@ func (r *PrintJobRepository) GetPrinterJobStats(ctx context.Context, printerID u
 		}
 	}
 	return stats, rows.Err()
+}
+
+// ListQueued retrieves queued jobs ordered by priority DESC, created_at ASC.
+// Only returns jobs with auto_dispatch_enabled = true.
+func (r *PrintJobRepository) ListQueued(ctx context.Context) ([]model.PrintJob, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT id, design_id, printer_id, material_spool_id, project_id, status, progress, started_at, completed_at, outcome, notes, created_at,
+		       recipe_id, attempt_number, parent_job_id, failure_category, estimated_seconds, actual_seconds, material_used_grams, cost_cents, printer_time_cost_cents, material_cost_cents, material_snapshot, priority, auto_dispatch_enabled
+		FROM print_jobs
+		WHERE status = 'queued' AND auto_dispatch_enabled = 1
+		ORDER BY priority DESC, created_at ASC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var jobs []model.PrintJob
+	for rows.Next() {
+		var j model.PrintJob
+		var outcomeJSON, snapshotJSON []byte
+		if err := scanRow(rows, &j.ID, &j.DesignID, &j.PrinterID, &j.MaterialSpoolID, &j.ProjectID, &j.Status, &j.Progress, &j.StartedAt, &j.CompletedAt, &outcomeJSON, &j.Notes, &j.CreatedAt,
+			&j.RecipeID, &j.AttemptNumber, &j.ParentJobID, &j.FailureCategory, &j.EstimatedSeconds, &j.ActualSeconds, &j.MaterialUsedGrams, &j.CostCents, &j.PrinterTimeCostCents, &j.MaterialCostCents, &snapshotJSON, &j.Priority, &j.AutoDispatchEnabled); err != nil {
+			return nil, err
+		}
+		if outcomeJSON != nil {
+			json.Unmarshal(outcomeJSON, &j.Outcome)
+		}
+		if snapshotJSON != nil {
+			json.Unmarshal(snapshotJSON, &j.MaterialSnapshot)
+		}
+		jobs = append(jobs, j)
+	}
+	return jobs, rows.Err()
+}
+
+// UpdatePriority updates a job's priority.
+func (r *PrintJobRepository) UpdatePriority(ctx context.Context, id uuid.UUID, priority int) error {
+	_, err := r.db.ExecContext(ctx, `UPDATE print_jobs SET priority = ? WHERE id = ?`, priority, id)
+	return err
 }
 
 // FileRepository handles file metadata database operations.
@@ -2188,7 +2235,7 @@ type BambuCloudRepository struct {
 }
 
 // Upsert stores or updates Bambu Cloud auth credentials.
-// Only one row is expected (single account). Access token is encrypted before storage.
+// Only one row is expected (single account). Tokens are encrypted before storage.
 func (r *BambuCloudRepository) Upsert(ctx context.Context, auth *model.BambuCloudAuth) error {
 	if auth.ID == uuid.Nil {
 		auth.ID = uuid.New()
@@ -2208,23 +2255,33 @@ func (r *BambuCloudRepository) Upsert(ctx context.Context, auth *model.BambuClou
 		}
 	}
 
+	// Encrypt refresh token before storing
+	refreshToken := auth.RefreshToken
+	if refreshToken != "" {
+		if encrypted, err := crypto.Encrypt(refreshToken); err == nil {
+			refreshToken = encrypted
+		} else {
+			slog.Warn("failed to encrypt bambu cloud refresh token", "error", err)
+		}
+	}
+
 	// Delete existing then insert (simpler than upsert for single-row table)
 	_, _ = r.db.ExecContext(ctx, `DELETE FROM bambu_cloud_auth`)
 	_, err := r.db.ExecContext(ctx, `
-		INSERT INTO bambu_cloud_auth (id, email, access_token, mqtt_username, expires_at, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
-	`, auth.ID, auth.Email, accessToken, auth.MQTTUsername, auth.ExpiresAt, auth.CreatedAt, auth.UpdatedAt)
+		INSERT INTO bambu_cloud_auth (id, email, access_token, refresh_token, mqtt_username, expires_at, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+	`, auth.ID, auth.Email, accessToken, refreshToken, auth.MQTTUsername, auth.ExpiresAt, auth.CreatedAt, auth.UpdatedAt)
 	return err
 }
 
 // Get retrieves the stored Bambu Cloud auth (if any).
-// Access token is decrypted before returning.
+// Tokens are decrypted before returning.
 func (r *BambuCloudRepository) Get(ctx context.Context) (*model.BambuCloudAuth, error) {
 	var auth model.BambuCloudAuth
 	err := scanRow(r.db.QueryRowContext(ctx, `
-		SELECT id, email, access_token, mqtt_username, expires_at, created_at, updated_at
+		SELECT id, email, access_token, refresh_token, mqtt_username, expires_at, created_at, updated_at
 		FROM bambu_cloud_auth LIMIT 1
-	`), &auth.ID, &auth.Email, &auth.AccessToken, &auth.MQTTUsername, &auth.ExpiresAt, &auth.CreatedAt, &auth.UpdatedAt)
+	`), &auth.ID, &auth.Email, &auth.AccessToken, &auth.RefreshToken, &auth.MQTTUsername, &auth.ExpiresAt, &auth.CreatedAt, &auth.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -2235,6 +2292,13 @@ func (r *BambuCloudRepository) Get(ctx context.Context) (*model.BambuCloudAuth, 
 	// Decrypt access token
 	if decrypted, err := crypto.Decrypt(auth.AccessToken); err == nil {
 		auth.AccessToken = decrypted
+	}
+
+	// Decrypt refresh token
+	if auth.RefreshToken != "" {
+		if decrypted, err := crypto.Decrypt(auth.RefreshToken); err == nil {
+			auth.RefreshToken = decrypted
+		}
 	}
 
 	return &auth, nil

@@ -396,6 +396,9 @@ export interface PrintJob {
   material_snapshot?: MaterialSnapshot
   // Event history (when fetched with events)
   events?: JobEvent[]
+  // Queue management
+  priority?: number
+  auto_dispatch_enabled?: boolean
 }
 
 // Request type for retrying a job
@@ -1001,5 +1004,30 @@ export interface SquarespaceProductVariant {
   stock_unlimited: boolean
   attributes?: Record<string, string>
   created_at: string
+}
+
+// Auto-dispatch types
+export type DispatchRequestStatus = 'pending' | 'confirmed' | 'rejected' | 'expired'
+
+export interface DispatchRequest {
+  id: string
+  job_id: string
+  printer_id: string
+  status: DispatchRequestStatus
+  created_at: string
+  expires_at: string
+  responded_at?: string
+  reason?: string
+  job?: PrintJob
+  printer?: Printer
+}
+
+export interface AutoDispatchSettings {
+  printer_id: string
+  enabled: boolean
+  require_confirmation: boolean
+  auto_start: boolean
+  timeout_minutes: number
+  updated_at?: string
 }
 

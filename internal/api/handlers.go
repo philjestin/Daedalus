@@ -1349,6 +1349,30 @@ func (h *PrintJobHandler) ListByRecipe(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, jobs)
 }
 
+// UpdatePriority updates a job's priority in the queue.
+func (h *PrintJobHandler) UpdatePriority(w http.ResponseWriter, r *http.Request) {
+	id, err := parseUUID(r, "id")
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid job ID")
+		return
+	}
+
+	var req struct {
+		Priority int `json:"priority"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if err := h.service.UpdatePriority(r.Context(), id, req.Priority); err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]string{"status": "updated"})
+}
+
 // FileHandler handles file endpoints.
 type FileHandler struct {
 	service *service.FileService

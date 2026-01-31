@@ -1,6 +1,6 @@
 import { useEffect, useRef, useCallback, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import type { PrinterState } from '../types'
+import type { PrinterState, DispatchRequest } from '../types'
 
 // Build WebSocket URL - use relative path in production
 function getWsUrl(): string {
@@ -24,6 +24,23 @@ interface WebSocketEvent {
 }
 
 type ConnectionStatus = 'connecting' | 'connected' | 'disconnected'
+
+// Dispatch request callback type
+type DispatchRequestCallback = (request: DispatchRequest | null) => void
+
+// Global dispatch request callbacks
+const dispatchRequestCallbacks = new Set<DispatchRequestCallback>()
+
+// Subscribe to dispatch requests
+export function onDispatchRequest(callback: DispatchRequestCallback) {
+  dispatchRequestCallbacks.add(callback)
+  return () => dispatchRequestCallbacks.delete(callback)
+}
+
+// Notify all subscribers of a dispatch request
+function notifyDispatchRequest(request: DispatchRequest | null) {
+  dispatchRequestCallbacks.forEach(cb => cb(request))
+}
 
 export function useWebSocket() {
   const wsRef = useRef<WebSocket | null>(null)
@@ -70,6 +87,36 @@ export function useWebSocket() {
       case 'job_cancelled': {
         // Invalidate print jobs to trigger refetch
         queryClient.invalidateQueries({ queryKey: ['print-jobs'] })
+        break
+      }
+
+      case 'dispatch_request': {
+        // New dispatch request - notify subscribers
+        const request = event.data as DispatchRequest
+        notifyDispatchRequest(request)
+        queryClient.invalidateQueries({ queryKey: ['dispatch-requests'] })
+        break
+      }
+
+      case 'dispatch_confirmed': {
+        // Dispatch was confirmed - clear notification and refresh jobs
+        notifyDispatchRequest(null)
+        queryClient.invalidateQueries({ queryKey: ['dispatch-requests'] })
+        queryClient.invalidateQueries({ queryKey: ['print-jobs'] })
+        break
+      }
+
+      case 'dispatch_rejected': {
+        // Dispatch was rejected - clear notification
+        notifyDispatchRequest(null)
+        queryClient.invalidateQueries({ queryKey: ['dispatch-requests'] })
+        break
+      }
+
+      case 'dispatch_expired': {
+        // Dispatch expired - clear notification and refresh
+        notifyDispatchRequest(null)
+        queryClient.invalidateQueries({ queryKey: ['dispatch-requests'] })
         break
       }
 

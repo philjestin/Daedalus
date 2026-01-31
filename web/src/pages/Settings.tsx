@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Store, ShoppingBag, ExternalLink, RefreshCw, Unplug, AlertCircle, CheckCircle2, Key, Eye, EyeOff, Save, Database, Download, Trash2, RotateCcw, Plus } from 'lucide-react'
-import { etsyApi, squarespaceApi, settingsApi, backupsApi } from '../api/client'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Store, ShoppingBag, ExternalLink, RefreshCw, Unplug, AlertCircle, CheckCircle2, Key, Eye, EyeOff, Save, Database, Download, Trash2, RotateCcw, Plus, Zap } from 'lucide-react'
+import { etsyApi, squarespaceApi, settingsApi, backupsApi, dispatchApi } from '../api/client'
+import { cn } from '../lib/utils'
 import type { EtsyIntegration, SquarespaceIntegration, BackupInfo } from '../types'
 
 function formatBytes(bytes: number): string {
@@ -396,6 +398,9 @@ export default function Settings() {
           </p>
         </div>
 
+        {/* Auto-Dispatch Settings Card */}
+        <AutoDispatchGlobalSettings />
+
         {/* API Keys Card */}
         <div className="bg-surface-900/50 border border-surface-800 rounded-xl p-6 mb-6">
           <div className="flex items-center gap-3 mb-4">
@@ -696,6 +701,75 @@ export default function Settings() {
           )}
         </div>
       </div>
+    </div>
+  )
+}
+
+function AutoDispatchGlobalSettings() {
+  const queryClient = useQueryClient()
+
+  const { data: settings, isLoading } = useQuery({
+    queryKey: ['dispatch-global-settings'],
+    queryFn: () => dispatchApi.getGlobalSettings(),
+  })
+
+  const updateMutation = useMutation({
+    mutationFn: (enabled: boolean) => dispatchApi.updateGlobalSettings(enabled),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['dispatch-global-settings'] })
+    },
+  })
+
+  return (
+    <div className="bg-surface-900/50 border border-surface-800 rounded-xl p-6 mb-6">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="p-2 bg-accent-500/10 rounded-lg">
+            <Zap className="h-6 w-6 text-accent-400" />
+          </div>
+          <div>
+            <h2 className="text-lg font-semibold text-surface-100">Auto-Dispatch</h2>
+            <p className="text-sm text-surface-400">
+              Automatically queue jobs to idle printers
+            </p>
+          </div>
+        </div>
+
+        {isLoading ? (
+          <RefreshCw className="h-5 w-5 text-surface-400 animate-spin" />
+        ) : (
+          <button
+            onClick={() => updateMutation.mutate(!settings?.enabled)}
+            disabled={updateMutation.isPending}
+            className={cn(
+              'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
+              settings?.enabled ? 'bg-accent-500' : 'bg-surface-600'
+            )}
+          >
+            <span
+              className={cn(
+                'inline-block h-4 w-4 transform rounded-full bg-white transition-transform',
+                settings?.enabled ? 'translate-x-6' : 'translate-x-1'
+              )}
+            />
+          </button>
+        )}
+      </div>
+
+      <p className="mt-3 text-xs text-surface-500">
+        When enabled, idle printers will automatically be matched with compatible queued jobs.
+        You'll be prompted to confirm the bed is clear before each print starts.
+        Configure per-printer settings on each printer's detail page.
+      </p>
+
+      {settings?.enabled && (
+        <div className="mt-3 p-3 rounded-lg bg-accent-500/10 border border-accent-500/20">
+          <div className="flex items-center gap-2 text-accent-400 text-sm">
+            <div className="h-2 w-2 rounded-full bg-accent-500 animate-pulse" />
+            Auto-dispatch is globally active
+          </div>
+        </div>
+      )}
     </div>
   )
 }

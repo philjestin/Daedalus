@@ -46,6 +46,7 @@ type Services struct {
 	Settings        *SettingsService
 	ProjectSupplies *ProjectSupplyService
 	Backup          *BackupService
+	Dispatcher      *DispatcherService
 }
 
 // EtsyConfig holds Etsy OAuth configuration.
@@ -61,11 +62,14 @@ type ServicesConfig struct {
 
 // NewServices creates all service instances.
 func NewServices(repos *repository.Repositories, store storage.Storage, printerMgr *printer.Manager, hub *realtime.Hub) *Services {
+	// Create shared Bambu cloud client
+	bambuCloudClient := bambu.NewCloudClient()
+
 	services := &Services{
 		Projects:  &ProjectService{repo: repos.Projects, printJobRepo: repos.PrintJobs, printerRepo: repos.Printers, spoolRepo: repos.Spools, templateRepo: repos.Templates, designRepo: repos.Designs, saleRepo: repos.Sales, partRepo: repos.Parts, supplyRepo: repos.ProjectSupplies, printerMgr: printerMgr, hub: hub, storage: store},
 		Parts:     &PartService{repo: repos.Parts},
 		Designs:   &DesignService{repo: repos.Designs, fileRepo: repos.Files, storage: store},
-		Printers:  &PrinterService{repo: repos.Printers, printJobRepo: repos.PrintJobs, saleRepo: repos.Sales, manager: printerMgr, hub: hub, discovery: printer.NewDiscovery(), bambuCloudRepo: repos.BambuCloud},
+		Printers:  &PrinterService{repo: repos.Printers, printJobRepo: repos.PrintJobs, saleRepo: repos.Sales, manager: printerMgr, hub: hub, discovery: printer.NewDiscovery(), bambuCloudRepo: repos.BambuCloud, bambuCloud: bambuCloudClient},
 		Materials: &MaterialService{repo: repos.Materials},
 		Spools:    &SpoolService{repo: repos.Spools},
 		PrintJobs: &PrintJobService{repo: repos.PrintJobs, printerRepo: repos.Printers, designRepo: repos.Designs, spoolRepo: repos.Spools, materialRepo: repos.Materials, projectRepo: repos.Projects, printerMgr: printerMgr, hub: hub, storage: store},
@@ -76,7 +80,7 @@ func NewServices(repos *repository.Repositories, store storage.Storage, printerM
 		Templates: &TemplateService{repo: repos.Templates, projectRepo: repos.Projects, partRepo: repos.Parts, designRepo: repos.Designs, printJobRepo: repos.PrintJobs, spoolRepo: repos.Spools, materialRepo: repos.Materials, printerRepo: repos.Printers},
 		Etsy:            nil, // Initialize separately with NewServicesWithEtsy
 		Squarespace:     nil, // Initialize below after Templates is ready
-		BambuCloud:      NewBambuCloudService(repos.BambuCloud, repos.Printers, printerMgr, bambu.NewCloudClient()),
+		BambuCloud:      NewBambuCloudService(repos.BambuCloud, repos.Printers, printerMgr, bambuCloudClient),
 		Settings:        &SettingsService{repo: repos.Settings},
 		ProjectSupplies: &ProjectSupplyService{repo: repos.ProjectSupplies, materialRepo: repos.Materials},
 	}
@@ -85,6 +89,19 @@ func NewServices(repos *repository.Repositories, store storage.Storage, printerM
 	services.Templates.projectService = services.Projects
 	// Initialize Squarespace with template service for order processing
 	services.Squarespace = NewSquarespaceService(repos.Squarespace, services.Templates)
+	// Initialize Dispatcher service
+	services.Dispatcher = NewDispatcherService(
+		repos.Dispatch,
+		repos.AutoDispatchSettings,
+		repos.PrintJobs,
+		repos.Printers,
+		services.Templates,
+		services.PrintJobs,
+		printerMgr,
+		hub,
+		services.Settings,
+	)
+	services.Dispatcher.Init()
 	return services
 }
 
@@ -695,6 +712,7 @@ type PrinterService struct {
 	hub            *realtime.Hub
 	discovery      *printer.Discovery
 	bambuCloudRepo *repository.BambuCloudRepository
+	bambuCloud     *bambu.CloudClient
 }
 
 // Create creates a new printer.
@@ -948,11 +966,28 @@ func (s *PrinterService) ConnectAllPrinters(ctx context.Context) {
 		return
 	}
 
-	// Load cloud auth once if any cloud printers exist
+	// Load and validate cloud auth once if any cloud printers exist
 	var cloudAuth *model.BambuCloudAuth
 	for _, p := range printers {
 		if p.ConnectionType == model.ConnectionTypeBambuCloud {
 			cloudAuth, _ = s.bambuCloudRepo.Get(ctx)
+			if cloudAuth != nil {
+				// Check if token needs refresh
+				if cloudAuth.IsExpired(tokenRefreshBuffer) && cloudAuth.CanRefresh() {
+					slog.Info("refreshing expired bambu cloud token at startup")
+					refreshedAuth, err := s.refreshBambuToken(ctx, cloudAuth)
+					if err != nil {
+						slog.Error("failed to refresh bambu cloud token at startup", "error", err)
+						cloudAuth = nil // Mark as unavailable
+					} else {
+						cloudAuth = refreshedAuth
+						slog.Info("bambu cloud token refreshed successfully at startup")
+					}
+				} else if cloudAuth.IsExpired(0) {
+					slog.Warn("bambu cloud token expired and no refresh token available")
+					cloudAuth = nil
+				}
+			}
 			break
 		}
 	}
@@ -966,7 +1001,7 @@ func (s *PrinterService) ConnectAllPrinters(ctx context.Context) {
 		// For cloud printers, inject the latest auth credentials
 		if p.ConnectionType == model.ConnectionTypeBambuCloud {
 			if cloudAuth == nil {
-				slog.Warn("skipping cloud printer — no stored Bambu Cloud credentials",
+				slog.Warn("skipping cloud printer — no valid Bambu Cloud credentials",
 					"printer_id", p.ID, "name", p.Name)
 				continue
 			}
@@ -977,6 +1012,39 @@ func (s *PrinterService) ConnectAllPrinters(ctx context.Context) {
 		slog.Info("reconnecting printer", "id", p.ID, "name", p.Name, "type", p.ConnectionType)
 		go s.manager.Connect(p)
 	}
+}
+
+// refreshBambuToken refreshes the Bambu Cloud access token.
+func (s *PrinterService) refreshBambuToken(ctx context.Context, auth *model.BambuCloudAuth) (*model.BambuCloudAuth, error) {
+	if s.bambuCloud == nil {
+		return nil, fmt.Errorf("bambu cloud client not configured")
+	}
+
+	resp, err := s.bambuCloud.RefreshToken(auth.RefreshToken)
+	if err != nil {
+		return nil, err
+	}
+
+	// Calculate new expiration time
+	var expiresAt *time.Time
+	if resp.ExpiresIn > 0 {
+		t := time.Now().Add(time.Duration(resp.ExpiresIn) * time.Second)
+		expiresAt = &t
+	}
+
+	// Update auth with new tokens
+	auth.AccessToken = resp.AccessToken
+	if resp.RefreshToken != "" {
+		auth.RefreshToken = resp.RefreshToken
+	}
+	auth.ExpiresAt = expiresAt
+
+	// Persist updated credentials
+	if err := s.bambuCloudRepo.Upsert(ctx, auth); err != nil {
+		return nil, fmt.Errorf("failed to save refreshed credentials: %w", err)
+	}
+
+	return auth, nil
 }
 
 // BambuCloudService handles Bambu Cloud authentication and device management.
@@ -1041,20 +1109,84 @@ func (s *BambuCloudService) storeAuth(ctx context.Context, email string, resp *b
 	auth := &model.BambuCloudAuth{
 		Email:        email,
 		AccessToken:  resp.AccessToken,
+		RefreshToken: resp.RefreshToken,
 		MQTTUsername: mqttUsername,
 		ExpiresAt:    expiresAt,
 	}
 	return s.repo.Upsert(ctx, auth)
 }
 
-// GetDevices fetches the device list from Bambu Cloud.
-func (s *BambuCloudService) GetDevices(ctx context.Context) ([]bambu.CloudDevice, error) {
+// tokenRefreshBuffer is how long before expiration we should refresh the token.
+const tokenRefreshBuffer = 5 * time.Minute
+
+// GetValidAuth retrieves auth credentials, automatically refreshing if expired.
+// Returns an error if not authenticated or if refresh fails.
+func (s *BambuCloudService) GetValidAuth(ctx context.Context) (*model.BambuCloudAuth, error) {
 	auth, err := s.repo.Get(ctx)
 	if err != nil {
 		return nil, err
 	}
 	if auth == nil {
 		return nil, fmt.Errorf("not authenticated with Bambu Cloud")
+	}
+
+	// Check if token is expired or about to expire
+	if auth.IsExpired(tokenRefreshBuffer) {
+		slog.Info("bambu cloud token expired or expiring soon, attempting refresh",
+			"expires_at", auth.ExpiresAt,
+			"can_refresh", auth.CanRefresh())
+
+		if !auth.CanRefresh() {
+			return nil, fmt.Errorf("bambu cloud token expired and no refresh token available - please re-login")
+		}
+
+		// Attempt refresh
+		refreshedAuth, err := s.refreshToken(ctx, auth)
+		if err != nil {
+			slog.Error("failed to refresh bambu cloud token", "error", err)
+			return nil, fmt.Errorf("failed to refresh token: %w - please re-login", err)
+		}
+		auth = refreshedAuth
+		slog.Info("bambu cloud token refreshed successfully", "new_expires_at", auth.ExpiresAt)
+	}
+
+	return auth, nil
+}
+
+// refreshToken uses the refresh token to get new credentials.
+func (s *BambuCloudService) refreshToken(ctx context.Context, auth *model.BambuCloudAuth) (*model.BambuCloudAuth, error) {
+	resp, err := s.cloud.RefreshToken(auth.RefreshToken)
+	if err != nil {
+		return nil, err
+	}
+
+	// Calculate new expiration time
+	var expiresAt *time.Time
+	if resp.ExpiresIn > 0 {
+		t := time.Now().Add(time.Duration(resp.ExpiresIn) * time.Second)
+		expiresAt = &t
+	}
+
+	// Update auth with new tokens (keep existing email and mqtt username)
+	auth.AccessToken = resp.AccessToken
+	if resp.RefreshToken != "" {
+		auth.RefreshToken = resp.RefreshToken
+	}
+	auth.ExpiresAt = expiresAt
+
+	// Persist updated credentials
+	if err := s.repo.Upsert(ctx, auth); err != nil {
+		return nil, fmt.Errorf("failed to save refreshed credentials: %w", err)
+	}
+
+	return auth, nil
+}
+
+// GetDevices fetches the device list from Bambu Cloud.
+func (s *BambuCloudService) GetDevices(ctx context.Context) ([]bambu.CloudDevice, error) {
+	auth, err := s.GetValidAuth(ctx)
+	if err != nil {
+		return nil, err
 	}
 	return s.cloud.GetDevices(auth.AccessToken)
 }
@@ -1066,12 +1198,9 @@ func (s *BambuCloudService) GetStoredAuth(ctx context.Context) (*model.BambuClou
 
 // AddDevice creates a printer from a cloud device and connects it.
 func (s *BambuCloudService) AddDevice(ctx context.Context, devID string) (*model.Printer, error) {
-	auth, err := s.repo.Get(ctx)
+	auth, err := s.GetValidAuth(ctx)
 	if err != nil {
 		return nil, err
-	}
-	if auth == nil {
-		return nil, fmt.Errorf("not authenticated with Bambu Cloud")
 	}
 
 	devices, err := s.cloud.GetDevices(auth.AccessToken)
@@ -2129,6 +2258,11 @@ func (s *PrintJobService) MarkAsScrap(ctx context.Context, id uuid.UUID, req *Sc
 	})
 
 	return nil
+}
+
+// UpdatePriority updates a job's priority in the queue.
+func (s *PrintJobService) UpdatePriority(ctx context.Context, id uuid.UUID, priority int) error {
+	return s.repo.UpdatePriority(ctx, id, priority)
 }
 
 // FileService handles file operations.

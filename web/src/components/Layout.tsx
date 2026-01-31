@@ -15,6 +15,7 @@ import {
   PanelLeftOpen,
 } from 'lucide-react'
 import { cn } from '../lib/utils'
+import DispatchNotificationProvider from './DispatchNotificationProvider'
 
 const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
@@ -116,6 +117,9 @@ export default function Layout() {
       <main className="flex-1 overflow-auto min-w-0">
         <Outlet />
       </main>
+
+      {/* Global dispatch notification */}
+      <DispatchNotificationProvider />
     </div>
   )
 }

@@ -4,6 +4,7 @@ import { ArrowLeft, Wifi, Thermometer, Fan, Gauge, Info, AlertTriangle, Lightbul
 import { usePrinter, usePrinterState, usePrinterJobs, usePrinterStats, useUpdatePrinter, usePrinterAnalytics } from '../hooks/usePrinters'
 import { cn, getStatusBadge, formatDuration, formatRelativeTime } from '../lib/utils'
 import { ExpandableJobEvents } from '../components/JobEventTimeline'
+import AutoDispatchSettings from '../components/AutoDispatchSettings'
 import type { PrintJob, PrinterUtilization, PrinterROI, PrinterHealth } from '../types'
 
 const SPEED_LABELS: Record<number, string> = {
@@ -279,6 +280,9 @@ export default function PrinterDetail() {
 
         {/* COST SETTINGS */}
         <PrinterCostSetting printerId={printer.id} costPerHourCents={printer.cost_per_hour_cents} printerModel={printer.model} />
+
+        {/* AUTO-DISPATCH SETTINGS */}
+        <AutoDispatchSettings printerId={printer.id} />
 
         {/* AMS STATUS */}
         {hasAMS && (

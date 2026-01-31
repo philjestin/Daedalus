@@ -99,6 +99,7 @@ func NewRouter(services *service.Services, hub *realtime.Hub) http.Handler {
 
 		// Printers
 		printerHandler := &PrinterHandler{service: services.Printers}
+		dispatchHandler := NewDispatchHandler(services.Dispatcher)
 		r.Route("/printers", func(r chi.Router) {
 			r.Get("/", printerHandler.List)
 			r.Post("/", printerHandler.Create)
@@ -112,6 +113,9 @@ func NewRouter(services *service.Services, hub *realtime.Hub) http.Handler {
 				r.Get("/jobs", printerHandler.ListJobs)
 				r.Get("/stats", printerHandler.GetJobStats)
 				r.Get("/analytics", printerHandler.GetPrinterAnalytics)
+				// Auto-dispatch settings
+				r.Get("/dispatch-settings", dispatchHandler.GetPrinterSettings)
+				r.Put("/dispatch-settings", dispatchHandler.UpdatePrinterSettings)
 			})
 		})
 
@@ -154,6 +158,8 @@ func NewRouter(services *service.Services, hub *realtime.Hub) http.Handler {
 				r.Post("/retry", printJobHandler.Retry)
 				r.Post("/failure", printJobHandler.RecordFailure)
 				r.Post("/scrap", printJobHandler.MarkAsScrap)
+				// Priority for auto-dispatch queue
+				r.Patch("/priority", printJobHandler.UpdatePriority)
 			})
 		})
 
@@ -198,6 +204,16 @@ func NewRouter(services *service.Services, hub *realtime.Hub) http.Handler {
 				r.Put("/", settingsHandler.Set)
 				r.Delete("/", settingsHandler.Delete)
 			})
+		})
+
+		// Dispatch (auto-dispatch queue management)
+		r.Route("/dispatch", func(r chi.Router) {
+			r.Get("/requests", dispatchHandler.ListPending)
+			r.Post("/requests/{id}/confirm", dispatchHandler.Confirm)
+			r.Post("/requests/{id}/reject", dispatchHandler.Reject)
+			r.Post("/requests/{id}/skip", dispatchHandler.Skip)
+			r.Get("/settings", dispatchHandler.GetGlobalSettings)
+			r.Put("/settings", dispatchHandler.UpdateGlobalSettings)
 		})
 
 		// Backups

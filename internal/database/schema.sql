@@ -195,6 +195,8 @@ CREATE TABLE IF NOT EXISTS print_jobs (
     printer_time_cost_cents INTEGER,
     material_cost_cents INTEGER,
     material_snapshot TEXT,
+    priority INTEGER NOT NULL DEFAULT 0,
+    auto_dispatch_enabled INTEGER NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -206,6 +208,31 @@ CREATE INDEX IF NOT EXISTS idx_print_jobs_parent ON print_jobs(parent_job_id);
 CREATE INDEX IF NOT EXISTS idx_print_jobs_recipe ON print_jobs(recipe_id);
 CREATE INDEX IF NOT EXISTS idx_print_jobs_project ON print_jobs(project_id);
 CREATE INDEX IF NOT EXISTS idx_print_jobs_material_spool ON print_jobs(material_spool_id);
+
+-- Dispatch requests table (for auto-dispatch confirmation)
+CREATE TABLE IF NOT EXISTS dispatch_requests (
+    id TEXT PRIMARY KEY,
+    job_id TEXT NOT NULL REFERENCES print_jobs(id) ON DELETE CASCADE,
+    printer_id TEXT NOT NULL REFERENCES printers(id),
+    status TEXT NOT NULL DEFAULT 'pending',  -- pending, confirmed, rejected, expired
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    expires_at TEXT NOT NULL,
+    responded_at TEXT,
+    reason TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_dispatch_requests_status ON dispatch_requests(status);
+CREATE INDEX IF NOT EXISTS idx_dispatch_requests_printer ON dispatch_requests(printer_id);
+CREATE INDEX IF NOT EXISTS idx_dispatch_requests_job ON dispatch_requests(job_id);
+
+-- Auto-dispatch settings per printer
+CREATE TABLE IF NOT EXISTS auto_dispatch_settings (
+    printer_id TEXT PRIMARY KEY REFERENCES printers(id) ON DELETE CASCADE,
+    enabled INTEGER NOT NULL DEFAULT 0,
+    require_confirmation INTEGER NOT NULL DEFAULT 1,
+    auto_start INTEGER NOT NULL DEFAULT 0,
+    timeout_minutes INTEGER NOT NULL DEFAULT 30,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
 
 -- Job events table (append-only, immutable audit log)
 CREATE TABLE IF NOT EXISTS job_events (
@@ -611,6 +638,7 @@ CREATE TABLE IF NOT EXISTS bambu_cloud_auth (
     id TEXT PRIMARY KEY,
     email TEXT NOT NULL,
     access_token TEXT NOT NULL,
+    refresh_token TEXT NOT NULL DEFAULT '',
     mqtt_username TEXT NOT NULL,
     expires_at TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
