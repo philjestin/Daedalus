@@ -1,22 +1,39 @@
-# PrintFarm (Daedalus)
+# Daedalus
 
-**Maker Project Management + Print Farm OS**
+**Print Farm Management + Order Fulfillment Platform**
 
-A project-centric platform for makers and small 3D print farms. Unlike traditional printer-centric tools (OctoPrint, SimplyPrint), PrintFarm treats **projects as the command center** — you control printers from within your project context.
+A comprehensive platform for makers and small 3D print farms. Manage your product catalog, track orders from multiple sales channels, and coordinate print jobs across your printer fleet.
 
 Runs as a **desktop app** (macOS/Windows via [Wails](https://wails.io)) or as a **self-hosted web app** (Docker / Fly.io).
 
 ## Features
 
-- **Project-Centric Workflow**: Organize work by projects, not printers. Track full lifecycle from draft through shipping.
+- **Product Catalog (Projects)**: Define your products with SKUs, pricing, printer constraints, and default settings. Track profitability per product.
+- **Order Management**: Unified order system with integrations for Etsy, Squarespace, and manual orders.
+- **Task-Based Workflow**: Tasks are work instances created when fulfilling orders. Each task tracks print jobs, progress, and completion.
 - **Multi-Printer Control**: Manage OctoPrint, Bambu Lab, and Klipper/Moonraker printers from one interface with automatic network discovery.
 - **Design Versioning**: Immutable design versions with 3MF file parsing (print time, weight, filament usage).
-- **Material & Cost Tracking**: Material catalog, spool inventory, per-project cost rollups, and profit margin calculations.
-- **Templates & Recipes**: Create reusable project templates with material requirements and cost estimates.
-- **Expense & Sales Tracking**: Log expenses with receipt uploads, track sales by channel, and view profitability analytics.
-- **Etsy Integration**: OAuth-based Etsy sync for orders, listings, and inventory.
+- **Material & Cost Tracking**: Material catalog, spool inventory, per-product cost rollups, and profit margin calculations.
+- **Expense Tracking**: Log expenses with receipt OCR, categorize by type (filament, tools, advertising, subscriptions), and track profitability.
+- **Sales Analytics**: Track sales by channel, view revenue trends, and analyze profit-per-hour metrics.
 - **Real-Time Status**: Live printer status and job progress via WebSocket.
-- **Analytics Dashboard**: Financial summaries, time-series charts, expense breakdowns, and profit-per-hour metrics.
+- **Timeline View**: Gantt-style visualization of orders, tasks, and print jobs.
+
+## Data Model
+
+```
+Sales Channels (Etsy, Squarespace, Direct)
+    ↓
+Orders → Order Items
+    ↓
+Tasks (work instances) → Print Jobs
+    ↓
+Projects (product catalog)
+```
+
+- **Projects** = Your product catalog. Each project defines a product you sell (name, SKU, pricing, designs, printer requirements).
+- **Tasks** = Work instances created when processing orders. A task references a project and contains print jobs.
+- **Print Jobs** = Individual prints sent to printers. Track status, progress, material usage, and outcomes.
 
 ## Tech Stack
 
@@ -90,10 +107,10 @@ The built app is output to `build/bin/`.
 │   ├── realtime/         # WebSocket hub
 │   ├── storage/          # File storage
 │   ├── etsy/             # Etsy API client (OAuth + PKCE)
+│   ├── squarespace/      # Squarespace API client
 │   ├── bambu/            # Bambu Lab cloud integration
-│   ├── receipt/          # Receipt parsing
+│   ├── receipt/          # Receipt OCR parsing
 │   └── threemf/          # 3MF file format parsing
-├── migrations/           # SQL migration files
 ├── web/                  # React frontend
 │   └── src/
 │       ├── api/          # API client
@@ -111,18 +128,35 @@ The built app is output to `build/bin/`.
 
 ## API Endpoints
 
-### Projects
-- `GET /api/projects` - List projects (filterable by status)
-- `POST /api/projects` - Create project
-- `GET /api/projects/{id}` - Get project
-- `PATCH /api/projects/{id}` - Update project
-- `DELETE /api/projects/{id}` - Delete project
-- `GET /api/projects/{id}/summary` - Project analytics
-- `GET /api/projects/{id}/jobs` - List jobs for project
-- `GET /api/projects/{id}/job-stats` - Job statistics
-- `POST /api/projects/{id}/start-production` - Start production
-- `POST /api/projects/{id}/ready-to-ship` - Mark ready to ship
-- `POST /api/projects/{id}/ship` - Mark shipped with tracking
+### Projects (Product Catalog)
+- `GET /api/projects` - List all products
+- `POST /api/projects` - Create product
+- `GET /api/projects/{id}` - Get product details
+- `PATCH /api/projects/{id}` - Update product (name, SKU, pricing, etc.)
+- `DELETE /api/projects/{id}` - Delete product
+- `GET /api/projects/{id}/summary` - Product analytics (revenue, costs, profit)
+- `GET /api/projects/{id}/tasks` - List tasks for this product
+
+### Tasks (Work Instances)
+- `GET /api/tasks` - List tasks (filterable by status, project, order)
+- `POST /api/tasks` - Create task manually
+- `GET /api/tasks/{id}` - Get task with jobs
+- `PATCH /api/tasks/{id}` - Update task
+- `PATCH /api/tasks/{id}/status` - Update task status
+- `DELETE /api/tasks/{id}` - Delete task
+- `POST /api/tasks/{id}/start` - Start task
+- `POST /api/tasks/{id}/complete` - Complete task
+- `POST /api/tasks/{id}/cancel` - Cancel task
+- `GET /api/tasks/{id}/progress` - Get task progress
+
+### Orders
+- `GET /api/orders` - List orders (filterable by status, channel)
+- `POST /api/orders` - Create manual order
+- `GET /api/orders/{id}` - Get order with items and tasks
+- `PATCH /api/orders/{id}` - Update order
+- `POST /api/orders/{id}/items` - Add item to order
+- `POST /api/orders/{id}/items/{itemId}/process` - Create task from order item
+- `POST /api/orders/{id}/ship` - Mark order shipped
 
 ### Parts & Designs
 - `GET /api/projects/{id}/parts` - List parts
@@ -147,8 +181,6 @@ The built app is output to `build/bin/`.
 - `POST /api/print-jobs/{id}/cancel` - Cancel print
 - `POST /api/print-jobs/{id}/outcome` - Record result
 - `POST /api/print-jobs/{id}/retry` - Retry failed job
-- `GET /api/print-jobs/{id}/events` - Immutable event log
-- `GET /api/print-jobs/{id}/retry-chain` - Related retries
 
 ### Materials & Spools
 - `GET /api/materials` - List materials
@@ -156,15 +188,10 @@ The built app is output to `build/bin/`.
 - `GET /api/spools` - List spools
 - `POST /api/spools` - Create spool
 
-### Templates
-- `GET /api/templates` - List templates
-- `POST /api/templates` - Create template
-- `POST /api/templates/{id}/instantiate` - Create project from template
-- `GET /api/templates/{id}/cost-estimate` - Price calculation
-
 ### Expenses & Sales
 - `GET /api/expenses` - List expenses
-- `POST /api/expenses/receipt` - Upload receipt
+- `POST /api/expenses/receipt` - Upload receipt (OCR processing)
+- `PATCH /api/expenses/{id}` - Update/confirm expense
 - `GET /api/sales` - List sales
 - `POST /api/sales` - Record sale
 
@@ -173,15 +200,23 @@ The built app is output to `build/bin/`.
 - `GET /api/stats/time-series` - Dashboard chart data
 - `GET /api/stats/expenses-by-category` - Cost breakdown
 - `GET /api/stats/sales-by-channel` - Revenue by channel
+- `GET /api/stats/sales-by-project` - Revenue by product
 
-### Etsy Integration
-- `GET /api/integrations/etsy/auth` - Start OAuth flow
-- `GET /api/integrations/etsy/status` - Connection status
-- `POST /api/integrations/etsy/receipts/sync` - Sync orders
-- `GET /api/integrations/etsy/listings` - List/link products
+### Sales Channel Integrations
+- `GET /api/channels` - List connected channels
+- `GET /api/integrations/etsy/auth` - Start Etsy OAuth flow
+- `GET /api/integrations/etsy/status` - Etsy connection status
+- `POST /api/integrations/etsy/sync` - Sync Etsy orders
+- `GET /api/integrations/squarespace/status` - Squarespace connection status
+- `POST /api/integrations/squarespace/sync` - Sync Squarespace orders
+
+### Timeline
+- `GET /api/timeline` - Get timeline items (orders, tasks, jobs)
+- `GET /api/timeline/orders/{id}` - Order timeline detail
+- `GET /api/timeline/tasks/{id}` - Task timeline detail
 
 ### WebSocket
-- `GET /ws` - Real-time events (printer status, job updates, print progress)
+- `GET /ws` - Real-time events (printer status, job updates, order sync)
 
 ## Printer Integration
 
@@ -190,7 +225,7 @@ The built app is output to `build/bin/`.
 | Platform | Protocol | Features |
 |----------|----------|----------|
 | OctoPrint | REST API | Full control, file upload, status polling |
-| Bambu Lab | MQTT (LAN + Cloud) | Status streaming, device pairing |
+| Bambu Lab | MQTT (LAN + Cloud) | Status streaming, device pairing, AMS support |
 | Moonraker/Klipper | REST API | Full control, timelapse, temperature |
 | Manual | None | Log jobs manually |
 
@@ -203,6 +238,19 @@ The built app is output to `build/bin/`.
    - **Bambu Lab**: Printer IP + access code (or cloud pairing)
    - **Moonraker**: `http://<ip>`
    - **Manual**: No connection required
+
+## Expense Categories
+
+Track expenses by category for accurate cost analysis:
+
+- **Filament** - Creates spools in inventory
+- **Parts** - Replacement parts, hardware
+- **Tools** - Equipment, maintenance
+- **Shipping** - Packaging, postage
+- **Marketplace Fees** - Etsy fees, payment processing
+- **Subscriptions** - Software, services
+- **Advertising** - Ads, marketing
+- **Other** - Miscellaneous
 
 ## Development
 
@@ -225,8 +273,8 @@ make test
 ### Docker
 
 ```bash
-docker build -t printfarm .
-docker run -p 8080:8080 -v uploads:/app/uploads printfarm
+docker build -t daedalus .
+docker run -p 8080:8080 -v daedalus-data:/app/data daedalus
 ```
 
 ### Deploy to Fly.io
@@ -235,7 +283,7 @@ docker run -p 8080:8080 -v uploads:/app/uploads printfarm
 fly deploy
 ```
 
-Configuration is in `fly.toml`. Uploads are persisted via a mounted volume.
+Configuration is in `fly.toml`. Data is persisted via a mounted volume.
 
 ## Environment Variables
 
@@ -248,10 +296,9 @@ Configuration is in `fly.toml`. Uploads are persisted via a mounted volume.
 | `REQUIRE_AUTH` | `false` | Enable authentication |
 | `JWT_SECRET` | - | Secret for JWT signing (required if auth enabled) |
 | `ETSY_CLIENT_ID` | - | Etsy OAuth app ID |
-| `ETSY_REDIRECT_URI` | `http://localhost:8080/api/integrations/etsy/callback` | Etsy OAuth callback |
+| `ETSY_REDIRECT_URI` | - | Etsy OAuth callback URL |
+| `SQUARESPACE_API_KEY` | - | Squarespace API key |
 | `FRONTEND_URL` | `http://localhost:5173` | Frontend URL (for CORS in dev) |
-| `VITE_API_URL` | `http://localhost:8080` | API URL for frontend |
-| `VITE_REQUIRE_AUTH` | `false` | Show login UI in frontend |
 
 ## License
 
