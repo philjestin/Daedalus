@@ -875,6 +875,7 @@ const (
 	ExpenseCategoryShipping        ExpenseCategory = "shipping"
 	ExpenseCategoryMarketplaceFees ExpenseCategory = "marketplace_fees"
 	ExpenseCategorySubscription    ExpenseCategory = "subscription"
+	ExpenseCategoryAdvertising     ExpenseCategory = "advertising"
 	ExpenseCategoryOther           ExpenseCategory = "other"
 )
 

@@ -10,6 +10,7 @@ import {
   Eye,
   DollarSign,
   Package,
+  Megaphone,
   X,
   RotateCcw,
   Loader2
@@ -60,6 +61,8 @@ export default function Expenses() {
     switch (category) {
       case 'filament':
         return <Package className="h-4 w-4" />
+      case 'advertising':
+        return <Megaphone className="h-4 w-4" />
       default:
         return <DollarSign className="h-4 w-4" />
     }

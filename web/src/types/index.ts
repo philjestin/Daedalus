@@ -634,7 +634,7 @@ export interface ApiError {
 
 // Expense types
 export type ExpenseStatus = 'pending' | 'confirmed' | 'rejected'
-export type ExpenseCategory = 'filament' | 'parts' | 'tools' | 'shipping' | 'marketplace_fees' | 'subscription' | 'other'
+export type ExpenseCategory = 'filament' | 'parts' | 'tools' | 'shipping' | 'marketplace_fees' | 'subscription' | 'advertising' | 'other'
 
 export interface FilamentMetadata {
   brand?: string
