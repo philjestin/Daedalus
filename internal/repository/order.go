@@ -33,10 +33,11 @@ func (r *OrderRepository) Create(ctx context.Context, order *model.Order) error 
 // GetByID retrieves an order by ID.
 func (r *OrderRepository) GetByID(ctx context.Context, id uuid.UUID) (*model.Order, error) {
 	var order model.Order
-	err := r.db.QueryRowContext(ctx, `
+	row := r.db.QueryRowContext(ctx, `
 		SELECT id, source, source_order_id, customer_name, customer_email, status, priority, due_date, notes, created_at, updated_at, completed_at, shipped_at
 		FROM orders WHERE id = ?
-	`, id).Scan(&order.ID, &order.Source, &order.SourceOrderID, &order.CustomerName, &order.CustomerEmail, &order.Status, &order.Priority, &order.DueDate, &order.Notes, &order.CreatedAt, &order.UpdatedAt, &order.CompletedAt, &order.ShippedAt)
+	`, id)
+	err := scanRow(row, &order.ID, &order.Source, &order.SourceOrderID, &order.CustomerName, &order.CustomerEmail, &order.Status, &order.Priority, &order.DueDate, &order.Notes, &order.CreatedAt, &order.UpdatedAt, &order.CompletedAt, &order.ShippedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -46,10 +47,11 @@ func (r *OrderRepository) GetByID(ctx context.Context, id uuid.UUID) (*model.Ord
 // GetBySourceID retrieves an order by source and source order ID.
 func (r *OrderRepository) GetBySourceID(ctx context.Context, source model.OrderSource, sourceID string) (*model.Order, error) {
 	var order model.Order
-	err := r.db.QueryRowContext(ctx, `
+	row := r.db.QueryRowContext(ctx, `
 		SELECT id, source, source_order_id, customer_name, customer_email, status, priority, due_date, notes, created_at, updated_at, completed_at, shipped_at
 		FROM orders WHERE source = ? AND source_order_id = ?
-	`, source, sourceID).Scan(&order.ID, &order.Source, &order.SourceOrderID, &order.CustomerName, &order.CustomerEmail, &order.Status, &order.Priority, &order.DueDate, &order.Notes, &order.CreatedAt, &order.UpdatedAt, &order.CompletedAt, &order.ShippedAt)
+	`, source, sourceID)
+	err := scanRow(row, &order.ID, &order.Source, &order.SourceOrderID, &order.CustomerName, &order.CustomerEmail, &order.Status, &order.Priority, &order.DueDate, &order.Notes, &order.CreatedAt, &order.UpdatedAt, &order.CompletedAt, &order.ShippedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -101,7 +103,7 @@ func (r *OrderRepository) List(ctx context.Context, filters model.OrderFilters) 
 	var orders []model.Order
 	for rows.Next() {
 		var order model.Order
-		if err := rows.Scan(&order.ID, &order.Source, &order.SourceOrderID, &order.CustomerName, &order.CustomerEmail, &order.Status, &order.Priority, &order.DueDate, &order.Notes, &order.CreatedAt, &order.UpdatedAt, &order.CompletedAt, &order.ShippedAt); err != nil {
+		if err := scanRow(rows, &order.ID, &order.Source, &order.SourceOrderID, &order.CustomerName, &order.CustomerEmail, &order.Status, &order.Priority, &order.DueDate, &order.Notes, &order.CreatedAt, &order.UpdatedAt, &order.CompletedAt, &order.ShippedAt); err != nil {
 			return nil, err
 		}
 		orders = append(orders, order)
@@ -172,7 +174,7 @@ func (r *OrderRepository) GetItems(ctx context.Context, orderID uuid.UUID) ([]mo
 	var items []model.OrderItem
 	for rows.Next() {
 		var item model.OrderItem
-		if err := rows.Scan(&item.ID, &item.OrderID, &item.TemplateID, &item.ProjectID, &item.SKU, &item.Quantity, &item.Notes, &item.CreatedAt); err != nil {
+		if err := scanRow(rows, &item.ID, &item.OrderID, &item.TemplateID, &item.ProjectID, &item.SKU, &item.Quantity, &item.Notes, &item.CreatedAt); err != nil {
 			return nil, err
 		}
 		items = append(items, item)
@@ -183,10 +185,11 @@ func (r *OrderRepository) GetItems(ctx context.Context, orderID uuid.UUID) ([]mo
 // GetItem retrieves a single order item by ID.
 func (r *OrderRepository) GetItem(ctx context.Context, itemID uuid.UUID) (*model.OrderItem, error) {
 	var item model.OrderItem
-	err := r.db.QueryRowContext(ctx, `
+	row := r.db.QueryRowContext(ctx, `
 		SELECT id, order_id, template_id, project_id, sku, quantity, notes, created_at
 		FROM order_items WHERE id = ?
-	`, itemID).Scan(&item.ID, &item.OrderID, &item.TemplateID, &item.ProjectID, &item.SKU, &item.Quantity, &item.Notes, &item.CreatedAt)
+	`, itemID)
+	err := scanRow(row, &item.ID, &item.OrderID, &item.TemplateID, &item.ProjectID, &item.SKU, &item.Quantity, &item.Notes, &item.CreatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -225,7 +228,7 @@ func (r *OrderRepository) GetEvents(ctx context.Context, orderID uuid.UUID) ([]m
 	var events []model.OrderEvent
 	for rows.Next() {
 		var event model.OrderEvent
-		if err := rows.Scan(&event.ID, &event.OrderID, &event.EventType, &event.Message, &event.CreatedAt); err != nil {
+		if err := scanRow(rows, &event.ID, &event.OrderID, &event.EventType, &event.Message, &event.CreatedAt); err != nil {
 			return nil, err
 		}
 		events = append(events, event)
@@ -247,7 +250,7 @@ func (r *OrderRepository) GetTasksByOrderID(ctx context.Context, orderID uuid.UU
 	var tasks []model.Task
 	for rows.Next() {
 		var t model.Task
-		if err := rows.Scan(&t.ID, &t.ProjectID, &t.OrderID, &t.OrderItemID, &t.Name, &t.Status, &t.Quantity, &t.Notes, &t.CreatedAt, &t.UpdatedAt, &t.StartedAt, &t.CompletedAt); err != nil {
+		if err := scanRow(rows, &t.ID, &t.ProjectID, &t.OrderID, &t.OrderItemID, &t.Name, &t.Status, &t.Quantity, &t.Notes, &t.CreatedAt, &t.UpdatedAt, &t.StartedAt, &t.CompletedAt); err != nil {
 			return nil, err
 		}
 		tasks = append(tasks, t)
