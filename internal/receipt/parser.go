@@ -44,6 +44,11 @@ func NewParserWithKey(apiKey string) *Parser {
 	}
 }
 
+// HasAPIKey returns true if the parser has an API key configured.
+func (p *Parser) HasAPIKey() bool {
+	return p.apiKey != ""
+}
+
 // Anthropic API request/response types
 
 type anthropicRequest struct {

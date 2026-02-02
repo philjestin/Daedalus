@@ -2377,11 +2377,13 @@ func (s *ExpenseService) UploadReceipt(ctx context.Context, filename string, dat
 		return nil, fmt.Errorf("failed to create expense: %w", err)
 	}
 
-	// Parse receipt asynchronously (or synchronously for now)
-	go func() {
-		parseCtx := context.Background()
-		s.parseReceiptAsync(parseCtx, expense.ID, storagePath, data)
-	}()
+	// Parse receipt asynchronously if API key is configured
+	if s.parser.HasAPIKey() {
+		go func() {
+			parseCtx := context.Background()
+			s.parseReceiptAsync(parseCtx, expense.ID, storagePath, data)
+		}()
+	}
 
 	return expense, nil
 }
@@ -2883,11 +2885,13 @@ func (s *ExpenseService) RetryParse(ctx context.Context, id uuid.UUID) (*model.E
 		return nil, fmt.Errorf("failed to reset expense: %w", err)
 	}
 
-	// Re-trigger parsing
-	go func() {
-		parseCtx := context.Background()
-		s.parseReceiptAsync(parseCtx, expense.ID, expense.ReceiptFilePath, data)
-	}()
+	// Re-trigger parsing if API key is configured
+	if s.parser.HasAPIKey() {
+		go func() {
+			parseCtx := context.Background()
+			s.parseReceiptAsync(parseCtx, expense.ID, expense.ReceiptFilePath, data)
+		}()
+	}
 
 	return expense, nil
 }
