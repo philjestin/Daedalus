@@ -54,14 +54,28 @@ type Task struct {
 	Status      TaskStatus `json:"status"`
 	Quantity    int        `json:"quantity"`
 	Notes       string     `json:"notes,omitempty"`
+	PickupDate  *time.Time `json:"pickup_date,omitempty"`
 	CreatedAt   time.Time  `json:"created_at"`
 	UpdatedAt   time.Time  `json:"updated_at"`
 	StartedAt   *time.Time `json:"started_at,omitempty"`
 	CompletedAt *time.Time `json:"completed_at,omitempty"`
 	// Loaded relations
-	Project  *Project   `json:"project,omitempty"`
-	Jobs     []PrintJob `json:"jobs,omitempty"`
-	Progress float64    `json:"progress,omitempty"`
+	Project        *Project             `json:"project,omitempty"`
+	Jobs           []PrintJob           `json:"jobs,omitempty"`
+	ChecklistItems []TaskChecklistItem  `json:"checklist_items,omitempty"`
+	Progress       float64              `json:"progress,omitempty"`
+}
+
+// TaskChecklistItem represents a checklist item for a task.
+type TaskChecklistItem struct {
+	ID          uuid.UUID  `json:"id"`
+	TaskID      uuid.UUID  `json:"task_id"`
+	Name        string     `json:"name"`
+	PartID      *uuid.UUID `json:"part_id,omitempty"`
+	SortOrder   int        `json:"sort_order"`
+	Completed   bool       `json:"completed"`
+	CompletedAt *time.Time `json:"completed_at,omitempty"`
+	CreatedAt   time.Time  `json:"created_at"`
 }
 
 // TaskFilters defines filter options for listing tasks.

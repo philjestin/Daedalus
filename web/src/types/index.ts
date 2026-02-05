@@ -36,6 +36,7 @@ export interface Task {
   status: TaskStatus
   quantity: number
   notes?: string
+  pickup_date?: string
   created_at: string
   updated_at: string
   started_at?: string
@@ -43,7 +44,20 @@ export interface Task {
   // Loaded relations
   project?: Project
   jobs?: PrintJob[]
+  checklist_items?: TaskChecklistItem[]
   progress?: number
+}
+
+// Task checklist item
+export interface TaskChecklistItem {
+  id: string
+  task_id: string
+  name: string
+  part_id?: string
+  sort_order: number
+  completed: boolean
+  completed_at?: string
+  created_at: string
 }
 
 // Job statistics for a project

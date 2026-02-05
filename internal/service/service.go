@@ -116,7 +116,10 @@ func NewServices(repos *repository.Repositories, store storage.Storage, printerM
 	services.Tags = NewTagService(repos.Tags, repos.Parts, repos.Designs)
 	services.Shopify = NewShopifyService(repos.Shopify, services.Orders, services.Templates, hub)
 	services.Timeline = NewTimelineService(repos.Orders, repos.Tasks, repos.Projects, repos.PrintJobs)
-	services.Tasks = NewTaskService(repos.Tasks, repos.Projects, repos.PrintJobs, hub)
+	services.Tasks = NewTaskService(repos.Tasks, repos.Projects, repos.PrintJobs, repos.Parts, repos.TaskChecklist, repos.Designs, hub)
+
+	// Wire job completion callback to auto-complete checklist items
+	services.PrintJobs.SetOnJobCompleted(services.Tasks.HandleJobCompleted)
 
 	// Wire task repo to order service (needed for ProcessItem)
 	services.Orders.SetTaskRepo(repos.Tasks)
@@ -1331,15 +1334,21 @@ func (s *SpoolService) List(ctx context.Context) ([]model.MaterialSpool, error) 
 // PrintJobService handles print job business logic.
 // Jobs are immutable once created - state changes are recorded as events.
 type PrintJobService struct {
-	repo         *repository.PrintJobRepository
-	printerRepo  *repository.PrinterRepository
-	designRepo   *repository.DesignRepository
-	spoolRepo    *repository.SpoolRepository
-	materialRepo *repository.MaterialRepository
-	projectRepo  *repository.ProjectRepository
-	printerMgr   *printer.Manager
-	hub          *realtime.Hub
-	storage      storage.Storage
+	repo            *repository.PrintJobRepository
+	printerRepo     *repository.PrinterRepository
+	designRepo      *repository.DesignRepository
+	spoolRepo       *repository.SpoolRepository
+	materialRepo    *repository.MaterialRepository
+	projectRepo     *repository.ProjectRepository
+	printerMgr      *printer.Manager
+	hub             *realtime.Hub
+	storage         storage.Storage
+	onJobCompleted  func(ctx context.Context, job *model.PrintJob)
+}
+
+// SetOnJobCompleted sets a callback invoked when a print job completes successfully.
+func (s *PrintJobService) SetOnJobCompleted(fn func(ctx context.Context, job *model.PrintJob)) {
+	s.onJobCompleted = fn
 }
 
 // Create creates a new print job and records the initial "queued" event.
@@ -2017,6 +2026,11 @@ func (s *PrintJobService) RecordOutcome(ctx context.Context, id uuid.UUID, outco
 		Data: job,
 	})
 
+	// Notify task service on successful completion
+	if outcome.Success && s.onJobCompleted != nil {
+		s.onJobCompleted(ctx, job)
+	}
+
 	return nil
 }
 
@@ -2055,6 +2069,7 @@ func (s *PrintJobService) Retry(ctx context.Context, id uuid.UUID, req *RetryReq
 		PrinterID:        originalJob.PrinterID,
 		MaterialSpoolID:  originalJob.MaterialSpoolID,
 		ProjectID:        originalJob.ProjectID,
+		TaskID:           originalJob.TaskID,
 		Notes:            originalJob.Notes,
 		RecipeID:         originalJob.RecipeID,
 		EstimatedSeconds: originalJob.EstimatedSeconds,

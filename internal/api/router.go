@@ -91,6 +91,10 @@ func NewRouter(services *service.Services, hub *realtime.Hub) http.Handler {
 					r.Post("/start", taskHandler.StartTask)
 					r.Post("/complete", taskHandler.CompleteTask)
 					r.Post("/cancel", taskHandler.CancelTask)
+					r.Get("/checklist", taskHandler.GetChecklist)
+					r.Post("/checklist/regenerate", taskHandler.RegenerateChecklist)
+					r.Post("/checklist/{itemId}/print", taskHandler.PrintFromChecklist)
+				r.Patch("/checklist/{itemId}", taskHandler.ToggleChecklistItem)
 				})
 			})
 		}

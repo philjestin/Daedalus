@@ -46,6 +46,7 @@ type Repositories struct {
 	AlertDismissals *AlertDismissalRepository
 	Shopify         *ShopifyRepository
 	Tasks           *TaskRepository
+	TaskChecklist   *TaskChecklistRepository
 }
 
 // WithTransaction executes a function within a database transaction.
@@ -96,6 +97,7 @@ func NewRepositories(db *sql.DB) *Repositories {
 		AlertDismissals: &AlertDismissalRepository{db: db},
 		Shopify:         &ShopifyRepository{db: db},
 		Tasks:           &TaskRepository{db: db},
+		TaskChecklist:   &TaskChecklistRepository{db: db},
 	}
 }
 
@@ -370,9 +372,9 @@ func (r *TaskRepository) Create(ctx context.Context, t *model.Task) error {
 	}
 
 	_, err := r.db.ExecContext(ctx, `
-		INSERT INTO tasks (id, project_id, order_id, order_item_id, name, status, quantity, notes, created_at, updated_at, started_at, completed_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, t.ID, t.ProjectID, t.OrderID, t.OrderItemID, t.Name, t.Status, t.Quantity, t.Notes, t.CreatedAt, t.UpdatedAt, t.StartedAt, t.CompletedAt)
+		INSERT INTO tasks (id, project_id, order_id, order_item_id, name, status, quantity, notes, pickup_date, created_at, updated_at, started_at, completed_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, t.ID, t.ProjectID, t.OrderID, t.OrderItemID, t.Name, t.Status, t.Quantity, t.Notes, t.PickupDate, t.CreatedAt, t.UpdatedAt, t.StartedAt, t.CompletedAt)
 	return err
 }
 
@@ -380,9 +382,9 @@ func (r *TaskRepository) Create(ctx context.Context, t *model.Task) error {
 func (r *TaskRepository) GetByID(ctx context.Context, id uuid.UUID) (*model.Task, error) {
 	var t model.Task
 	err := scanRow(r.db.QueryRowContext(ctx, `
-		SELECT id, project_id, order_id, order_item_id, name, status, quantity, notes, created_at, updated_at, started_at, completed_at
+		SELECT id, project_id, order_id, order_item_id, name, status, quantity, notes, pickup_date, created_at, updated_at, started_at, completed_at
 		FROM tasks WHERE id = ?
-	`, id), &t.ID, &t.ProjectID, &t.OrderID, &t.OrderItemID, &t.Name, &t.Status, &t.Quantity, &t.Notes, &t.CreatedAt, &t.UpdatedAt, &t.StartedAt, &t.CompletedAt)
+	`, id), &t.ID, &t.ProjectID, &t.OrderID, &t.OrderItemID, &t.Name, &t.Status, &t.Quantity, &t.Notes, &t.PickupDate, &t.CreatedAt, &t.UpdatedAt, &t.StartedAt, &t.CompletedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -391,7 +393,7 @@ func (r *TaskRepository) GetByID(ctx context.Context, id uuid.UUID) (*model.Task
 
 // List retrieves tasks with optional filters.
 func (r *TaskRepository) List(ctx context.Context, filters model.TaskFilters) ([]model.Task, error) {
-	query := `SELECT id, project_id, order_id, order_item_id, name, status, quantity, notes, created_at, updated_at, started_at, completed_at FROM tasks WHERE 1=1`
+	query := `SELECT id, project_id, order_id, order_item_id, name, status, quantity, notes, pickup_date, created_at, updated_at, started_at, completed_at FROM tasks WHERE 1=1`
 	args := []interface{}{}
 
 	if filters.ProjectID != nil {
@@ -427,7 +429,7 @@ func (r *TaskRepository) List(ctx context.Context, filters model.TaskFilters) ([
 	var tasks []model.Task
 	for rows.Next() {
 		var t model.Task
-		if err := scanRow(rows, &t.ID, &t.ProjectID, &t.OrderID, &t.OrderItemID, &t.Name, &t.Status, &t.Quantity, &t.Notes, &t.CreatedAt, &t.UpdatedAt, &t.StartedAt, &t.CompletedAt); err != nil {
+		if err := scanRow(rows, &t.ID, &t.ProjectID, &t.OrderID, &t.OrderItemID, &t.Name, &t.Status, &t.Quantity, &t.Notes, &t.PickupDate, &t.CreatedAt, &t.UpdatedAt, &t.StartedAt, &t.CompletedAt); err != nil {
 			return nil, err
 		}
 		tasks = append(tasks, t)
@@ -449,9 +451,77 @@ func (r *TaskRepository) ListByOrder(ctx context.Context, orderID uuid.UUID) ([]
 func (r *TaskRepository) Update(ctx context.Context, t *model.Task) error {
 	t.UpdatedAt = time.Now()
 	_, err := r.db.ExecContext(ctx, `
-		UPDATE tasks SET project_id = ?, order_id = ?, order_item_id = ?, name = ?, status = ?, quantity = ?, notes = ?, updated_at = ?, started_at = ?, completed_at = ?
+		UPDATE tasks SET project_id = ?, order_id = ?, order_item_id = ?, name = ?, status = ?, quantity = ?, notes = ?, pickup_date = ?, updated_at = ?, started_at = ?, completed_at = ?
 		WHERE id = ?
-	`, t.ProjectID, t.OrderID, t.OrderItemID, t.Name, t.Status, t.Quantity, t.Notes, t.UpdatedAt, t.StartedAt, t.CompletedAt, t.ID)
+	`, t.ProjectID, t.OrderID, t.OrderItemID, t.Name, t.Status, t.Quantity, t.Notes, t.PickupDate, t.UpdatedAt, t.StartedAt, t.CompletedAt, t.ID)
+	return err
+}
+
+// TaskChecklistRepository handles task checklist item database operations.
+type TaskChecklistRepository struct {
+	db *sql.DB
+}
+
+// Create inserts a single checklist item.
+func (r *TaskChecklistRepository) Create(ctx context.Context, item *model.TaskChecklistItem) error {
+	item.ID = uuid.New()
+	item.CreatedAt = time.Now()
+
+	_, err := r.db.ExecContext(ctx, `
+		INSERT INTO task_checklist_items (id, task_id, name, part_id, sort_order, completed, completed_at, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+	`, item.ID, item.TaskID, item.Name, item.PartID, item.SortOrder, item.Completed, item.CompletedAt, item.CreatedAt)
+	return err
+}
+
+// CreateBatch inserts multiple checklist items.
+func (r *TaskChecklistRepository) CreateBatch(ctx context.Context, items []model.TaskChecklistItem) error {
+	for i := range items {
+		if err := r.Create(ctx, &items[i]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// ListByTask retrieves all checklist items for a task, ordered by sort_order.
+func (r *TaskChecklistRepository) ListByTask(ctx context.Context, taskID uuid.UUID) ([]model.TaskChecklistItem, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT id, task_id, name, part_id, sort_order, completed, completed_at, created_at
+		FROM task_checklist_items WHERE task_id = ? ORDER BY sort_order ASC
+	`, taskID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var items []model.TaskChecklistItem
+	for rows.Next() {
+		var item model.TaskChecklistItem
+		if err := scanRow(rows, &item.ID, &item.TaskID, &item.Name, &item.PartID, &item.SortOrder, &item.Completed, &item.CompletedAt, &item.CreatedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+// UpdateCompleted toggles the completed state of a checklist item.
+func (r *TaskChecklistRepository) UpdateCompleted(ctx context.Context, id uuid.UUID, completed bool) error {
+	var completedAt interface{}
+	if completed {
+		now := time.Now()
+		completedAt = now
+	}
+	_, err := r.db.ExecContext(ctx, `
+		UPDATE task_checklist_items SET completed = ?, completed_at = ? WHERE id = ?
+	`, completed, completedAt, id)
+	return err
+}
+
+// DeleteByTask removes all checklist items for a task.
+func (r *TaskChecklistRepository) DeleteByTask(ctx context.Context, taskID uuid.UUID) error {
+	_, err := r.db.ExecContext(ctx, `DELETE FROM task_checklist_items WHERE task_id = ?`, taskID)
 	return err
 }
 

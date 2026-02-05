@@ -103,6 +103,8 @@ func RunMigrations(db *sql.DB) error {
 		`ALTER TABLE print_jobs ADD COLUMN task_id TEXT REFERENCES tasks(id)`,
 		// Order items link to projects
 		`ALTER TABLE order_items ADD COLUMN project_id TEXT REFERENCES projects(id)`,
+		// Task pickup/shipping date
+		`ALTER TABLE tasks ADD COLUMN pickup_date TEXT`,
 	}
 	for _, stmt := range alterStatements {
 		db.Exec(stmt) // Ignore error if column already exists
