@@ -125,12 +125,26 @@ CREATE TABLE IF NOT EXISTS tasks (
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     started_at TEXT,
-    completed_at TEXT
+    completed_at TEXT,
+    pickup_date TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_tasks_project ON tasks(project_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_order ON tasks(order_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
+
+-- Task checklist items
+CREATE TABLE IF NOT EXISTS task_checklist_items (
+    id TEXT PRIMARY KEY,
+    task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    part_id TEXT REFERENCES parts(id),
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    completed INTEGER NOT NULL DEFAULT 0,
+    completed_at TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_task_checklist_task ON task_checklist_items(task_id);
 
 -- Parts table
 CREATE TABLE IF NOT EXISTS parts (

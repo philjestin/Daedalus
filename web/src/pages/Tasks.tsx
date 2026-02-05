@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ListTodo, Plus, Clock, Play, CheckCircle, XCircle, ChevronRight, RefreshCw } from 'lucide-react'
+import { ListTodo, Plus, Clock, Play, CheckCircle, XCircle, ChevronRight, RefreshCw, CalendarDays } from 'lucide-react'
 import { tasksApi, projectsApi } from '../api/client'
 import type { Task, TaskStatus, Project } from '../types'
 import { cn } from '../lib/utils'
@@ -143,6 +143,12 @@ export function Tasks() {
                       Qty: {task.quantity} | Created: {formatDate(task.created_at)}
                       {task.order_id && <span> | Order linked</span>}
                     </div>
+                    {task.pickup_date && (
+                      <div className="flex items-center gap-1 text-xs text-accent-400 mt-0.5">
+                        <CalendarDays className="w-3 h-3" />
+                        Ship: {new Date(task.pickup_date).toLocaleDateString()}
+                      </div>
+                    )}
                   </div>
                 </div>
                 <div className="flex items-center gap-4">
@@ -195,6 +201,7 @@ function CreateTaskModal({ projects, onClose, onCreated }: CreateTaskModalProps)
   const [name, setName] = useState('')
   const [quantity, setQuantity] = useState(1)
   const [notes, setNotes] = useState('')
+  const [pickupDate, setPickupDate] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
@@ -217,6 +224,7 @@ function CreateTaskModal({ projects, onClose, onCreated }: CreateTaskModalProps)
         name: name.trim(),
         quantity,
         notes: notes.trim() || undefined,
+        pickup_date: pickupDate || undefined,
       })
       onCreated()
     } catch (err) {
@@ -280,6 +288,18 @@ function CreateTaskModal({ projects, onClose, onCreated }: CreateTaskModalProps)
                 value={quantity}
                 onChange={e => setQuantity(Math.max(1, parseInt(e.target.value) || 1))}
                 min={1}
+                className="input"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-surface-300 mb-1">
+                Pickup / Ship Date (optional)
+              </label>
+              <input
+                type="date"
+                value={pickupDate}
+                onChange={e => setPickupDate(e.target.value)}
                 className="input"
               />
             </div>

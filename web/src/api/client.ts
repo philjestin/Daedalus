@@ -121,13 +121,14 @@ export const tasksApi = {
     name: string
     quantity?: number
     notes?: string
+    pickup_date?: string
   }) =>
     fetchApi<import('../types').Task>('/tasks', {
       method: 'POST',
       body: JSON.stringify(data),
     }),
 
-  update: (id: string, data: Partial<{ name: string; quantity: number; notes: string }>) =>
+  update: (id: string, data: Partial<{ name: string; quantity: number; notes: string; pickup_date: string | null }>) =>
     fetchApi<import('../types').Task>(`/tasks/${id}`, {
       method: 'PATCH',
       body: JSON.stringify(data),
@@ -153,6 +154,25 @@ export const tasksApi = {
 
   cancel: (id: string) =>
     fetchApi<import('../types').Task>(`/tasks/${id}/cancel`, { method: 'POST' }),
+
+  getChecklist: (id: string) =>
+    fetchApi<import('../types').TaskChecklistItem[]>(`/tasks/${id}/checklist`),
+
+  regenerateChecklist: (id: string) =>
+    fetchApi<import('../types').TaskChecklistItem[]>(`/tasks/${id}/checklist/regenerate`, {
+      method: 'POST',
+    }),
+
+  toggleChecklistItem: (taskId: string, itemId: string, completed: boolean) =>
+    fetchApi<{ ok: boolean }>(`/tasks/${taskId}/checklist/${itemId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ completed }),
+    }),
+
+  printFromChecklist: (taskId: string, itemId: string) =>
+    fetchApi<import('../types').PrintJob>(`/tasks/${taskId}/checklist/${itemId}/print`, {
+      method: 'POST',
+    }),
 }
 
 // Parts API

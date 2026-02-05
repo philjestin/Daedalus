@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -64,6 +65,7 @@ func (h *TaskHandler) Create(w http.ResponseWriter, r *http.Request) {
 		Name        string     `json:"name"`
 		Quantity    int        `json:"quantity"`
 		Notes       string     `json:"notes,omitempty"`
+		PickupDate  *string    `json:"pickup_date,omitempty"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -78,6 +80,15 @@ func (h *TaskHandler) Create(w http.ResponseWriter, r *http.Request) {
 		Name:        req.Name,
 		Quantity:    req.Quantity,
 		Notes:       req.Notes,
+	}
+
+	if req.PickupDate != nil && *req.PickupDate != "" {
+		t, err := time.Parse("2006-01-02", *req.PickupDate)
+		if err != nil {
+			http.Error(w, "invalid pickup_date format, use YYYY-MM-DD", http.StatusBadRequest)
+			return
+		}
+		task.PickupDate = &t
 	}
 
 	if err := h.service.Create(ctx, task); err != nil {
@@ -132,9 +143,10 @@ func (h *TaskHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		Name     *string `json:"name,omitempty"`
-		Quantity *int    `json:"quantity,omitempty"`
-		Notes    *string `json:"notes,omitempty"`
+		Name       *string `json:"name,omitempty"`
+		Quantity   *int    `json:"quantity,omitempty"`
+		Notes      *string `json:"notes,omitempty"`
+		PickupDate *string `json:"pickup_date"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -150,6 +162,18 @@ func (h *TaskHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Notes != nil {
 		task.Notes = *req.Notes
+	}
+	if req.PickupDate != nil {
+		if *req.PickupDate == "" {
+			task.PickupDate = nil
+		} else {
+			t, err := time.Parse("2006-01-02", *req.PickupDate)
+			if err != nil {
+				http.Error(w, "invalid pickup_date format, use YYYY-MM-DD", http.StatusBadRequest)
+				return
+			}
+			task.PickupDate = &t
+		}
 	}
 
 	if err := h.service.Update(ctx, task); err != nil {
@@ -299,4 +323,105 @@ func (h *TaskHandler) CancelTask(w http.ResponseWriter, r *http.Request) {
 
 	task, _ := h.service.GetByID(ctx, id)
 	respondJSON(w, http.StatusOK, task)
+}
+
+// GetChecklist returns checklist items for a task.
+func (h *TaskHandler) GetChecklist(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		http.Error(w, "invalid task ID", http.StatusBadRequest)
+		return
+	}
+
+	items, err := h.service.GetChecklist(ctx, id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if items == nil {
+		items = []model.TaskChecklistItem{}
+	}
+
+	respondJSON(w, http.StatusOK, items)
+}
+
+// ToggleChecklistItem toggles a checklist item's completed state.
+func (h *TaskHandler) ToggleChecklistItem(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	_, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		http.Error(w, "invalid task ID", http.StatusBadRequest)
+		return
+	}
+
+	itemID, err := uuid.Parse(chi.URLParam(r, "itemId"))
+	if err != nil {
+		http.Error(w, "invalid checklist item ID", http.StatusBadRequest)
+		return
+	}
+
+	var req struct {
+		Completed bool `json:"completed"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.service.ToggleChecklistItem(ctx, itemID, req.Completed); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{"ok": true})
+}
+
+// PrintFromChecklist creates a print job for a checklist item's linked part.
+func (h *TaskHandler) PrintFromChecklist(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	taskID, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		http.Error(w, "invalid task ID", http.StatusBadRequest)
+		return
+	}
+
+	itemID, err := uuid.Parse(chi.URLParam(r, "itemId"))
+	if err != nil {
+		http.Error(w, "invalid checklist item ID", http.StatusBadRequest)
+		return
+	}
+
+	job, err := h.service.PrintFromChecklist(ctx, taskID, itemID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	respondJSON(w, http.StatusCreated, job)
+}
+
+// RegenerateChecklist regenerates checklist items from project parts.
+func (h *TaskHandler) RegenerateChecklist(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		http.Error(w, "invalid task ID", http.StatusBadRequest)
+		return
+	}
+
+	items, err := h.service.RegenerateChecklist(ctx, id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if items == nil {
+		items = []model.TaskChecklistItem{}
+	}
+
+	respondJSON(w, http.StatusOK, items)
 }
