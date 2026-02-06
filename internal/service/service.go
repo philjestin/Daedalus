@@ -82,7 +82,7 @@ func NewServices(repos *repository.Repositories, store storage.Storage, printerM
 		PrintJobs: &PrintJobService{repo: repos.PrintJobs, printerRepo: repos.Printers, designRepo: repos.Designs, spoolRepo: repos.Spools, materialRepo: repos.Materials, projectRepo: repos.Projects, printerMgr: printerMgr, hub: hub, storage: store},
 		Files:     &FileService{repo: repos.Files, storage: store},
 		Expenses:  &ExpenseService{repo: repos.Expenses, materialRepo: repos.Materials, spoolRepo: repos.Spools, fileRepo: repos.Files, settingsRepo: repos.Settings, repos: repos, storage: store},
-		Sales:     &SaleService{repo: repos.Sales},
+		Sales:     &SaleService{repo: repos.Sales, taskRepo: repos.Tasks},
 		Stats:     &StatsService{expenseRepo: repos.Expenses, saleRepo: repos.Sales, printJobRepo: repos.PrintJobs},
 		Templates: &TemplateService{repo: repos.Templates, projectRepo: repos.Projects, partRepo: repos.Parts, designRepo: repos.Designs, printJobRepo: repos.PrintJobs, spoolRepo: repos.Spools, materialRepo: repos.Materials, printerRepo: repos.Printers},
 		Etsy:            nil, // Initialize separately with NewServicesWithEtsy
@@ -2918,7 +2918,8 @@ func (s *ExpenseService) Delete(ctx context.Context, id uuid.UUID) error {
 
 // SaleService handles sales and revenue tracking.
 type SaleService struct {
-	repo *repository.SaleRepository
+	repo     *repository.SaleRepository
+	taskRepo *repository.TaskRepository
 }
 
 // Create creates a new sale.
@@ -2955,6 +2956,81 @@ func (s *SaleService) Delete(ctx context.Context, id uuid.UUID) error {
 // GetProfitSummary calculates profit for a date range.
 func (s *SaleService) GetProfitSummary(ctx context.Context, start, end time.Time) (grossCents, netCents, feesCents int, count int, err error) {
 	return s.repo.GetTotalsByDateRange(ctx, start, end)
+}
+
+// WeekSummary holds aggregated sales totals for a single week.
+type WeekSummary struct {
+	GrossCents int `json:"gross_cents"`
+	NetCents   int `json:"net_cents"`
+	FeesCents  int `json:"fees_cents"`
+	Count      int `json:"count"`
+}
+
+// WeeklyInsights holds this-week vs last-week comparison data.
+type WeeklyInsights struct {
+	ThisWeek            WeekSummary        `json:"this_week"`
+	LastWeek            WeekSummary        `json:"last_week"`
+	Channels            []ChannelBreakdown `json:"channels"`
+	WeekStart           string             `json:"week_start"`
+	WeekEnd             string             `json:"week_end"`
+	PendingCount        int                `json:"pending_count"`
+	PendingRevenueCents int                `json:"pending_revenue_cents"`
+}
+
+// GetWeeklyInsights returns this week's sales metrics with last week comparison.
+func (s *SaleService) GetWeeklyInsights(ctx context.Context) (*WeeklyInsights, error) {
+	now := time.Now().UTC()
+
+	// Monday of this week
+	weekday := now.Weekday()
+	if weekday == time.Sunday {
+		weekday = 7
+	}
+	thisMonday := time.Date(now.Year(), now.Month(), now.Day()-int(weekday-time.Monday), 0, 0, 0, 0, time.UTC)
+	thisSunday := thisMonday.AddDate(0, 0, 7) // exclusive end
+
+	lastMonday := thisMonday.AddDate(0, 0, -7)
+
+	// This week totals
+	twGross, twNet, twFees, twCount, err := s.repo.GetTotalsByDateRange(ctx, thisMonday, thisSunday)
+	if err != nil {
+		return nil, fmt.Errorf("this week totals: %w", err)
+	}
+
+	// Last week totals
+	lwGross, lwNet, lwFees, lwCount, err := s.repo.GetTotalsByDateRange(ctx, lastMonday, thisMonday)
+	if err != nil {
+		return nil, fmt.Errorf("last week totals: %w", err)
+	}
+
+	// Channel breakdown for this week
+	channelRows, err := s.repo.GetSalesByChannel(ctx, thisMonday)
+	if err != nil {
+		return nil, fmt.Errorf("channel breakdown: %w", err)
+	}
+	channels := make([]ChannelBreakdown, len(channelRows))
+	for i, r := range channelRows {
+		channels[i] = ChannelBreakdown{Channel: r.Channel, Total: r.Total, Count: r.Count}
+	}
+
+	// Pending sales: tasks in pending/in_progress linked to priced projects
+	var pendingCount, pendingRevenue int
+	if s.taskRepo != nil {
+		pendingCount, pendingRevenue, err = s.taskRepo.GetPendingSalesStats(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("pending sales: %w", err)
+		}
+	}
+
+	return &WeeklyInsights{
+		ThisWeek:            WeekSummary{GrossCents: twGross, NetCents: twNet, FeesCents: twFees, Count: twCount},
+		LastWeek:            WeekSummary{GrossCents: lwGross, NetCents: lwNet, FeesCents: lwFees, Count: lwCount},
+		Channels:            channels,
+		WeekStart:           thisMonday.Format("2006-01-02"),
+		WeekEnd:             thisSunday.AddDate(0, 0, -1).Format("2006-01-02"),
+		PendingCount:        pendingCount,
+		PendingRevenueCents: pendingRevenue,
+	}, nil
 }
 
 // FinancialSummary contains aggregated financial data.

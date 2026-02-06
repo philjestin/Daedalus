@@ -11,10 +11,12 @@ import {
   Trash2,
   X,
   ShoppingBag,
+  TrendingUp,
+  TrendingDown,
 } from 'lucide-react'
 import { salesApi, statsApi, projectsApi } from '../api/client'
 import { cn } from '../lib/utils'
-import type { Sale, SalesChannel, ProjectSummary } from '../types'
+import type { Sale, SalesChannel, ProjectSummary, WeeklyInsights } from '../types'
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -60,6 +62,11 @@ export default function Sales() {
   const { data: projectSales = [] } = useQuery({
     queryKey: ['stats', 'sales-by-project'],
     queryFn: () => statsApi.getSalesByProject(),
+  })
+
+  const { data: weeklyInsights } = useQuery({
+    queryKey: ['sales', 'weekly-insights'],
+    queryFn: () => salesApi.getWeeklyInsights(),
   })
 
   const deleteSale = useMutation({
@@ -146,6 +153,11 @@ export default function Sales() {
           <div className="text-xs text-surface-500 mt-1">avg {formatCents(totals.avgOrder)}</div>
         </div>
       </div>
+
+      {/* This Week in Sales */}
+      {weeklyInsights && (
+        <WeeklyInsightsCard insights={weeklyInsights} />
+      )}
 
       {/* Project Analytics */}
       {projectSales.length > 0 && (
@@ -363,6 +375,128 @@ export default function Sales() {
             setShowModal(false)
           }}
         />
+      )}
+    </div>
+  )
+}
+
+function pctChange(current: number, previous: number): number | null {
+  if (previous === 0) return current > 0 ? 100 : null
+  return Math.round(((current - previous) / previous) * 100)
+}
+
+function ChangeBadge({ current, previous }: { current: number; previous: number }) {
+  const pct = pctChange(current, previous)
+  if (pct === null) return null
+  const isUp = pct >= 0
+  const Icon = isUp ? TrendingUp : TrendingDown
+  return (
+    <span className={cn(
+      'inline-flex items-center gap-0.5 text-xs font-medium px-1.5 py-0.5 rounded-full',
+      isUp ? 'bg-emerald-500/15 text-emerald-400' : 'bg-red-500/15 text-red-400'
+    )}>
+      <Icon className="h-3 w-3" />
+      {Math.abs(pct)}%
+    </span>
+  )
+}
+
+function formatWeekRange(start: string, end: string) {
+  const s = new Date(start + 'T00:00:00')
+  const e = new Date(end + 'T00:00:00')
+  const fmt = (d: Date) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  return `${fmt(s)} – ${fmt(e)}`
+}
+
+function WeeklyInsightsCard({ insights }: { insights: WeeklyInsights }) {
+  const tw = insights.this_week
+  const lw = insights.last_week
+  const avgOrder = tw.count > 0 ? Math.round(tw.gross_cents / tw.count) : 0
+  const lastAvg = lw.count > 0 ? Math.round(lw.gross_cents / lw.count) : 0
+  const pendingAvg = insights.pending_count > 0
+    ? Math.round(insights.pending_revenue_cents / insights.pending_count)
+    : 0
+
+  return (
+    <div className="mb-8">
+      <div className="flex items-center gap-3 mb-4">
+        <h2 className="text-lg font-semibold text-surface-100">This Week in Sales</h2>
+        <span className="text-sm text-surface-500">{formatWeekRange(insights.week_start, insights.week_end)}</span>
+      </div>
+
+      {/* Completed sales row */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="card p-4">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-sm text-surface-500">Gross Revenue</span>
+            <ChangeBadge current={tw.gross_cents} previous={lw.gross_cents} />
+          </div>
+          <div className="text-2xl font-semibold text-emerald-400">{formatCents(tw.gross_cents)}</div>
+        </div>
+        <div className="card p-4">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-sm text-surface-500">Net Revenue</span>
+            <ChangeBadge current={tw.net_cents} previous={lw.net_cents} />
+          </div>
+          <div className="text-2xl font-semibold text-surface-100">{formatCents(tw.net_cents)}</div>
+        </div>
+        <div className="card p-4">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-sm text-surface-500"># Sales</span>
+            <ChangeBadge current={tw.count} previous={lw.count} />
+          </div>
+          <div className="text-2xl font-semibold text-blue-400">{tw.count}</div>
+        </div>
+        <div className="card p-4">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-sm text-surface-500">Avg Order</span>
+            <ChangeBadge current={avgOrder} previous={lastAvg} />
+          </div>
+          <div className="text-2xl font-semibold text-surface-100">{formatCents(avgOrder)}</div>
+        </div>
+      </div>
+
+      {/* Pending sales row */}
+      {insights.pending_count > 0 && (
+        <div className="mt-4">
+          <div className="text-xs font-medium text-amber-400/80 uppercase tracking-wider mb-2">Pipeline — In Production</div>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="card p-4 border border-amber-500/20">
+              <div className="text-sm text-surface-500 mb-1">Pending Revenue</div>
+              <div className="text-2xl font-semibold text-amber-400">{formatCents(insights.pending_revenue_cents)}</div>
+            </div>
+            <div className="card p-4 border border-amber-500/20">
+              <div className="text-sm text-surface-500 mb-1">Pending Units</div>
+              <div className="text-2xl font-semibold text-amber-400">{insights.pending_count}</div>
+            </div>
+            <div className="card p-4 border border-amber-500/20">
+              <div className="text-sm text-surface-500 mb-1">Avg Unit Value</div>
+              <div className="text-2xl font-semibold text-surface-100">{formatCents(pendingAvg)}</div>
+            </div>
+            <div className="card p-4 border border-amber-500/20">
+              <div className="text-sm text-surface-500 mb-1">Total Pipeline</div>
+              <div className="text-2xl font-semibold text-surface-100">
+                {formatCents(tw.gross_cents + insights.pending_revenue_cents)}
+              </div>
+              <div className="text-xs text-surface-500 mt-1">completed + pending</div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Channel pills */}
+      {insights.channels.length > 0 && (
+        <div className="flex flex-wrap gap-2 mt-3">
+          {insights.channels.map((ch) => {
+            const cfg = channelConfig[ch.channel as keyof typeof channelConfig] || channelConfig.other
+            return (
+              <span key={ch.channel} className={cn('inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full', cfg.bgColor, cfg.color)}>
+                <span className="capitalize">{ch.channel}</span>
+                <span className="opacity-60">&times; {ch.count}</span>
+              </span>
+            )
+          })}
+        </div>
       )}
     </div>
   )

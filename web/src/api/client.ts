@@ -579,6 +579,9 @@ export const salesApi = {
 
   delete: (id: string) =>
     fetchApi<void>(`/sales/${id}`, { method: 'DELETE' }),
+
+  getWeeklyInsights: () =>
+    fetchApi<import('../types').WeeklyInsights>('/sales/weekly-insights'),
 }
 
 // Financial Summary

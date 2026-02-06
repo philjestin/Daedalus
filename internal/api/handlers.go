@@ -1663,6 +1663,16 @@ func (h *SaleHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// GetWeeklyInsights returns this-week vs last-week sales comparison.
+func (h *SaleHandler) GetWeeklyInsights(w http.ResponseWriter, r *http.Request) {
+	insights, err := h.service.GetWeeklyInsights(r.Context())
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	respondJSON(w, http.StatusOK, insights)
+}
+
 // StatsHandler handles statistics endpoints.
 type StatsHandler struct {
 	service *service.StatsService

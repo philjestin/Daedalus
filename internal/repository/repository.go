@@ -561,6 +561,25 @@ func (r *TaskRepository) GetProjectTaskStats(ctx context.Context, projectID uuid
 	return
 }
 
+// GetPendingSalesStats returns the count and estimated revenue of tasks in pending/in_progress status.
+// Revenue is estimated from project price_cents if set, otherwise from average gross_cents of past sales.
+func (r *TaskRepository) GetPendingSalesStats(ctx context.Context) (count int, revenueCents int, err error) {
+	err = r.db.QueryRowContext(ctx, `
+		SELECT
+			COALESCE(SUM(t.quantity), 0),
+			COALESCE(SUM(t.quantity * COALESCE(
+				p.price_cents,
+				(SELECT CASE WHEN COUNT(*) > 0 THEN SUM(s.gross_cents) / COUNT(*) ELSE 0 END
+				 FROM sales s WHERE s.project_id = p.id),
+				0
+			)), 0)
+		FROM tasks t
+		JOIN projects p ON t.project_id = p.id
+		WHERE t.status IN ('pending', 'in_progress')
+	`).Scan(&count, &revenueCents)
+	return
+}
+
 // DesignRepository handles design database operations.
 type DesignRepository struct {
 	db *sql.DB

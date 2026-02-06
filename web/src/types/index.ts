@@ -858,6 +858,23 @@ export interface ChannelBreakdown {
   count: number
 }
 
+export interface WeekSummary {
+  gross_cents: number
+  net_cents: number
+  fees_cents: number
+  count: number
+}
+
+export interface WeeklyInsights {
+  this_week: WeekSummary
+  last_week: WeekSummary
+  channels: ChannelBreakdown[]
+  week_start: string
+  week_end: string
+  pending_count: number
+  pending_revenue_cents: number
+}
+
 export interface ProjectSales {
   project_id: string
   project_name: string
