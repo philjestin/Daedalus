@@ -217,6 +217,7 @@ func NewRouter(services *service.Services, hub *realtime.Hub) http.Handler {
 		r.Route("/sales", func(r chi.Router) {
 			r.Get("/", saleHandler.List)
 			r.Post("/", saleHandler.Create)
+			r.Get("/weekly-insights", saleHandler.GetWeeklyInsights)
 			r.Route("/{id}", func(r chi.Router) {
 				r.Get("/", saleHandler.Get)
 				r.Patch("/", saleHandler.Update)
