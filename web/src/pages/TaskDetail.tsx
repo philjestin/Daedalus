@@ -1,9 +1,196 @@
 import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { ArrowLeft, Clock, Play, CheckCircle, XCircle, Package, Printer, AlertCircle, CalendarDays, Square, CheckSquare } from 'lucide-react'
-import { tasksApi } from '../api/client'
-import type { Task, TaskStatus, PrintJob, TaskChecklistItem } from '../types'
+import { ArrowLeft, Clock, Play, CheckCircle, XCircle, Package, Printer, AlertCircle, CalendarDays, Square, CheckSquare, DollarSign } from 'lucide-react'
+import { useQueryClient } from '@tanstack/react-query'
+import { tasksApi, salesApi } from '../api/client'
+import type { Task, TaskStatus, PrintJob, TaskChecklistItem, SalesChannel } from '../types'
 import { cn } from '../lib/utils'
+
+const SALES_CHANNELS: { value: SalesChannel; label: string }[] = [
+  { value: 'direct', label: 'Direct' },
+  { value: 'etsy', label: 'Etsy' },
+  { value: 'marketplace', label: 'Marketplace' },
+  { value: 'website', label: 'Website' },
+  { value: 'other', label: 'Other' },
+]
+
+function CompleteTaskModal({
+  task,
+  onClose,
+  onCompleted,
+}: {
+  task: Task
+  onClose: () => void
+  onCompleted: () => void
+}) {
+  const queryClient = useQueryClient()
+  const [recordSale, setRecordSale] = useState(!!task.project?.price_cents)
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState('')
+
+  const grossCents = (task.project?.price_cents ?? 0) * task.quantity
+
+  const [saleForm, setSaleForm] = useState({
+    item_description: task.project?.name ?? task.name,
+    quantity: task.quantity,
+    gross_cents: grossCents,
+    channel: 'direct' as SalesChannel,
+    fees_cents: 0,
+    customer_name: '',
+  })
+
+  const handleSubmit = async () => {
+    setSubmitting(true)
+    setError('')
+    try {
+      await tasksApi.complete(task.id)
+
+      if (recordSale) {
+        await salesApi.create({
+          item_description: saleForm.item_description,
+          quantity: saleForm.quantity,
+          gross_cents: saleForm.gross_cents,
+          channel: saleForm.channel,
+          fees_cents: saleForm.fees_cents,
+          customer_name: saleForm.customer_name || undefined,
+          project_id: task.project_id,
+          occurred_at: new Date().toISOString(),
+        })
+        queryClient.invalidateQueries({ queryKey: ['sales'] })
+        queryClient.invalidateQueries({ queryKey: ['sales', 'weekly-insights'] })
+      }
+
+      onCompleted()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to complete task')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const formatDollars = (cents: number) => (cents / 100).toFixed(2)
+  const parseDollars = (val: string) => Math.round(parseFloat(val || '0') * 100)
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+      <div className="bg-surface-800 border border-surface-700 rounded-xl w-full max-w-md mx-4 shadow-2xl">
+        <div className="p-6">
+          <h2 className="text-lg font-semibold text-surface-100 mb-1">Complete Task</h2>
+          <p className="text-sm text-surface-400 mb-5">
+            {task.name} &times; {task.quantity}
+          </p>
+
+          {/* Record sale toggle */}
+          <label className="flex items-center gap-3 p-3 bg-surface-900 rounded-lg cursor-pointer mb-4">
+            <input
+              type="checkbox"
+              checked={recordSale}
+              onChange={e => setRecordSale(e.target.checked)}
+              className="w-4 h-4 rounded border-surface-600 text-accent-500 focus:ring-accent-500 bg-surface-700"
+            />
+            <DollarSign className="w-4 h-4 text-emerald-400" />
+            <span className="text-sm font-medium text-surface-100">Record a sale</span>
+          </label>
+
+          {/* Sale form */}
+          {recordSale && (
+            <div className="space-y-3 mb-4">
+              <div>
+                <label className="block text-xs text-surface-500 mb-1">Item Description</label>
+                <input
+                  type="text"
+                  value={saleForm.item_description}
+                  onChange={e => setSaleForm(f => ({ ...f, item_description: e.target.value }))}
+                  className="w-full px-3 py-2 bg-surface-900 border border-surface-700 rounded-lg text-sm text-surface-100 focus:outline-none focus:border-accent-500"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs text-surface-500 mb-1">Quantity</label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={saleForm.quantity}
+                    onChange={e => setSaleForm(f => ({ ...f, quantity: parseInt(e.target.value) || 1 }))}
+                    className="w-full px-3 py-2 bg-surface-900 border border-surface-700 rounded-lg text-sm text-surface-100 focus:outline-none focus:border-accent-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-surface-500 mb-1">Gross ($)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min={0}
+                    value={formatDollars(saleForm.gross_cents)}
+                    onChange={e => setSaleForm(f => ({ ...f, gross_cents: parseDollars(e.target.value) }))}
+                    className="w-full px-3 py-2 bg-surface-900 border border-surface-700 rounded-lg text-sm text-surface-100 focus:outline-none focus:border-accent-500"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs text-surface-500 mb-1">Channel</label>
+                  <select
+                    value={saleForm.channel}
+                    onChange={e => setSaleForm(f => ({ ...f, channel: e.target.value as SalesChannel }))}
+                    className="w-full px-3 py-2 bg-surface-900 border border-surface-700 rounded-lg text-sm text-surface-100 focus:outline-none focus:border-accent-500"
+                  >
+                    {SALES_CHANNELS.map(ch => (
+                      <option key={ch.value} value={ch.value}>{ch.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-surface-500 mb-1">Fees ($)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min={0}
+                    value={formatDollars(saleForm.fees_cents)}
+                    onChange={e => setSaleForm(f => ({ ...f, fees_cents: parseDollars(e.target.value) }))}
+                    className="w-full px-3 py-2 bg-surface-900 border border-surface-700 rounded-lg text-sm text-surface-100 focus:outline-none focus:border-accent-500"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs text-surface-500 mb-1">Customer Name</label>
+                <input
+                  type="text"
+                  value={saleForm.customer_name}
+                  onChange={e => setSaleForm(f => ({ ...f, customer_name: e.target.value }))}
+                  placeholder="Optional"
+                  className="w-full px-3 py-2 bg-surface-900 border border-surface-700 rounded-lg text-sm text-surface-100 placeholder:text-surface-600 focus:outline-none focus:border-accent-500"
+                />
+              </div>
+            </div>
+          )}
+
+          {error && (
+            <p className="text-sm text-red-400 mb-4">{error}</p>
+          )}
+
+          <div className="flex gap-3 justify-end">
+            <button
+              onClick={onClose}
+              disabled={submitting}
+              className="px-4 py-2 text-sm text-surface-300 border border-surface-600 rounded-lg hover:bg-surface-700 transition-colors disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSubmit}
+              disabled={submitting}
+              className="inline-flex items-center gap-2 px-4 py-2 text-sm bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors disabled:opacity-50"
+            >
+              <CheckCircle className="w-4 h-4" />
+              {submitting ? 'Completing...' : 'Complete'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 const statusConfig: Record<TaskStatus, { label: string; color: string; bgColor: string; icon: React.ReactNode }> = {
   pending: { label: 'Pending', color: 'text-surface-300', bgColor: 'bg-surface-700', icon: <Clock className="w-5 h-5" /> },
@@ -30,6 +217,7 @@ export function TaskDetail() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [actionLoading, setActionLoading] = useState(false)
+  const [showCompleteModal, setShowCompleteModal] = useState(false)
 
   useEffect(() => {
     if (id) {
@@ -58,19 +246,6 @@ export function TaskDetail() {
       loadTask()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to start task')
-    } finally {
-      setActionLoading(false)
-    }
-  }
-
-  const handleComplete = async () => {
-    if (!id) return
-    setActionLoading(true)
-    try {
-      await tasksApi.complete(id)
-      loadTask()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to complete task')
     } finally {
       setActionLoading(false)
     }
@@ -317,7 +492,7 @@ export function TaskDetail() {
             )}
             {task.status === 'in_progress' && (
               <button
-                onClick={handleComplete}
+                onClick={() => setShowCompleteModal(true)}
                 disabled={actionLoading}
                 className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors disabled:opacity-50"
               >
@@ -450,6 +625,17 @@ export function TaskDetail() {
           )}
         </dl>
       </div>
+
+      {showCompleteModal && (
+        <CompleteTaskModal
+          task={task}
+          onClose={() => setShowCompleteModal(false)}
+          onCompleted={() => {
+            setShowCompleteModal(false)
+            loadTask()
+          }}
+        />
+      )}
     </div>
   )
 }

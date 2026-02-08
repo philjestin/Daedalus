@@ -1261,6 +1261,37 @@ func (r *PrintJobRepository) List(ctx context.Context, printerID *uuid.UUID, sta
 	return jobs, rows.Err()
 }
 
+// ListCompletedSince retrieves completed print jobs that were completed on or after the given time.
+func (r *PrintJobRepository) ListCompletedSince(ctx context.Context, since time.Time) ([]model.PrintJob, error) {
+	query := `SELECT pj.id, pj.design_id, pj.printer_id, pj.material_spool_id, pj.project_id, pj.task_id, pj.status, pj.progress, pj.started_at, pj.completed_at, pj.outcome, pj.notes, pj.created_at,
+	                 pj.recipe_id, pj.attempt_number, pj.parent_job_id, pj.failure_category, pj.estimated_seconds, pj.actual_seconds, pj.material_used_grams, pj.cost_cents, pj.printer_time_cost_cents, pj.material_cost_cents, pj.material_snapshot, pj.priority, pj.auto_dispatch_enabled
+	          FROM print_jobs pj WHERE pj.status = ? AND pj.completed_at >= ? ORDER BY pj.created_at DESC`
+
+	rows, err := r.db.QueryContext(ctx, query, model.PrintJobStatusCompleted, since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var jobs []model.PrintJob
+	for rows.Next() {
+		var j model.PrintJob
+		var outcomeJSON, snapshotJSON []byte
+		if err := scanRow(rows, &j.ID, &j.DesignID, &j.PrinterID, &j.MaterialSpoolID, &j.ProjectID, &j.TaskID, &j.Status, &j.Progress, &j.StartedAt, &j.CompletedAt, &outcomeJSON, &j.Notes, &j.CreatedAt,
+			&j.RecipeID, &j.AttemptNumber, &j.ParentJobID, &j.FailureCategory, &j.EstimatedSeconds, &j.ActualSeconds, &j.MaterialUsedGrams, &j.CostCents, &j.PrinterTimeCostCents, &j.MaterialCostCents, &snapshotJSON, &j.Priority, &j.AutoDispatchEnabled); err != nil {
+			return nil, err
+		}
+		if outcomeJSON != nil {
+			json.Unmarshal(outcomeJSON, &j.Outcome)
+		}
+		if snapshotJSON != nil {
+			json.Unmarshal(snapshotJSON, &j.MaterialSnapshot)
+		}
+		jobs = append(jobs, j)
+	}
+	return jobs, rows.Err()
+}
+
 // ListByDesign retrieves all print jobs for a design.
 func (r *PrintJobRepository) ListByDesign(ctx context.Context, designID uuid.UUID) ([]model.PrintJob, error) {
 	rows, err := r.db.QueryContext(ctx, `
@@ -1773,6 +1804,34 @@ func (r *ExpenseRepository) List(ctx context.Context, status *model.ExpenseStatu
 	return expenses, rows.Err()
 }
 
+// ListSince retrieves expenses with the given status that occurred on or after the given time.
+func (r *ExpenseRepository) ListSince(ctx context.Context, status *model.ExpenseStatus, since time.Time) ([]model.Expense, error) {
+	query := `SELECT id, occurred_at, vendor, subtotal_cents, tax_cents, shipping_cents, total_cents, currency, category, notes, receipt_file_id, receipt_file_path, status, confidence, created_at, updated_at FROM expenses WHERE occurred_at >= ?`
+	args := []interface{}{since}
+
+	if status != nil {
+		query += ` AND status = ?`
+		args = append(args, *status)
+	}
+	query += ` ORDER BY occurred_at DESC`
+
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var expenses []model.Expense
+	for rows.Next() {
+		var e model.Expense
+		if err := scanRow(rows, &e.ID, &e.OccurredAt, &e.Vendor, &e.SubtotalCents, &e.TaxCents, &e.ShippingCents, &e.TotalCents, &e.Currency, &e.Category, &e.Notes, &e.ReceiptFileID, &e.ReceiptFilePath, &e.Status, &e.Confidence, &e.CreatedAt, &e.UpdatedAt); err != nil {
+			return nil, err
+		}
+		expenses = append(expenses, e)
+	}
+	return expenses, rows.Err()
+}
+
 // Update updates an expense.
 func (r *ExpenseRepository) Update(ctx context.Context, e *model.Expense) error {
 	return r.UpdateTx(ctx, r.db, e)
@@ -1918,6 +1977,27 @@ func (r *SaleRepository) List(ctx context.Context, projectID *uuid.UUID) ([]mode
 	query += ` ORDER BY occurred_at DESC`
 
 	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var sales []model.Sale
+	for rows.Next() {
+		var s model.Sale
+		if err := scanRow(rows, &s.ID, &s.OccurredAt, &s.Channel, &s.Platform, &s.GrossCents, &s.FeesCents, &s.ShippingChargedCents, &s.ShippingCostCents, &s.TaxCollectedCents, &s.NetCents, &s.Currency, &s.ProjectID, &s.OrderReference, &s.CustomerName, &s.ItemDescription, &s.Quantity, &s.Notes, &s.CreatedAt, &s.UpdatedAt); err != nil {
+			return nil, err
+		}
+		sales = append(sales, s)
+	}
+	return sales, rows.Err()
+}
+
+// ListSince retrieves sales that occurred on or after the given time.
+func (r *SaleRepository) ListSince(ctx context.Context, since time.Time) ([]model.Sale, error) {
+	query := `SELECT id, occurred_at, channel, platform, gross_cents, fees_cents, shipping_charged_cents, shipping_cost_cents, tax_collected_cents, net_cents, currency, project_id, order_reference, customer_name, item_description, quantity, notes, created_at, updated_at FROM sales WHERE occurred_at >= ? ORDER BY occurred_at DESC`
+
+	rows, err := r.db.QueryContext(ctx, query, since)
 	if err != nil {
 		return nil, err
 	}
