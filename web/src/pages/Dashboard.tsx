@@ -96,13 +96,13 @@ export default function Dashboard() {
   const { data: projects = [], isLoading: projectsLoading } = useProjects()
   const { data: printers = [], isLoading: printersLoading } = usePrinters()
   const { data: printerStates = {} } = usePrinterStates()
+  const [chartPeriod, setChartPeriod] = useState('30d')
+
   const { data: financials } = useQuery({
-    queryKey: ['stats', 'financial'],
-    queryFn: () => statsApi.getFinancialSummary(),
+    queryKey: ['stats', 'financial', chartPeriod],
+    queryFn: () => statsApi.getFinancialSummary(chartPeriod),
     refetchInterval: 30000,
   })
-
-  const [chartPeriod, setChartPeriod] = useState('30d')
 
   const { data: timeSeries } = useQuery({
     queryKey: ['stats', 'time-series', chartPeriod],
@@ -246,6 +246,24 @@ export default function Dashboard() {
         />
       </div>
 
+      {/* Period Selector */}
+      <div className="flex items-center gap-2 mb-6">
+        {periodOptions.map((opt) => (
+          <button
+            key={opt.value}
+            onClick={() => setChartPeriod(opt.value)}
+            className={cn(
+              'px-3 py-1.5 rounded-lg text-sm font-medium transition-colors',
+              chartPeriod === opt.value
+                ? 'bg-accent-500/20 text-accent-400'
+                : 'text-surface-400 hover:text-surface-200 hover:bg-surface-800'
+            )}
+          >
+            {opt.label}
+          </button>
+        ))}
+      </div>
+
       {/* Financial Summary */}
       {financials && (
         <div className="card p-6 mb-8">
@@ -332,24 +350,6 @@ export default function Dashboard() {
           </div>
         </div>
       )}
-
-      {/* Period Selector */}
-      <div className="flex items-center gap-2 mb-6">
-        {periodOptions.map((opt) => (
-          <button
-            key={opt.value}
-            onClick={() => setChartPeriod(opt.value)}
-            className={cn(
-              'px-3 py-1.5 rounded-lg text-sm font-medium transition-colors',
-              chartPeriod === opt.value
-                ? 'bg-accent-500/20 text-accent-400'
-                : 'text-surface-400 hover:text-surface-200 hover:bg-surface-800'
-            )}
-          >
-            {opt.label}
-          </button>
-        ))}
-      </div>
 
       {/* Revenue & Profit Chart */}
       {lineChartData.labels.length > 0 && (

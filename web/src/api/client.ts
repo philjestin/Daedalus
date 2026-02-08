@@ -603,8 +603,8 @@ export interface FinancialSummary {
 
 // Stats API
 export const statsApi = {
-  getFinancialSummary: () =>
-    fetchApi<FinancialSummary>('/stats/financial'),
+  getFinancialSummary: (period?: string) =>
+    fetchApi<FinancialSummary>(`/stats/financial${period ? `?period=${period}` : ''}`),
 
   getTimeSeries: (period: string) =>
     fetchApi<import('../types').TimeSeriesData>(`/stats/time-series?period=${period}`),

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -1673,14 +1674,36 @@ func (h *SaleHandler) GetWeeklyInsights(w http.ResponseWriter, r *http.Request) 
 	respondJSON(w, http.StatusOK, insights)
 }
 
+// parsePeriodTime converts a period string to a start time.
+func parsePeriodTime(period string) time.Time {
+	now := time.Now()
+	switch period {
+	case "60d":
+		return now.AddDate(0, 0, -60)
+	case "90d":
+		return now.AddDate(0, 0, -90)
+	case "12m":
+		return now.AddDate(-1, 0, 0)
+	default: // "30d"
+		return now.AddDate(0, 0, -30)
+	}
+}
+
 // StatsHandler handles statistics endpoints.
 type StatsHandler struct {
 	service *service.StatsService
 }
 
 // GetFinancialSummary returns aggregated financial statistics.
+// Accepts an optional "period" query param (30d, 60d, 90d, 12m) to filter by time range.
 func (h *StatsHandler) GetFinancialSummary(w http.ResponseWriter, r *http.Request) {
-	summary, err := h.service.GetFinancialSummary(r.Context())
+	var since *time.Time
+	if period := r.URL.Query().Get("period"); period != "" {
+		t := parsePeriodTime(period)
+		since = &t
+	}
+
+	summary, err := h.service.GetFinancialSummary(r.Context(), since)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return

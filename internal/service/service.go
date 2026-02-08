@@ -3059,12 +3059,19 @@ type StatsService struct {
 }
 
 // GetFinancialSummary returns aggregated financial data.
-func (s *StatsService) GetFinancialSummary(ctx context.Context) (*FinancialSummary, error) {
+// If since is non-nil, only data from that time onward is included.
+func (s *StatsService) GetFinancialSummary(ctx context.Context, since *time.Time) (*FinancialSummary, error) {
 	summary := &FinancialSummary{}
 
 	// Get expense totals
 	confirmedStatus := model.ExpenseStatusConfirmed
-	expenses, err := s.expenseRepo.List(ctx, &confirmedStatus)
+	var expenses []model.Expense
+	var err error
+	if since != nil {
+		expenses, err = s.expenseRepo.ListSince(ctx, &confirmedStatus, *since)
+	} else {
+		expenses, err = s.expenseRepo.List(ctx, &confirmedStatus)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to get expenses: %w", err)
 	}
@@ -3075,14 +3082,24 @@ func (s *StatsService) GetFinancialSummary(ctx context.Context) (*FinancialSumma
 
 	// Get pending expense count
 	pendingStatus := model.ExpenseStatusPending
-	pendingExpenses, err := s.expenseRepo.List(ctx, &pendingStatus)
+	var pendingExpenses []model.Expense
+	if since != nil {
+		pendingExpenses, err = s.expenseRepo.ListSince(ctx, &pendingStatus, *since)
+	} else {
+		pendingExpenses, err = s.expenseRepo.List(ctx, &pendingStatus)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to get pending expenses: %w", err)
 	}
 	summary.PendingExpenseCount = len(pendingExpenses)
 
 	// Get sales totals
-	sales, err := s.saleRepo.List(ctx, nil)
+	var sales []model.Sale
+	if since != nil {
+		sales, err = s.saleRepo.ListSince(ctx, *since)
+	} else {
+		sales, err = s.saleRepo.List(ctx, nil)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to get sales: %w", err)
 	}
@@ -3094,8 +3111,13 @@ func (s *StatsService) GetFinancialSummary(ctx context.Context) (*FinancialSumma
 	}
 
 	// Get print job stats (completed jobs with outcomes)
-	completedStatus := model.PrintJobStatusCompleted
-	jobs, err := s.printJobRepo.List(ctx, nil, &completedStatus)
+	var jobs []model.PrintJob
+	if since != nil {
+		jobs, err = s.printJobRepo.ListCompletedSince(ctx, *since)
+	} else {
+		completedStatus := model.PrintJobStatusCompleted
+		jobs, err = s.printJobRepo.List(ctx, nil, &completedStatus)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to get print jobs: %w", err)
 	}
