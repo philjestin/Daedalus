@@ -17,7 +17,7 @@ document.addEventListener('click', (e) => {
   if (!href || !href.startsWith('http')) return
 
   // Only intercept if Wails runtime is available (desktop app)
-  const runtime = (window as Record<string, unknown>).runtime as
+  const runtime = (window as unknown as Record<string, unknown>).runtime as
     | { BrowserOpenURL?: (url: string) => void }
     | undefined
   if (runtime?.BrowserOpenURL) {

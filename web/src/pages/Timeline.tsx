@@ -233,8 +233,8 @@ function TimelineRow({ item, dateRange, getPosition, todayPct, depth = 0 }: Time
 
   const linkTo = item.type === 'order'
     ? `/orders/${item.id}`
-    : item.type === 'task'
-    ? `/tasks/${item.id}`
+    : item.type === 'job'
+    ? `/jobs/${item.id}`
     : `/projects/${item.id}`
 
   return (
