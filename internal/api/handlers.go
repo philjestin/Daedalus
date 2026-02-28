@@ -2674,3 +2674,25 @@ func (h *BackupHandler) Restore(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// GetConfig returns the backup configuration.
+func (h *BackupHandler) GetConfig(w http.ResponseWriter, r *http.Request) {
+	config := h.service.GetConfig(r.Context())
+	respondJSON(w, http.StatusOK, config)
+}
+
+// UpdateConfig updates the backup configuration.
+func (h *BackupHandler) UpdateConfig(w http.ResponseWriter, r *http.Request) {
+	var config service.BackupConfig
+	if err := json.NewDecoder(r.Body).Decode(&config); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if err := h.service.UpdateConfig(r.Context(), config); err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusOK, config)
+}
+

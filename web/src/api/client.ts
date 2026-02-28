@@ -1,4 +1,4 @@
-const API_URL = import.meta.env.VITE_API_URL ?? (import.meta.env.DEV ? 'http://localhost:8080' : '')
+const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8080'
 
 // Generic fetch wrapper with error handling.
 async function fetchApi<T>(
@@ -553,6 +553,15 @@ export const backupsApi = {
 
   restore: (name: string) =>
     fetchApi<{ message: string }>(`/backups/${encodeURIComponent(name)}/restore`, { method: 'POST' }),
+
+  getConfig: () =>
+    fetchApi<import('../types').BackupConfig>('/backups/config'),
+
+  updateConfig: (config: import('../types').BackupConfig) =>
+    fetchApi<import('../types').BackupConfig>('/backups/config', {
+      method: 'PUT',
+      body: JSON.stringify(config),
+    }),
 }
 
 // Sales API

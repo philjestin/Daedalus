@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -10,6 +11,7 @@ import (
 	"github.com/go-chi/cors"
 	"github.com/hyperion/printfarm/internal/realtime"
 	"github.com/hyperion/printfarm/internal/service"
+	"github.com/hyperion/printfarm/internal/version"
 )
 
 // NewRouter creates the HTTP router with all routes.
@@ -33,8 +35,12 @@ func NewRouter(services *service.Services, hub *realtime.Hub) http.Handler {
 
 	// Health check
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("ok"))
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{
+			"status":  "ok",
+			"version": version.Version,
+			"commit":  version.Commit,
+		})
 	})
 
 	// WebSocket endpoint
@@ -252,6 +258,8 @@ func NewRouter(services *service.Services, hub *realtime.Hub) http.Handler {
 			r.Route("/backups", func(r chi.Router) {
 				r.Get("/", backupHandler.List)
 				r.Post("/", backupHandler.Create)
+				r.Get("/config", backupHandler.GetConfig)
+				r.Put("/config", backupHandler.UpdateConfig)
 				r.Delete("/{name}", backupHandler.Delete)
 				r.Post("/{name}/restore", backupHandler.Restore)
 			})

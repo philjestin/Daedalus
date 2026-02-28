@@ -16,6 +16,7 @@ import (
 	"github.com/hyperion/printfarm/internal/repository"
 	"github.com/hyperion/printfarm/internal/service"
 	"github.com/hyperion/printfarm/internal/storage"
+	"github.com/hyperion/printfarm/internal/version"
 	"github.com/joho/godotenv"
 )
 
@@ -81,6 +82,8 @@ func main() {
 	// Initialize backup service with database access
 	backupService := service.NewBackupService(db, dbPath)
 	services.SetBackupService(backupService)
+	backupService.SetSettingsService(services.Settings)
+	backupService.StartScheduler()
 
 	// Initialize PrintJobService to register for printer status changes (auto failure detection)
 	services.PrintJobs.Init()
@@ -106,7 +109,7 @@ func main() {
 
 	// Start server in goroutine
 	go func() {
-		slog.Info("starting server", "port", port)
+		slog.Info("starting server", "version", version.String(), "port", port)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			slog.Error("server error", "error", err)
 			os.Exit(1)
@@ -129,6 +132,9 @@ func main() {
 		slog.Error("server forced to shutdown", "error", err)
 	}
 	slog.Info("HTTP server stopped")
+
+	// Stop backup scheduler
+	backupService.StopScheduler()
 
 	// Disconnect all printers (closes MQTT connections)
 	printerManager.DisconnectAll()

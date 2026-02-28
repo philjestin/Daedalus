@@ -16,6 +16,7 @@ import (
 	"github.com/hyperion/printfarm/internal/repository"
 	"github.com/hyperion/printfarm/internal/service"
 	"github.com/hyperion/printfarm/internal/storage"
+	"github.com/hyperion/printfarm/internal/version"
 	"github.com/joho/godotenv"
 )
 
@@ -102,6 +103,8 @@ func (a *App) startup(ctx context.Context) {
 	// Initialize backup service with database access
 	backupService := service.NewBackupService(db, a.dbPath)
 	a.services.SetBackupService(backupService)
+	backupService.SetSettingsService(a.services.Settings)
+	backupService.StartScheduler()
 
 	// Initialize PrintJobService
 	a.services.PrintJobs.Init()
@@ -127,7 +130,7 @@ func (a *App) startup(ctx context.Context) {
 
 	// Start server in goroutine
 	go func() {
-		slog.Info("starting API server", "port", port)
+		slog.Info("starting API server", "version", version.String(), "port", port)
 		if err := a.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			slog.Error("server error", "error", err)
 		}
@@ -146,6 +149,11 @@ func (a *App) shutdown(ctx context.Context) {
 			slog.Error("server shutdown error", "error", err)
 		}
 		slog.Info("HTTP server stopped")
+	}
+
+	// Stop backup scheduler
+	if a.services != nil && a.services.Backup != nil {
+		a.services.Backup.StopScheduler()
 	}
 
 	// Disconnect all printers (closes MQTT connections)
@@ -167,6 +175,11 @@ func (a *App) shutdown(ctx context.Context) {
 	}
 
 	slog.Info("shutdown complete")
+}
+
+// GetVersion returns the application version string for the frontend.
+func (a *App) GetVersion() string {
+	return version.String()
 }
 
 // GetAPIURL returns the API URL for the frontend

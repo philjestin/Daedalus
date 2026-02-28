@@ -33,6 +33,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Extract version info
+        run: |
+          echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
+          echo "COMMIT=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+          echo "DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_ENV
+
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
@@ -62,7 +68,9 @@ jobs:
           npm run build
 
       - name: Build Wails app
-        run: wails build -platform ${{ matrix.platform }} ${{ matrix.wails_flags }}
+        run: |
+          wails build -platform ${{ matrix.platform }} ${{ matrix.wails_flags }} \
+            -ldflags "-X github.com/hyperion/printfarm/internal/version.Version=${{ env.VERSION }} -X github.com/hyperion/printfarm/internal/version.Commit=${{ env.COMMIT }} -X github.com/hyperion/printfarm/internal/version.Date=${{ env.DATE }} -X github.com/hyperion/printfarm/internal/version.BuiltBy=ci"
 
       - name: Package macOS app
         if: runner.os == 'macOS'

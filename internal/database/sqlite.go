@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"time"
 
 	_ "github.com/glebarez/go-sqlite"
 )
@@ -53,6 +54,9 @@ func Open(path string) (*sql.DB, error) {
 		db.Close()
 		return nil, fmt.Errorf("set busy timeout: %w", err)
 	}
+
+	// Auto-backup before migrations (if enabled and not a fresh database)
+	CreateStartupBackup(db, path)
 
 	// Run schema
 	if err := RunMigrations(db); err != nil {
@@ -111,4 +115,53 @@ func RunMigrations(db *sql.DB) error {
 	}
 
 	return nil
+}
+
+// CreateStartupBackup creates an automatic backup before migrations run.
+// It reads the backup_auto_on_startup setting directly via raw SQL to avoid
+// service layer dependencies. Skips silently on fresh databases (no settings table).
+func CreateStartupBackup(db *sql.DB, dbPath string) {
+	// Skip in-memory databases (testing)
+	if dbPath == ":memory:" || dbPath == "" {
+		return
+	}
+
+	// Check if settings table exists (fresh databases won't have it)
+	var tableName string
+	err := db.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name='settings'").Scan(&tableName)
+	if err != nil {
+		return // Fresh database, skip
+	}
+
+	// Check if auto-backup on startup is enabled (default: true)
+	var value string
+	err = db.QueryRow("SELECT value FROM settings WHERE key = 'backup_auto_on_startup'").Scan(&value)
+	if err != nil {
+		// Setting not found — default is enabled
+		value = "true"
+	}
+	if value != "true" {
+		slog.Info("startup backup disabled by setting")
+		return
+	}
+
+	// Create backup directory
+	backupDir := filepath.Join(filepath.Dir(dbPath), "backups")
+	if err := os.MkdirAll(backupDir, 0755); err != nil {
+		slog.Error("failed to create backup directory for startup backup", "error", err)
+		return
+	}
+
+	timestamp := time.Now().Format("2006-01-02_15-04-05")
+	backupPath := filepath.Join(backupDir, fmt.Sprintf("auto_startup_%s.db", timestamp))
+
+	slog.Info("creating startup backup", "path", backupPath)
+
+	_, err = db.Exec(fmt.Sprintf("VACUUM INTO '%s'", backupPath))
+	if err != nil {
+		slog.Error("failed to create startup backup", "error", err)
+		return
+	}
+
+	slog.Info("startup backup created", "path", backupPath)
 }
