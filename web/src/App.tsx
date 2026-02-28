@@ -16,6 +16,10 @@ import Channels from './pages/Channels'
 import Orders from './pages/Orders'
 import OrderDetail from './pages/OrderDetail'
 import Timeline from './pages/Timeline'
+import Quotes from './pages/Quotes'
+import QuoteDetail from './pages/QuoteDetail'
+import Customers from './pages/Customers'
+import CustomerDetail from './pages/CustomerDetail'
 import ErrorFallback from './components/ErrorFallback'
 import { useWebSocket } from './hooks/useWebSocket'
 
@@ -36,6 +40,10 @@ function App() {
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/orders" element={<Orders />} />
         <Route path="/orders/:id" element={<OrderDetail />} />
+        <Route path="/quotes" element={<Quotes />} />
+        <Route path="/quotes/:id" element={<QuoteDetail />} />
+        <Route path="/customers" element={<Customers />} />
+        <Route path="/customers/:id" element={<CustomerDetail />} />
         <Route path="/timeline" element={<Timeline />} />
         <Route path="/projects" element={<Projects />} />
         <Route path="/projects/:id" element={<ProjectDetail />} />

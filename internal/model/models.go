@@ -1192,6 +1192,7 @@ const (
 	OrderSourceEtsy        OrderSource = "etsy"
 	OrderSourceSquarespace OrderSource = "squarespace"
 	OrderSourceShopify     OrderSource = "shopify"
+	OrderSourceQuote       OrderSource = "quote"
 )
 
 // Order represents a unified order from any source.
@@ -1199,6 +1200,7 @@ type Order struct {
 	ID            uuid.UUID    `json:"id"`
 	Source        OrderSource  `json:"source"`
 	SourceOrderID string       `json:"source_order_id,omitempty"`
+	CustomerID    *uuid.UUID   `json:"customer_id,omitempty"`
 	CustomerName  string       `json:"customer_name"`
 	CustomerEmail string       `json:"customer_email,omitempty"`
 	Status        OrderStatus  `json:"status"`
@@ -1353,5 +1355,117 @@ type Feedback struct {
 	Page       string    `json:"page,omitempty"`
 	AppVersion string    `json:"app_version,omitempty"`
 	CreatedAt  time.Time `json:"created_at"`
+}
+
+// ============================================
+// Customers
+// ============================================
+
+// Customer represents a customer for quotes and orders.
+type Customer struct {
+	ID        uuid.UUID `json:"id"`
+	Name      string    `json:"name"`
+	Email     string    `json:"email,omitempty"`
+	Company   string    `json:"company,omitempty"`
+	Phone     string    `json:"phone,omitempty"`
+	Notes     string    `json:"notes,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// CustomerFilters defines filter options for listing customers.
+type CustomerFilters struct {
+	Search string `json:"search,omitempty"`
+	Limit  int    `json:"limit,omitempty"`
+	Offset int    `json:"offset,omitempty"`
+}
+
+// ============================================
+// Quotes
+// ============================================
+
+// QuoteStatus represents the status of a quote.
+type QuoteStatus string
+
+const (
+	QuoteStatusDraft    QuoteStatus = "draft"
+	QuoteStatusSent     QuoteStatus = "sent"
+	QuoteStatusAccepted QuoteStatus = "accepted"
+	QuoteStatusRejected QuoteStatus = "rejected"
+	QuoteStatusExpired  QuoteStatus = "expired"
+)
+
+// QuoteLineItemType represents the type of a line item.
+type QuoteLineItemType string
+
+const (
+	QuoteLineItemTypePrinting       QuoteLineItemType = "printing"
+	QuoteLineItemTypePostProcessing QuoteLineItemType = "post_processing"
+	QuoteLineItemTypeConsulting     QuoteLineItemType = "consulting"
+	QuoteLineItemTypeDesign         QuoteLineItemType = "design"
+	QuoteLineItemTypeOther          QuoteLineItemType = "other"
+)
+
+// Quote represents a customer quote with options.
+type Quote struct {
+	ID               uuid.UUID     `json:"id"`
+	QuoteNumber      string        `json:"quote_number"`
+	CustomerID       uuid.UUID     `json:"customer_id"`
+	Status           QuoteStatus   `json:"status"`
+	Title            string        `json:"title"`
+	Notes            string        `json:"notes,omitempty"`
+	ValidUntil       *time.Time    `json:"valid_until,omitempty"`
+	AcceptedOptionID *uuid.UUID    `json:"accepted_option_id,omitempty"`
+	OrderID          *uuid.UUID    `json:"order_id,omitempty"`
+	CreatedAt        time.Time     `json:"created_at"`
+	UpdatedAt        time.Time     `json:"updated_at"`
+	SentAt           *time.Time    `json:"sent_at,omitempty"`
+	AcceptedAt       *time.Time    `json:"accepted_at,omitempty"`
+	Customer         *Customer     `json:"customer,omitempty"`
+	Options          []QuoteOption `json:"options,omitempty"`
+	Events           []QuoteEvent  `json:"events,omitempty"`
+}
+
+// QuoteOption represents one option within a quote.
+type QuoteOption struct {
+	ID          uuid.UUID       `json:"id"`
+	QuoteID     uuid.UUID       `json:"quote_id"`
+	Name        string          `json:"name"`
+	Description string          `json:"description,omitempty"`
+	SortOrder   int             `json:"sort_order"`
+	TotalCents  int             `json:"total_cents"`
+	CreatedAt   time.Time       `json:"created_at"`
+	Items       []QuoteLineItem `json:"items,omitempty"`
+}
+
+// QuoteLineItem represents a line item within a quote option.
+type QuoteLineItem struct {
+	ID             uuid.UUID         `json:"id"`
+	OptionID       uuid.UUID         `json:"option_id"`
+	Type           QuoteLineItemType `json:"type"`
+	Description    string            `json:"description"`
+	Quantity       float64           `json:"quantity"`
+	Unit           string            `json:"unit"`
+	UnitPriceCents int               `json:"unit_price_cents"`
+	TotalCents     int               `json:"total_cents"`
+	SortOrder      int               `json:"sort_order"`
+	CreatedAt      time.Time         `json:"created_at"`
+}
+
+// QuoteEvent records an event in the quote lifecycle.
+type QuoteEvent struct {
+	ID        uuid.UUID `json:"id"`
+	QuoteID   uuid.UUID `json:"quote_id"`
+	EventType string    `json:"event_type"`
+	Message   string    `json:"message,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// QuoteFilters defines filter options for listing quotes.
+type QuoteFilters struct {
+	Status     *QuoteStatus `json:"status,omitempty"`
+	CustomerID *uuid.UUID   `json:"customer_id,omitempty"`
+	Limit      int          `json:"limit,omitempty"`
+	Offset     int          `json:"offset,omitempty"`
 }
 

@@ -1131,12 +1131,13 @@ export interface AlertCounts {
 // ============================================
 
 export type OrderStatus = 'pending' | 'in_progress' | 'completed' | 'shipped' | 'cancelled'
-export type OrderSource = 'manual' | 'etsy' | 'squarespace' | 'shopify'
+export type OrderSource = 'manual' | 'etsy' | 'squarespace' | 'shopify' | 'quote'
 
 export interface Order {
   id: string
   source: OrderSource
   source_order_id?: string
+  customer_id?: string
   customer_name: string
   customer_email?: string
   status: OrderStatus
@@ -1265,6 +1266,79 @@ export interface Feedback {
   contact?: string
   page?: string
   app_version?: string
+  created_at: string
+}
+
+// ============================================
+// Customers
+// ============================================
+
+export interface Customer {
+  id: string
+  name: string
+  email?: string
+  company?: string
+  phone?: string
+  notes?: string
+  created_at: string
+  updated_at: string
+}
+
+// ============================================
+// Quotes
+// ============================================
+
+export type QuoteStatus = 'draft' | 'sent' | 'accepted' | 'rejected' | 'expired'
+export type QuoteLineItemType = 'printing' | 'post_processing' | 'consulting' | 'design' | 'other'
+
+export interface Quote {
+  id: string
+  quote_number: string
+  customer_id: string
+  status: QuoteStatus
+  title: string
+  notes?: string
+  valid_until?: string
+  accepted_option_id?: string
+  order_id?: string
+  created_at: string
+  updated_at: string
+  sent_at?: string
+  accepted_at?: string
+  customer?: Customer
+  options?: QuoteOption[]
+  events?: QuoteEvent[]
+}
+
+export interface QuoteOption {
+  id: string
+  quote_id: string
+  name: string
+  description?: string
+  sort_order: number
+  total_cents: number
+  created_at: string
+  items?: QuoteLineItem[]
+}
+
+export interface QuoteLineItem {
+  id: string
+  option_id: string
+  type: QuoteLineItemType
+  description: string
+  quantity: number
+  unit: string
+  unit_price_cents: number
+  total_cents: number
+  sort_order: number
+  created_at: string
+}
+
+export interface QuoteEvent {
+  id: string
+  quote_id: string
+  event_type: string
+  message?: string
   created_at: string
 }
 

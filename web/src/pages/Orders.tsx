@@ -17,6 +17,7 @@ const sourceLabels: Record<OrderSource, string> = {
   etsy: 'Etsy',
   squarespace: 'Squarespace',
   shopify: 'Shopify',
+  quote: 'Quote',
 }
 
 export function Orders() {

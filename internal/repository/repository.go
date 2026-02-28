@@ -48,6 +48,8 @@ type Repositories struct {
 	Tasks           *TaskRepository
 	TaskChecklist   *TaskChecklistRepository
 	Feedback        *FeedbackRepository
+	Customers       *CustomerRepository
+	Quotes          *QuoteRepository
 }
 
 // WithTransaction executes a function within a database transaction.
@@ -100,6 +102,8 @@ func NewRepositories(db *sql.DB) *Repositories {
 		Tasks:           &TaskRepository{db: db},
 		TaskChecklist:   &TaskChecklistRepository{db: db},
 		Feedback:        &FeedbackRepository{db: db},
+		Customers:       &CustomerRepository{db: db},
+		Quotes:          &QuoteRepository{db: db},
 	}
 }
 
