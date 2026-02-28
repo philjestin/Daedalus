@@ -8,7 +8,7 @@ import (
 
 	_ "github.com/glebarez/go-sqlite"
 	"github.com/google/uuid"
-	"github.com/hyperion/printfarm/internal/model"
+	"github.com/philjestin/daedalus/internal/model"
 )
 
 func setupTestDB(t *testing.T) *sql.DB {

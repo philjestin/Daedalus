@@ -10,7 +10,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
-	"github.com/hyperion/printfarm/internal/model"
+	"github.com/philjestin/daedalus/internal/model"
 )
 
 // TestListListings_QueryParams tests the query parameter parsing for ListListings.

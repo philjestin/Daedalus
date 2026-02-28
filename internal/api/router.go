@@ -10,9 +10,9 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
-	"github.com/hyperion/printfarm/internal/realtime"
-	"github.com/hyperion/printfarm/internal/service"
-	"github.com/hyperion/printfarm/internal/version"
+	"github.com/philjestin/daedalus/internal/realtime"
+	"github.com/philjestin/daedalus/internal/service"
+	"github.com/philjestin/daedalus/internal/version"
 )
 
 // NewRouter creates the HTTP router with all routes.

@@ -8,9 +8,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/hyperion/printfarm/internal/etsy"
-	"github.com/hyperion/printfarm/internal/model"
-	"github.com/hyperion/printfarm/internal/repository"
+	"github.com/philjestin/daedalus/internal/etsy"
+	"github.com/philjestin/daedalus/internal/model"
+	"github.com/philjestin/daedalus/internal/repository"
 )
 
 // EtsyService handles Etsy OAuth and integration business logic.

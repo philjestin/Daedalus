@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/hyperion/printfarm/internal/model"
-	"github.com/hyperion/printfarm/internal/service"
+	"github.com/philjestin/daedalus/internal/model"
+	"github.com/philjestin/daedalus/internal/service"
 )
 
 // TagsHandler handles tag-related HTTP requests.

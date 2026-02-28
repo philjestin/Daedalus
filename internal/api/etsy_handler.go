@@ -11,8 +11,8 @@ import (
 	"strconv"
 
 	"github.com/google/uuid"
-	"github.com/hyperion/printfarm/internal/model"
-	"github.com/hyperion/printfarm/internal/service"
+	"github.com/philjestin/daedalus/internal/model"
+	"github.com/philjestin/daedalus/internal/service"
 )
 
 // EtsyHandler handles Etsy integration endpoints.

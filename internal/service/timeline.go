@@ -5,8 +5,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/hyperion/printfarm/internal/model"
-	"github.com/hyperion/printfarm/internal/repository"
+	"github.com/philjestin/daedalus/internal/model"
+	"github.com/philjestin/daedalus/internal/repository"
 )
 
 // TimelineService handles timeline/Gantt view business logic.

@@ -1,4 +1,4 @@
-module github.com/hyperion/printfarm
+module github.com/philjestin/daedalus
 
 go 1.24.0
 

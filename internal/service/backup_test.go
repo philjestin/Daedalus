@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hyperion/printfarm/internal/database"
-	"github.com/hyperion/printfarm/internal/repository"
+	"github.com/philjestin/daedalus/internal/database"
+	"github.com/philjestin/daedalus/internal/repository"
 )
 
 // openFileTestDB opens a file-based SQLite database in a temp directory.

@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/hyperion/printfarm/internal/crypto"
-	"github.com/hyperion/printfarm/internal/model"
+	"github.com/philjestin/daedalus/internal/crypto"
+	"github.com/philjestin/daedalus/internal/model"
 )
 
 // DBTX is an interface for database operations that works with both *sql.DB and *sql.Tx.

@@ -5,8 +5,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/hyperion/printfarm/internal/etsy"
-	"github.com/hyperion/printfarm/internal/model"
+	"github.com/philjestin/daedalus/internal/etsy"
+	"github.com/philjestin/daedalus/internal/model"
 )
 
 func TestConvertAPIReceiptToModel(t *testing.T) {

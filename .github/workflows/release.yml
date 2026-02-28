@@ -70,7 +70,7 @@ jobs:
       - name: Build Wails app
         run: |
           wails build -platform ${{ matrix.platform }} ${{ matrix.wails_flags }} \
-            -ldflags "-X github.com/hyperion/printfarm/internal/version.Version=${{ env.VERSION }} -X github.com/hyperion/printfarm/internal/version.Commit=${{ env.COMMIT }} -X github.com/hyperion/printfarm/internal/version.Date=${{ env.DATE }} -X github.com/hyperion/printfarm/internal/version.BuiltBy=ci"
+            -ldflags "-X github.com/philjestin/daedalus/internal/version.Version=${{ env.VERSION }} -X github.com/philjestin/daedalus/internal/version.Commit=${{ env.COMMIT }} -X github.com/philjestin/daedalus/internal/version.Date=${{ env.DATE }} -X github.com/philjestin/daedalus/internal/version.BuiltBy=ci"
 
       - name: Package macOS app
         if: runner.os == 'macOS'

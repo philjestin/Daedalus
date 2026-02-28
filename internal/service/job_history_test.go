@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/hyperion/printfarm/internal/model"
+	"github.com/philjestin/daedalus/internal/model"
 )
 
 func TestJobEventCreation(t *testing.T) {

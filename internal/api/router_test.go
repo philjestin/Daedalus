@@ -7,8 +7,8 @@ import (
 	"testing"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/hyperion/printfarm/internal/realtime"
-	"github.com/hyperion/printfarm/internal/service"
+	"github.com/philjestin/daedalus/internal/realtime"
+	"github.com/philjestin/daedalus/internal/service"
 )
 
 // createTestServices builds a minimal Services struct with zero-valued service

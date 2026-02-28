@@ -7,7 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/hyperion/printfarm/internal/model"
+	"github.com/philjestin/daedalus/internal/model"
 )
 
 func TestAddMaterialRequest_Validation(t *testing.T) {

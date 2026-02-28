@@ -15,15 +15,15 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/hyperion/printfarm/internal/bambu"
-	"github.com/hyperion/printfarm/internal/crypto"
-	"github.com/hyperion/printfarm/internal/model"
-	"github.com/hyperion/printfarm/internal/printer"
-	"github.com/hyperion/printfarm/internal/realtime"
-	"github.com/hyperion/printfarm/internal/receipt"
-	"github.com/hyperion/printfarm/internal/repository"
-	"github.com/hyperion/printfarm/internal/storage"
-	"github.com/hyperion/printfarm/internal/threemf"
+	"github.com/philjestin/daedalus/internal/bambu"
+	"github.com/philjestin/daedalus/internal/crypto"
+	"github.com/philjestin/daedalus/internal/model"
+	"github.com/philjestin/daedalus/internal/printer"
+	"github.com/philjestin/daedalus/internal/realtime"
+	"github.com/philjestin/daedalus/internal/receipt"
+	"github.com/philjestin/daedalus/internal/repository"
+	"github.com/philjestin/daedalus/internal/storage"
+	"github.com/philjestin/daedalus/internal/threemf"
 )
 
 // Services holds all service instances.

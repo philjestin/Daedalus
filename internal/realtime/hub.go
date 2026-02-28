@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/hyperion/printfarm/internal/model"
+	"github.com/philjestin/daedalus/internal/model"
 	"nhooyr.io/websocket"
 	"nhooyr.io/websocket/wsjson"
 )

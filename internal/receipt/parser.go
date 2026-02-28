@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hyperion/printfarm/internal/model"
+	"github.com/philjestin/daedalus/internal/model"
 )
 
 // Parser handles receipt parsing using the Anthropic Messages API.

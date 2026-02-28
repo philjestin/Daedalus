@@ -10,14 +10,14 @@ import (
 	"time"
 
 	"github.com/getsentry/sentry-go"
-	"github.com/hyperion/printfarm/internal/api"
-	"github.com/hyperion/printfarm/internal/database"
-	"github.com/hyperion/printfarm/internal/printer"
-	"github.com/hyperion/printfarm/internal/realtime"
-	"github.com/hyperion/printfarm/internal/repository"
-	"github.com/hyperion/printfarm/internal/service"
-	"github.com/hyperion/printfarm/internal/storage"
-	"github.com/hyperion/printfarm/internal/version"
+	"github.com/philjestin/daedalus/internal/api"
+	"github.com/philjestin/daedalus/internal/database"
+	"github.com/philjestin/daedalus/internal/printer"
+	"github.com/philjestin/daedalus/internal/realtime"
+	"github.com/philjestin/daedalus/internal/repository"
+	"github.com/philjestin/daedalus/internal/service"
+	"github.com/philjestin/daedalus/internal/storage"
+	"github.com/philjestin/daedalus/internal/version"
 	"github.com/joho/godotenv"
 )
 

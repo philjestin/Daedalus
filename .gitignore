@@ -17,6 +17,8 @@ uploads/
 .ai/
 
 printfarm
+printfarm.cp
+*.db
 server
 bin/
 build/

@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/hyperion/printfarm/internal/crypto"
-	"github.com/hyperion/printfarm/internal/model"
+	"github.com/philjestin/daedalus/internal/crypto"
+	"github.com/philjestin/daedalus/internal/model"
 )
 
 // SquarespaceRepository handles Squarespace integration database operations.

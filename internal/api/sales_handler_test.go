@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hyperion/printfarm/internal/model"
-	"github.com/hyperion/printfarm/internal/service"
+	"github.com/philjestin/daedalus/internal/model"
+	"github.com/philjestin/daedalus/internal/service"
 )
 
 func TestGetWeeklyInsights_Empty(t *testing.T) {

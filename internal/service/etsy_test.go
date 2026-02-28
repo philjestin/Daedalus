@@ -5,8 +5,8 @@ import (
 	"database/sql"
 	"testing"
 
-	"github.com/hyperion/printfarm/internal/database"
-	"github.com/hyperion/printfarm/internal/repository"
+	"github.com/philjestin/daedalus/internal/database"
+	"github.com/philjestin/daedalus/internal/repository"
 )
 
 func openEtsyTestDB(t *testing.T) *sql.DB {
