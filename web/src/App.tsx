@@ -1,4 +1,5 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
+import * as Sentry from '@sentry/react'
 import Layout from './components/Layout'
 import Dashboard from './pages/Dashboard'
 import Projects from './pages/Projects'
@@ -15,6 +16,7 @@ import Channels from './pages/Channels'
 import Orders from './pages/Orders'
 import OrderDetail from './pages/OrderDetail'
 import Timeline from './pages/Timeline'
+import ErrorFallback from './components/ErrorFallback'
 import { useWebSocket } from './hooks/useWebSocket'
 
 function App() {
@@ -27,6 +29,7 @@ function App() {
   }
 
   return (
+    <Sentry.ErrorBoundary fallback={<ErrorFallback />}>
     <Routes>
       <Route element={<Layout />}>
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
@@ -52,6 +55,7 @@ function App() {
         <Route path="/settings" element={<Settings />} />
       </Route>
     </Routes>
+    </Sentry.ErrorBoundary>
   )
 }
 

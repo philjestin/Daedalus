@@ -16,6 +16,7 @@ import {
 } from 'lucide-react'
 import { cn } from '../lib/utils'
 import DispatchNotificationProvider from './DispatchNotificationProvider'
+import FeedbackButton from './FeedbackButton'
 
 const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
@@ -120,6 +121,9 @@ export default function Layout() {
 
       {/* Global dispatch notification */}
       <DispatchNotificationProvider />
+
+      {/* Beta feedback button */}
+      <FeedbackButton />
     </div>
   )
 }

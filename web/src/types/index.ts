@@ -1254,3 +1254,17 @@ export interface Tag {
   created_at: string
 }
 
+// ============================================
+// Beta Feedback
+// ============================================
+
+export interface Feedback {
+  id: string
+  type: 'bug' | 'feature' | 'general'
+  message: string
+  contact?: string
+  page?: string
+  app_version?: string
+  created_at: string
+}
+

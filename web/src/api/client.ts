@@ -1202,3 +1202,12 @@ export function createWebSocket(onMessage: (event: { type: string; data: unknown
   return ws
 }
 
+// Feedback API
+export const feedbackApi = {
+  submit: (data: { type: string; message: string; contact?: string; page?: string }) =>
+    fetchApi<import('../types').Feedback>('/feedback', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+}
+

@@ -5,3 +5,7 @@
 export function GetAPIURL() {
   return window['go']['main']['App']['GetAPIURL']();
 }
+
+export function GetVersion() {
+  return window['go']['main']['App']['GetVersion']();
+}

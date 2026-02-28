@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
+	sentryhttp "github.com/getsentry/sentry-go/http"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
@@ -19,6 +20,8 @@ func NewRouter(services *service.Services, hub *realtime.Hub) http.Handler {
 	r := chi.NewRouter()
 
 	// Middleware
+	sentryMiddleware := sentryhttp.New(sentryhttp.Options{Repanic: true})
+	r.Use(sentryMiddleware.Handle)
 	r.Use(RequestLogger) // Custom structured logging with request IDs and timing
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.RealIP)
@@ -264,6 +267,14 @@ func NewRouter(services *service.Services, hub *realtime.Hub) http.Handler {
 				r.Post("/{name}/restore", backupHandler.Restore)
 			})
 		}
+
+		// Feedback
+		feedbackHandler := &FeedbackHandler{service: services.Feedback}
+		r.Route("/feedback", func(r chi.Router) {
+			r.Post("/", feedbackHandler.Submit)
+			r.Get("/", feedbackHandler.List)
+			r.Delete("/{id}", feedbackHandler.Delete)
+		})
 
 		// Stats
 		statsHandler := &StatsHandler{service: services.Stats}

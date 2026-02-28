@@ -47,6 +47,7 @@ type Repositories struct {
 	Shopify         *ShopifyRepository
 	Tasks           *TaskRepository
 	TaskChecklist   *TaskChecklistRepository
+	Feedback        *FeedbackRepository
 }
 
 // WithTransaction executes a function within a database transaction.
@@ -98,6 +99,7 @@ func NewRepositories(db *sql.DB) *Repositories {
 		Shopify:         &ShopifyRepository{db: db},
 		Tasks:           &TaskRepository{db: db},
 		TaskChecklist:   &TaskChecklistRepository{db: db},
+		Feedback:        &FeedbackRepository{db: db},
 	}
 }
 

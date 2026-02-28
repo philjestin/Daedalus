@@ -876,3 +876,14 @@ SELECT
     next_occurred_at AS ended_at,
     (strftime('%s', COALESCE(next_occurred_at, datetime('now'))) - strftime('%s', occurred_at)) AS duration_seconds
 FROM status_changes;
+
+-- Beta Feedback
+CREATE TABLE IF NOT EXISTS feedback (
+    id TEXT PRIMARY KEY,
+    type TEXT NOT NULL DEFAULT 'general',
+    message TEXT NOT NULL,
+    contact TEXT,
+    page TEXT,
+    app_version TEXT,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
