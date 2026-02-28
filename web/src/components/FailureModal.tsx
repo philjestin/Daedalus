@@ -181,7 +181,7 @@ export function FailureModal({ job, printers, onClose, onRetry, onScrap }: Failu
                 <select
                   value={selectedPrinterId}
                   onChange={(e) => setSelectedPrinterId(e.target.value)}
-                  className="w-full bg-surface-800 border border-surface-700 rounded px-3 py-2 text-surface-100"
+                  className="input"
                 >
                   <option value="">Select a printer...</option>
                   {availablePrinters.map(p => (

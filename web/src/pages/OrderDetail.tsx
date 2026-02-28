@@ -417,13 +417,13 @@ function AddItemModal({ orderId, onClose, onAdded }: AddItemModalProps) {
         <form onSubmit={handleSubmit}>
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-surface-300 mb-1">
                 Template (Recipe)
               </label>
               <select
                 value={templateId}
                 onChange={e => setTemplateId(e.target.value)}
-                className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="input"
               >
                 <option value="">No template</option>
                 {templates.map(t => (
@@ -435,20 +435,20 @@ function AddItemModal({ orderId, onClose, onAdded }: AddItemModalProps) {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-surface-300 mb-1">
                 SKU
               </label>
               <input
                 type="text"
                 value={sku}
                 onChange={e => setSku(e.target.value)}
-                className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="input"
                 placeholder="Optional SKU"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-surface-300 mb-1">
                 Quantity
               </label>
               <input
@@ -456,18 +456,18 @@ function AddItemModal({ orderId, onClose, onAdded }: AddItemModalProps) {
                 min={1}
                 value={quantity}
                 onChange={e => setQuantity(Number(e.target.value))}
-                className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="input"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-surface-300 mb-1">
                 Notes
               </label>
               <textarea
                 value={notes}
                 onChange={e => setNotes(e.target.value)}
-                className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="input"
                 rows={2}
               />
             </div>

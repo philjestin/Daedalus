@@ -38,6 +38,31 @@ func (h *EtsyHandler) SetWebhookSecret(secret string) {
 	h.webhookSecret = secret
 }
 
+// ConfigureEtsyRequest represents the request body for configuring the Etsy integration.
+type ConfigureEtsyRequest struct {
+	ClientID    string `json:"client_id"`
+	RedirectURI string `json:"redirect_uri,omitempty"`
+}
+
+// Configure saves the Etsy Client ID and activates the integration.
+// PUT /api/integrations/etsy/configure
+func (h *EtsyHandler) Configure(w http.ResponseWriter, r *http.Request) {
+	var req ConfigureEtsyRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if req.ClientID == "" {
+		respondError(w, http.StatusBadRequest, "client_id is required")
+		return
+	}
+	if err := h.service.Configure(r.Context(), req.ClientID, req.RedirectURI); err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	respondJSON(w, http.StatusOK, map[string]string{"status": "configured"})
+}
+
 // StartAuth initiates the OAuth flow and returns the authorization URL.
 // GET /api/integrations/etsy/auth
 func (h *EtsyHandler) StartAuth(w http.ResponseWriter, r *http.Request) {

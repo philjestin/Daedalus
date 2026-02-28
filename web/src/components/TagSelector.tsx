@@ -171,7 +171,7 @@ export function TagSelector({
                 value={newTagName}
                 onChange={e => setNewTagName(e.target.value)}
                 placeholder="Tag name"
-                className="flex-1 px-2 py-1 text-sm border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="input h-auto py-1 flex-1"
                 onKeyDown={e => e.key === 'Enter' && handleCreateTag()}
               />
               <button

@@ -762,6 +762,12 @@ export const templatesApi = {
 
 // Etsy API
 export const etsyApi = {
+  configure: (data: { client_id: string; redirect_uri?: string }) =>
+    fetchApi<{ status: string }>('/integrations/etsy/configure', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
   getAuthUrl: () => fetchApi<{ url: string }>('/integrations/etsy/auth'),
 
   getStatus: () => fetchApi<import('../types').EtsyIntegration>('/integrations/etsy/status'),

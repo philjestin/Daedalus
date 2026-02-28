@@ -37,6 +37,10 @@ export default function Settings() {
   const [connectingSquarespace, setConnectingSquarespace] = useState(false)
   const [disconnectingSquarespace, setDisconnectingSquarespace] = useState(false)
 
+  // Etsy Client ID configuration
+  const [etsyClientId, setEtsyClientId] = useState('')
+  const [configuringEtsy, setConfiguringEtsy] = useState(false)
+
   // Backup settings
   const [backups, setBackups] = useState<BackupInfo[]>([])
   const [backupsLoading, setBackupsLoading] = useState(true)
@@ -206,6 +210,24 @@ export default function Settings() {
       setError(err instanceof Error ? err.message : 'Failed to disconnect Etsy')
     } finally {
       setDisconnecting(false)
+    }
+  }
+
+  const handleConfigureEtsy = async () => {
+    setConfiguringEtsy(true)
+    setError(null)
+    try {
+      await etsyApi.configure({ client_id: etsyClientId })
+      const status = await etsyApi.getStatus()
+      setEtsyStatus(status)
+      if (status.configured) {
+        handleConnectEtsy()
+      }
+    } catch (err) {
+      console.error('Failed to configure Etsy:', err)
+      setError(err instanceof Error ? err.message : 'Failed to configure Etsy')
+    } finally {
+      setConfiguringEtsy(false)
     }
   }
 
@@ -497,15 +519,31 @@ export default function Settings() {
             </div>
           ) : !etsyStatus?.configured ? (
             <div className="bg-surface-800/50 rounded-lg p-4">
-              <p className="text-surface-300 mb-2">
-                Etsy integration is not configured. To enable it:
+              <p className="text-surface-300 mb-3">
+                Connect your Etsy shop to sync orders and listings.
               </p>
-              <ol className="text-sm text-surface-400 list-decimal list-inside space-y-1">
-                <li>Create an app on the <a href="https://www.etsy.com/developers/your-apps" target="_blank" rel="noopener noreferrer" className="text-accent-400 hover:underline">Etsy Developer Portal</a></li>
-                <li>Set the redirect URI to: <code className="text-xs bg-surface-700 px-1 rounded">http://localhost:8080/api/integrations/etsy/callback</code></li>
-                <li>Set the <code className="text-xs bg-surface-700 px-1 rounded">ETSY_CLIENT_ID</code> environment variable</li>
-                <li>Restart the server</li>
-              </ol>
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-sm text-surface-400 mb-1">Etsy Client ID</label>
+                  <input
+                    type="text"
+                    value={etsyClientId}
+                    onChange={e => setEtsyClientId(e.target.value)}
+                    placeholder="Paste your Etsy app's Client ID (Keystring)"
+                    className="input w-full"
+                  />
+                  <p className="text-xs text-surface-500 mt-1">
+                    Get this from the <a href="https://www.etsy.com/developers/your-apps" target="_blank" rel="noopener noreferrer" className="text-accent-400 hover:underline">Etsy Developer Portal</a>
+                  </p>
+                </div>
+                <button
+                  onClick={handleConfigureEtsy}
+                  disabled={!etsyClientId.trim() || configuringEtsy}
+                  className="btn btn-primary"
+                >
+                  {configuringEtsy ? 'Saving...' : 'Save & Connect'}
+                </button>
+              </div>
             </div>
           ) : etsyStatus.connected ? (
             <div className="space-y-4">
@@ -870,7 +908,7 @@ function BackupSettings() {
               value={config.schedule_interval}
               onChange={(e) => updateField('schedule_interval', e.target.value as 'daily' | 'weekly')}
               disabled={updateMutation.isPending}
-              className="bg-surface-800 border border-surface-700 rounded-lg px-3 py-1.5 text-sm text-surface-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="input h-auto py-1.5 w-auto"
             >
               <option value="daily">Daily</option>
               <option value="weekly">Weekly</option>
@@ -895,7 +933,7 @@ function BackupSettings() {
               }
             }}
             disabled={updateMutation.isPending}
-            className="w-20 bg-surface-800 border border-surface-700 rounded-lg px-3 py-1.5 text-sm text-surface-100 text-center focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="input h-auto py-1.5 w-20 text-center"
           />
         </div>
       </div>

@@ -20,6 +20,16 @@ updates:
         patterns:
           - "*"
 
+  # npm packages (site)
+  - package-ecosystem: "npm"
+    directory: "/site"
+    schedule:
+      interval: "weekly"
+    groups:
+      site-npm-dependencies:
+        patterns:
+          - "*"
+
   # GitHub Actions
   - package-ecosystem: "github-actions"
     directory: "/"

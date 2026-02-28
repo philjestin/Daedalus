@@ -1,4 +1,4 @@
-.PHONY: help dev build run test clean migrate frontend backend stop start restart db-start db-stop db-restart show-version bump-patch bump-minor bump-major release
+.PHONY: help dev build run test clean migrate frontend backend stop start restart db-start db-stop db-restart show-version bump-patch bump-minor bump-major release site site-build
 
 # Version
 VERSION := $(shell cat VERSION | tr -d 'v\n')
@@ -45,6 +45,10 @@ help:
 	@echo "Server:"
 	@echo "  make server-stop  - Stop the Go backend server"
 	@echo "  make server-start - Start the Go backend server"
+	@echo ""
+	@echo "Site:"
+	@echo "  make site         - Start docs/marketing site dev server"
+	@echo "  make site-build   - Build docs/marketing site"
 	@echo ""
 	@echo "Versioning:"
 	@echo "  make show-version - Show current version"
@@ -195,4 +199,13 @@ bump-major:
 
 release:
 	@./scripts/release.sh
+
+# Site (docs/marketing)
+site:
+	@echo "Starting docs/marketing site dev server..."
+	cd site && npm run dev
+
+site-build:
+	@echo "Building docs/marketing site..."
+	cd site && npm run build
 

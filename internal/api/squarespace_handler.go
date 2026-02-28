@@ -43,7 +43,7 @@ func (h *SquarespaceHandler) Connect(w http.ResponseWriter, r *http.Request) {
 	integration, err := h.service.Connect(r.Context(), req.APIKey)
 	if err != nil {
 		slog.Error("failed to connect Squarespace", "error", err)
-		respondError(w, http.StatusInternalServerError, err.Error())
+		respondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 

@@ -15,20 +15,43 @@ import (
 
 // EtsyService handles Etsy OAuth and integration business logic.
 type EtsyService struct {
-	repo   *repository.EtsyRepository
-	client *etsy.Client
+	repo        *repository.EtsyRepository
+	client      *etsy.Client
+	settingsSvc *SettingsService
 }
 
 // NewEtsyService creates a new EtsyService.
-func NewEtsyService(repo *repository.EtsyRepository, clientID, redirectURI string) *EtsyService {
+func NewEtsyService(repo *repository.EtsyRepository, clientID, redirectURI string, settingsSvc *SettingsService) *EtsyService {
 	var client *etsy.Client
 	if clientID != "" {
 		client = etsy.NewClient(clientID, redirectURI)
 	}
 	return &EtsyService{
-		repo:   repo,
-		client: client,
+		repo:        repo,
+		client:      client,
+		settingsSvc: settingsSvc,
 	}
+}
+
+// Configure sets the Etsy client ID at runtime and persists it to settings.
+func (s *EtsyService) Configure(ctx context.Context, clientID, redirectURI string) error {
+	if clientID == "" {
+		return fmt.Errorf("client_id is required")
+	}
+	if redirectURI == "" {
+		redirectURI = "http://localhost:8080/api/integrations/etsy/callback"
+	}
+	s.client = etsy.NewClient(clientID, redirectURI)
+
+	if s.settingsSvc != nil {
+		if err := s.settingsSvc.Set(ctx, "etsy_client_id", clientID); err != nil {
+			return fmt.Errorf("saving client ID: %w", err)
+		}
+		if err := s.settingsSvc.Set(ctx, "etsy_redirect_uri", redirectURI); err != nil {
+			return fmt.Errorf("saving redirect URI: %w", err)
+		}
+	}
+	return nil
 }
 
 // IsConfigured returns true if Etsy OAuth is configured.

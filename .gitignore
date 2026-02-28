@@ -22,3 +22,8 @@ bin/
 build/
 
 .claude/
+
+# Site (Next.js)
+site/.next/
+site/out/
+site/node_modules/

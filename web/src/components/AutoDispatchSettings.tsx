@@ -156,10 +156,7 @@ export default function AutoDispatchSettings({ printerId }: AutoDispatchSettings
             value={settings.timeout_minutes}
             onChange={(e) => handleTimeoutChange(parseInt(e.target.value))}
             disabled={updateMutation.isPending || !settings.enabled}
-            className={cn(
-              'w-full bg-surface-700 border border-surface-600 rounded-lg px-3 py-2 text-surface-100',
-              !settings.enabled && 'opacity-50 cursor-not-allowed'
-            )}
+            className="input"
           >
             <option value={5}>5 minutes</option>
             <option value={10}>10 minutes</option>
