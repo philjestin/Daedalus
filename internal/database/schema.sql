@@ -364,6 +364,7 @@ CREATE TABLE IF NOT EXISTS sales (
     net_cents INTEGER NOT NULL DEFAULT 0,
     currency TEXT NOT NULL DEFAULT 'USD',
     project_id TEXT REFERENCES projects(id),
+    customer_id TEXT REFERENCES customers(id) ON DELETE SET NULL,
     order_reference TEXT DEFAULT '',
     customer_name TEXT DEFAULT '',
     item_description TEXT DEFAULT '',

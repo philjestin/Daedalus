@@ -983,6 +983,7 @@ type Sale struct {
 	NetCents             int          `json:"net_cents"`
 	Currency             string       `json:"currency"`
 	ProjectID            *uuid.UUID   `json:"project_id,omitempty"`
+	CustomerID           *uuid.UUID   `json:"customer_id,omitempty"`
 	OrderReference       string       `json:"order_reference,omitempty"`
 	CustomerName         string       `json:"customer_name,omitempty"`
 	ItemDescription      string       `json:"item_description"`

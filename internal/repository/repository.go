@@ -1952,9 +1952,9 @@ func (r *SaleRepository) Create(ctx context.Context, s *model.Sale) error {
 	}
 
 	_, err := r.db.ExecContext(ctx, `
-		INSERT INTO sales (id, occurred_at, channel, platform, gross_cents, fees_cents, shipping_charged_cents, shipping_cost_cents, tax_collected_cents, net_cents, currency, project_id, order_reference, customer_name, item_description, quantity, notes, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, s.ID, s.OccurredAt, s.Channel, s.Platform, s.GrossCents, s.FeesCents, s.ShippingChargedCents, s.ShippingCostCents, s.TaxCollectedCents, s.NetCents, s.Currency, s.ProjectID, s.OrderReference, s.CustomerName, s.ItemDescription, s.Quantity, s.Notes, s.CreatedAt, s.UpdatedAt)
+		INSERT INTO sales (id, occurred_at, channel, platform, gross_cents, fees_cents, shipping_charged_cents, shipping_cost_cents, tax_collected_cents, net_cents, currency, project_id, customer_id, order_reference, customer_name, item_description, quantity, notes, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, s.ID, s.OccurredAt, s.Channel, s.Platform, s.GrossCents, s.FeesCents, s.ShippingChargedCents, s.ShippingCostCents, s.TaxCollectedCents, s.NetCents, s.Currency, s.ProjectID, s.CustomerID, s.OrderReference, s.CustomerName, s.ItemDescription, s.Quantity, s.Notes, s.CreatedAt, s.UpdatedAt)
 	return err
 }
 
@@ -1962,9 +1962,9 @@ func (r *SaleRepository) Create(ctx context.Context, s *model.Sale) error {
 func (r *SaleRepository) GetByID(ctx context.Context, id uuid.UUID) (*model.Sale, error) {
 	var s model.Sale
 	err := scanRow(r.db.QueryRowContext(ctx, `
-		SELECT id, occurred_at, channel, platform, gross_cents, fees_cents, shipping_charged_cents, shipping_cost_cents, tax_collected_cents, net_cents, currency, project_id, order_reference, customer_name, item_description, quantity, notes, created_at, updated_at
+		SELECT id, occurred_at, channel, platform, gross_cents, fees_cents, shipping_charged_cents, shipping_cost_cents, tax_collected_cents, net_cents, currency, project_id, customer_id, order_reference, customer_name, item_description, quantity, notes, created_at, updated_at
 		FROM sales WHERE id = ?
-	`, id), &s.ID, &s.OccurredAt, &s.Channel, &s.Platform, &s.GrossCents, &s.FeesCents, &s.ShippingChargedCents, &s.ShippingCostCents, &s.TaxCollectedCents, &s.NetCents, &s.Currency, &s.ProjectID, &s.OrderReference, &s.CustomerName, &s.ItemDescription, &s.Quantity, &s.Notes, &s.CreatedAt, &s.UpdatedAt)
+	`, id), &s.ID, &s.OccurredAt, &s.Channel, &s.Platform, &s.GrossCents, &s.FeesCents, &s.ShippingChargedCents, &s.ShippingCostCents, &s.TaxCollectedCents, &s.NetCents, &s.Currency, &s.ProjectID, &s.CustomerID, &s.OrderReference, &s.CustomerName, &s.ItemDescription, &s.Quantity, &s.Notes, &s.CreatedAt, &s.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -1973,7 +1973,7 @@ func (r *SaleRepository) GetByID(ctx context.Context, id uuid.UUID) (*model.Sale
 
 // List retrieves all sales.
 func (r *SaleRepository) List(ctx context.Context, projectID *uuid.UUID) ([]model.Sale, error) {
-	query := `SELECT id, occurred_at, channel, platform, gross_cents, fees_cents, shipping_charged_cents, shipping_cost_cents, tax_collected_cents, net_cents, currency, project_id, order_reference, customer_name, item_description, quantity, notes, created_at, updated_at FROM sales`
+	query := `SELECT id, occurred_at, channel, platform, gross_cents, fees_cents, shipping_charged_cents, shipping_cost_cents, tax_collected_cents, net_cents, currency, project_id, customer_id, order_reference, customer_name, item_description, quantity, notes, created_at, updated_at FROM sales`
 	args := []interface{}{}
 
 	if projectID != nil {
@@ -1991,7 +1991,7 @@ func (r *SaleRepository) List(ctx context.Context, projectID *uuid.UUID) ([]mode
 	var sales []model.Sale
 	for rows.Next() {
 		var s model.Sale
-		if err := scanRow(rows, &s.ID, &s.OccurredAt, &s.Channel, &s.Platform, &s.GrossCents, &s.FeesCents, &s.ShippingChargedCents, &s.ShippingCostCents, &s.TaxCollectedCents, &s.NetCents, &s.Currency, &s.ProjectID, &s.OrderReference, &s.CustomerName, &s.ItemDescription, &s.Quantity, &s.Notes, &s.CreatedAt, &s.UpdatedAt); err != nil {
+		if err := scanRow(rows, &s.ID, &s.OccurredAt, &s.Channel, &s.Platform, &s.GrossCents, &s.FeesCents, &s.ShippingChargedCents, &s.ShippingCostCents, &s.TaxCollectedCents, &s.NetCents, &s.Currency, &s.ProjectID, &s.CustomerID, &s.OrderReference, &s.CustomerName, &s.ItemDescription, &s.Quantity, &s.Notes, &s.CreatedAt, &s.UpdatedAt); err != nil {
 			return nil, err
 		}
 		sales = append(sales, s)
@@ -2001,7 +2001,7 @@ func (r *SaleRepository) List(ctx context.Context, projectID *uuid.UUID) ([]mode
 
 // ListSince retrieves sales that occurred on or after the given time.
 func (r *SaleRepository) ListSince(ctx context.Context, since time.Time) ([]model.Sale, error) {
-	query := `SELECT id, occurred_at, channel, platform, gross_cents, fees_cents, shipping_charged_cents, shipping_cost_cents, tax_collected_cents, net_cents, currency, project_id, order_reference, customer_name, item_description, quantity, notes, created_at, updated_at FROM sales WHERE occurred_at >= ? ORDER BY occurred_at DESC`
+	query := `SELECT id, occurred_at, channel, platform, gross_cents, fees_cents, shipping_charged_cents, shipping_cost_cents, tax_collected_cents, net_cents, currency, project_id, customer_id, order_reference, customer_name, item_description, quantity, notes, created_at, updated_at FROM sales WHERE occurred_at >= ? ORDER BY occurred_at DESC`
 
 	rows, err := r.db.QueryContext(ctx, query, since)
 	if err != nil {
@@ -2012,7 +2012,7 @@ func (r *SaleRepository) ListSince(ctx context.Context, since time.Time) ([]mode
 	var sales []model.Sale
 	for rows.Next() {
 		var s model.Sale
-		if err := scanRow(rows, &s.ID, &s.OccurredAt, &s.Channel, &s.Platform, &s.GrossCents, &s.FeesCents, &s.ShippingChargedCents, &s.ShippingCostCents, &s.TaxCollectedCents, &s.NetCents, &s.Currency, &s.ProjectID, &s.OrderReference, &s.CustomerName, &s.ItemDescription, &s.Quantity, &s.Notes, &s.CreatedAt, &s.UpdatedAt); err != nil {
+		if err := scanRow(rows, &s.ID, &s.OccurredAt, &s.Channel, &s.Platform, &s.GrossCents, &s.FeesCents, &s.ShippingChargedCents, &s.ShippingCostCents, &s.TaxCollectedCents, &s.NetCents, &s.Currency, &s.ProjectID, &s.CustomerID, &s.OrderReference, &s.CustomerName, &s.ItemDescription, &s.Quantity, &s.Notes, &s.CreatedAt, &s.UpdatedAt); err != nil {
 			return nil, err
 		}
 		sales = append(sales, s)
@@ -2024,9 +2024,9 @@ func (r *SaleRepository) ListSince(ctx context.Context, since time.Time) ([]mode
 func (r *SaleRepository) Update(ctx context.Context, s *model.Sale) error {
 	s.UpdatedAt = time.Now()
 	_, err := r.db.ExecContext(ctx, `
-		UPDATE sales SET occurred_at = ?, channel = ?, platform = ?, gross_cents = ?, fees_cents = ?, shipping_charged_cents = ?, shipping_cost_cents = ?, tax_collected_cents = ?, net_cents = ?, currency = ?, project_id = ?, order_reference = ?, customer_name = ?, item_description = ?, quantity = ?, notes = ?, updated_at = ?
+		UPDATE sales SET occurred_at = ?, channel = ?, platform = ?, gross_cents = ?, fees_cents = ?, shipping_charged_cents = ?, shipping_cost_cents = ?, tax_collected_cents = ?, net_cents = ?, currency = ?, project_id = ?, customer_id = ?, order_reference = ?, customer_name = ?, item_description = ?, quantity = ?, notes = ?, updated_at = ?
 		WHERE id = ?
-	`, s.OccurredAt, s.Channel, s.Platform, s.GrossCents, s.FeesCents, s.ShippingChargedCents, s.ShippingCostCents, s.TaxCollectedCents, s.NetCents, s.Currency, s.ProjectID, s.OrderReference, s.CustomerName, s.ItemDescription, s.Quantity, s.Notes, s.UpdatedAt, s.ID)
+	`, s.OccurredAt, s.Channel, s.Platform, s.GrossCents, s.FeesCents, s.ShippingChargedCents, s.ShippingCostCents, s.TaxCollectedCents, s.NetCents, s.Currency, s.ProjectID, s.CustomerID, s.OrderReference, s.CustomerName, s.ItemDescription, s.Quantity, s.Notes, s.UpdatedAt, s.ID)
 	return err
 }
 

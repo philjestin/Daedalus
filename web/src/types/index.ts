@@ -713,6 +713,7 @@ export interface Sale {
   net_cents: number
   currency: string
   project_id?: string
+  customer_id?: string
   order_reference?: string
   customer_name?: string
   item_description: string
