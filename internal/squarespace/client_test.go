@@ -28,17 +28,15 @@ func TestGetWebsite(t *testing.T) {
 		}
 
 		// Verify path
-		if r.URL.Path != "/1.0/commerce/website" {
-			t.Errorf("expected path '/1.0/commerce/website', got '%s'", r.URL.Path)
+		if r.URL.Path != "/1.0/authorization/website" {
+			t.Errorf("expected path '/1.0/authorization/website', got '%s'", r.URL.Path)
 		}
 
-		resp := WebsiteResponse{
-			Website: Website{
-				ID:       "site-123",
-				Title:    "Test Store",
-				Domain:   "test.squarespace.com",
-				SiteType: "commerce",
-			},
+		// The Squarespace Authorization API returns a flat object (not wrapped)
+		resp := Website{
+			ID:    "site-123",
+			Title: "Test Store",
+			URL:   "https://test.squarespace.com",
 		}
 		json.NewEncoder(w).Encode(resp)
 	}))
@@ -50,12 +48,9 @@ func TestGetWebsite(t *testing.T) {
 		httpClient: server.Client(),
 	}
 
-	// Note: For full integration testing, you would use httptest to mock the server
-	// and override the base URL. For now, we test the request/response handling.
-
 	// For this test, we'll make the request directly
 	ctx := context.Background()
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, server.URL+"/1.0/commerce/website", nil)
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, server.URL+"/1.0/authorization/website", nil)
 	req.Header.Set("Authorization", "Bearer "+client.apiKey)
 
 	resp, err := client.httpClient.Do(req)
@@ -64,16 +59,16 @@ func TestGetWebsite(t *testing.T) {
 	}
 	defer resp.Body.Close()
 
-	var result WebsiteResponse
+	var result Website
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		t.Fatalf("decode failed: %v", err)
 	}
 
-	if result.Website.ID != "site-123" {
-		t.Errorf("expected site ID 'site-123', got '%s'", result.Website.ID)
+	if result.ID != "site-123" {
+		t.Errorf("expected site ID 'site-123', got '%s'", result.ID)
 	}
-	if result.Website.Title != "Test Store" {
-		t.Errorf("expected title 'Test Store', got '%s'", result.Website.Title)
+	if result.Title != "Test Store" {
+		t.Errorf("expected title 'Test Store', got '%s'", result.Title)
 	}
 }
 

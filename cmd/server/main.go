@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/getsentry/sentry-go"
 	"github.com/hyperion/printfarm/internal/api"
 	"github.com/hyperion/printfarm/internal/database"
 	"github.com/hyperion/printfarm/internal/printer"
@@ -23,6 +24,21 @@ import (
 func main() {
 	// Load .env file if present
 	_ = godotenv.Load()
+
+	// Initialize Sentry for crash reporting
+	if dsn := os.Getenv("SENTRY_DSN"); dsn != "" {
+		if err := sentry.Init(sentry.ClientOptions{
+			Dsn:              dsn,
+			Release:          version.Version,
+			Environment:      getEnv("ENVIRONMENT", "development"),
+			TracesSampleRate: 0.2,
+		}); err != nil {
+			slog.Error("failed to initialize Sentry", "error", err)
+		} else {
+			slog.Info("Sentry initialized", "environment", getEnv("ENVIRONMENT", "development"))
+			defer sentry.Flush(2 * time.Second)
+		}
+	}
 
 	// Configure structured logging
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{

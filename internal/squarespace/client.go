@@ -82,36 +82,31 @@ type Pagination struct {
 	NextPageURL    string `json:"nextPageUrl"`
 }
 
-// Website represents site info from the Squarespace API.
+// Website represents site info from the Squarespace Authorization API.
 type Website struct {
-	ID          string `json:"id"`
-	Title       string `json:"title"`
-	Domain      string `json:"domain"`
-	SiteType    string `json:"siteType"`
-	Language    string `json:"language"`
-	TimeZone    string `json:"timeZone"`
-	CreatedOn   string `json:"createdOn"`
-	ModifiedOn  string `json:"modifiedOn"`
-}
-
-// WebsiteResponse wraps the website response.
-type WebsiteResponse struct {
-	Website Website `json:"website"`
+	ID                  string `json:"id"`
+	SiteID              string `json:"siteId"`
+	Title               string `json:"title"`
+	URL                 string `json:"url"`
+	Currency            string `json:"currency"`
+	MeasurementStandard string `json:"measurementStandard"`
+	Language            string `json:"language"`
+	TimeZone            string `json:"timeZone"`
 }
 
 // GetWebsite retrieves site information. Used to validate the API key.
 func (c *Client) GetWebsite(ctx context.Context) (*Website, error) {
-	resp, err := c.do(ctx, http.MethodGet, "/commerce/website", nil)
+	resp, err := c.do(ctx, http.MethodGet, "/authorization/website", nil)
 	if err != nil {
 		return nil, err
 	}
 
-	result, err := parseResponse[WebsiteResponse](resp)
+	result, err := parseResponse[Website](resp)
 	if err != nil {
 		return nil, err
 	}
 
-	return &result.Website, nil
+	return &result, nil
 }
 
 // Money represents a monetary value from Squarespace.

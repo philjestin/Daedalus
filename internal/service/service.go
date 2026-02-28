@@ -54,6 +54,7 @@ type Services struct {
 	Shopify  *ShopifyService
 	Timeline *TimelineService
 	Tasks    *TaskService
+	Feedback *FeedbackService
 }
 
 // EtsyConfig holds Etsy OAuth configuration.
@@ -117,6 +118,7 @@ func NewServices(repos *repository.Repositories, store storage.Storage, printerM
 	services.Shopify = NewShopifyService(repos.Shopify, services.Orders, services.Templates, hub)
 	services.Timeline = NewTimelineService(repos.Orders, repos.Tasks, repos.Projects, repos.PrintJobs)
 	services.Tasks = NewTaskService(repos.Tasks, repos.Projects, repos.PrintJobs, repos.Parts, repos.TaskChecklist, repos.Designs, hub)
+	services.Feedback = &FeedbackService{repo: repos.Feedback}
 
 	// Wire job completion callback to auto-complete checklist items
 	services.PrintJobs.SetOnJobCompleted(services.Tasks.HandleJobCompleted)

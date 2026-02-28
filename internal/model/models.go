@@ -1344,3 +1344,14 @@ type Tag struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+// Feedback represents a beta feedback submission.
+type Feedback struct {
+	ID         uuid.UUID `json:"id"`
+	Type       string    `json:"type"`
+	Message    string    `json:"message"`
+	Contact    string    `json:"contact,omitempty"`
+	Page       string    `json:"page,omitempty"`
+	AppVersion string    `json:"app_version,omitempty"`
+	CreatedAt  time.Time `json:"created_at"`
+}
+

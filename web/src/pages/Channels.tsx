@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { Link as RouterLink } from 'react-router-dom'
 import { RefreshCw, Package, CheckCircle, Clock, ExternalLink, ShoppingBag, Store, Link, Filter } from 'lucide-react'
 import { etsyApi, squarespaceApi, templatesApi } from '../api/client'
 import type { EtsyReceipt, EtsyListing, SquarespaceOrder, SquarespaceProduct, SyncResult, Template, EtsyIntegration, SquarespaceIntegration } from '../types'
@@ -420,12 +421,12 @@ export default function Channels() {
             </div>
           )}
           {!hasConnectedChannel && (
-            <a
-              href="/settings"
+            <RouterLink
+              to="/settings"
               className="text-sm text-accent-400 hover:text-accent-300"
             >
               Connect a channel in Settings
-            </a>
+            </RouterLink>
           )}
         </div>
       </div>
@@ -543,12 +544,12 @@ export default function Channels() {
         <div className="text-center py-12">
           <Package className="h-12 w-12 mx-auto text-surface-600 mb-3" />
           <p className="text-surface-400">No sales channels connected</p>
-          <a
-            href="/settings"
+          <RouterLink
+            to="/settings"
             className="mt-4 inline-block text-accent-400 hover:text-accent-300"
           >
             Connect Etsy or Squarespace in Settings
-          </a>
+          </RouterLink>
         </div>
       ) : loading ? (
         <div className="text-center py-12 text-surface-400">Loading...</div>
