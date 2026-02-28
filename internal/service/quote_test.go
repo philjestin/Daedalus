@@ -217,6 +217,12 @@ func TestQuoteService_Accept(t *testing.T) {
 	// Create customer
 	customer := createQuoteTestCustomer(t, customerSvc, ctx)
 
+	// Create a project to link to a line item
+	project := &model.Project{Name: "Widget Product"}
+	if err := repos.Projects.Create(ctx, project); err != nil {
+		t.Fatalf("Create project failed: %v", err)
+	}
+
 	// Create quote
 	quote := &model.Quote{
 		CustomerID: customer.ID,
@@ -235,7 +241,7 @@ func TestQuoteService_Accept(t *testing.T) {
 		t.Fatalf("CreateOption failed: %v", err)
 	}
 
-	// Add line items to the option
+	// Add line items to the option — first one with project link
 	item1 := &model.QuoteLineItem{
 		OptionID:       option.ID,
 		Type:           model.QuoteLineItemTypePrinting,
@@ -244,11 +250,13 @@ func TestQuoteService_Accept(t *testing.T) {
 		Unit:           "each",
 		UnitPriceCents: 1000,
 		TotalCents:     3000,
+		ProjectID:      &project.ID,
 	}
 	if err := quoteSvc.CreateLineItem(ctx, item1); err != nil {
 		t.Fatalf("CreateLineItem (1) failed: %v", err)
 	}
 
+	// Second line item: design type with project link (should also become order item)
 	item2 := &model.QuoteLineItem{
 		OptionID:       option.ID,
 		Type:           model.QuoteLineItemTypeDesign,
@@ -257,9 +265,24 @@ func TestQuoteService_Accept(t *testing.T) {
 		Unit:           "hour",
 		UnitPriceCents: 5000,
 		TotalCents:     5000,
+		ProjectID:      &project.ID,
 	}
 	if err := quoteSvc.CreateLineItem(ctx, item2); err != nil {
 		t.Fatalf("CreateLineItem (2) failed: %v", err)
+	}
+
+	// Third line item: consulting type without project link (should NOT become order item)
+	item3 := &model.QuoteLineItem{
+		OptionID:       option.ID,
+		Type:           model.QuoteLineItemTypeConsulting,
+		Description:    "Consulting call",
+		Quantity:       1,
+		Unit:           "hour",
+		UnitPriceCents: 10000,
+		TotalCents:     10000,
+	}
+	if err := quoteSvc.CreateLineItem(ctx, item3); err != nil {
+		t.Fatalf("CreateLineItem (3) failed: %v", err)
 	}
 
 	// Send the quote first (required before accept)
@@ -306,6 +329,21 @@ func TestQuoteService_Accept(t *testing.T) {
 	}
 	if order.CustomerEmail != customer.Email {
 		t.Errorf("Order.CustomerEmail = %q, want %q", order.CustomerEmail, customer.Email)
+	}
+
+	// Verify order items — should have 2 (printing + design with project), not the consulting item
+	orderItems, err := repos.Orders.GetItems(ctx, *accepted.OrderID)
+	if err != nil {
+		t.Fatalf("GetItems failed: %v", err)
+	}
+	if len(orderItems) != 2 {
+		t.Fatalf("len(orderItems) = %d, want 2", len(orderItems))
+	}
+	// Both order items should carry the project_id
+	for _, oi := range orderItems {
+		if oi.ProjectID == nil || *oi.ProjectID != project.ID {
+			t.Errorf("OrderItem %s ProjectID = %v, want %v", oi.ID, oi.ProjectID, project.ID)
+		}
 	}
 
 	// Verify quote events include "accepted"

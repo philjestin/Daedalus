@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Users, Plus, ChevronRight, Search, Building2, Mail } from 'lucide-react'
+import { Users, Plus, ChevronRight, Search, Building2, Mail, Trash2 } from 'lucide-react'
 import { customersApi } from '../api/client'
 import type { Customer } from '../types'
 
@@ -24,6 +24,16 @@ export default function Customers() {
   useEffect(() => {
     loadCustomers()
   }, [search])
+
+  const handleDelete = async (customerId: string) => {
+    if (!confirm('Delete this customer? This cannot be undone.')) return
+    try {
+      await customersApi.delete(customerId)
+      loadCustomers()
+    } catch (err) {
+      console.error('Failed to delete customer:', err)
+    }
+  }
 
   const handleCreate = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
@@ -134,9 +144,14 @@ export default function Customers() {
                   </td>
                   <td className="px-4 py-3 text-sm text-surface-400">{customer.phone}</td>
                   <td className="px-4 py-3">
-                    <Link to={`/customers/${customer.id}`} className="text-surface-500 hover:text-surface-300">
-                      <ChevronRight className="h-4 w-4" />
-                    </Link>
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => handleDelete(customer.id)} className="text-surface-600 hover:text-red-400" title="Delete customer">
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                      <Link to={`/customers/${customer.id}`} className="text-surface-500 hover:text-surface-300">
+                        <ChevronRight className="h-4 w-4" />
+                      </Link>
+                    </div>
                   </td>
                 </tr>
               ))}

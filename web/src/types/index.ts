@@ -1331,6 +1331,7 @@ export interface QuoteLineItem {
   unit_price_cents: number
   total_cents: number
   sort_order: number
+  project_id?: string
   created_at: string
 }
 

@@ -430,7 +430,16 @@ func TestQuoteRepository_LineItems_CRUD(t *testing.T) {
 		t.Fatalf("CreateOption failed: %v", err)
 	}
 
-	// Create line item
+	// Create a project to link to line items
+	projectRepo := &ProjectRepository{db: db}
+	project := &model.Project{
+		Name: "Test Product",
+	}
+	if err := projectRepo.Create(ctx, project); err != nil {
+		t.Fatalf("Create project failed: %v", err)
+	}
+
+	// Create line item with project_id
 	item := &model.QuoteLineItem{
 		OptionID:       option.ID,
 		Type:           model.QuoteLineItemTypePrinting,
@@ -440,6 +449,7 @@ func TestQuoteRepository_LineItems_CRUD(t *testing.T) {
 		UnitPriceCents: 1500,
 		TotalCents:     3000,
 		SortOrder:      1,
+		ProjectID:      &project.ID,
 	}
 	if err := quoteRepo.CreateLineItem(ctx, item); err != nil {
 		t.Fatalf("CreateLineItem failed: %v", err)
@@ -475,8 +485,11 @@ func TestQuoteRepository_LineItems_CRUD(t *testing.T) {
 	if got.TotalCents != 3000 {
 		t.Errorf("TotalCents = %d, want 3000", got.TotalCents)
 	}
+	if got.ProjectID == nil || *got.ProjectID != project.ID {
+		t.Errorf("ProjectID = %v, want %v", got.ProjectID, project.ID)
+	}
 
-	// Create second line item
+	// Create second line item without project_id
 	item2 := &model.QuoteLineItem{
 		OptionID:       option.ID,
 		Type:           model.QuoteLineItemTypePostProcessing,
@@ -503,13 +516,20 @@ func TestQuoteRepository_LineItems_CRUD(t *testing.T) {
 	if items[0].Description != "3D Print Widget" {
 		t.Errorf("First item = %q, want %q", items[0].Description, "3D Print Widget")
 	}
+	if items[0].ProjectID == nil || *items[0].ProjectID != project.ID {
+		t.Errorf("First item ProjectID = %v, want %v", items[0].ProjectID, project.ID)
+	}
 	if items[1].Description != "Sanding and painting" {
 		t.Errorf("Second item = %q, want %q", items[1].Description, "Sanding and painting")
 	}
+	if items[1].ProjectID != nil {
+		t.Errorf("Second item ProjectID = %v, want nil", items[1].ProjectID)
+	}
 
-	// UpdateLineItem
+	// UpdateLineItem — remove project_id
 	item.Description = "Updated Widget Print"
 	item.TotalCents = 4000
+	item.ProjectID = nil
 	if err := quoteRepo.UpdateLineItem(ctx, item); err != nil {
 		t.Fatalf("UpdateLineItem failed: %v", err)
 	}
@@ -523,6 +543,9 @@ func TestQuoteRepository_LineItems_CRUD(t *testing.T) {
 	}
 	if updated.TotalCents != 4000 {
 		t.Errorf("TotalCents after update = %d, want 4000", updated.TotalCents)
+	}
+	if updated.ProjectID != nil {
+		t.Errorf("ProjectID after update = %v, want nil", updated.ProjectID)
 	}
 
 	// DeleteLineItem

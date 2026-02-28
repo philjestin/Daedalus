@@ -1,17 +1,19 @@
 import { useEffect, useState } from 'react'
-import { useParams, Link } from 'react-router-dom'
-import { ArrowLeft, Mail, Building2, Phone, FileText, Package } from 'lucide-react'
+import { useParams, Link, useNavigate } from 'react-router-dom'
+import { ArrowLeft, Mail, Building2, Phone, FileText, Package, Trash2, Plus } from 'lucide-react'
 import { customersApi, quotesApi, ordersApi } from '../api/client'
 import type { Customer, Quote, Order } from '../types'
 
 export default function CustomerDetail() {
   const { id } = useParams<{ id: string }>()
+  const navigate = useNavigate()
   const [customer, setCustomer] = useState<Customer | null>(null)
   const [quotes, setQuotes] = useState<Quote[]>([])
   const [orders, setOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<'quotes' | 'orders'>('quotes')
   const [editing, setEditing] = useState(false)
+  const [showNewQuote, setShowNewQuote] = useState(false)
 
   const loadData = async () => {
     if (!id) return
@@ -32,6 +34,33 @@ export default function CustomerDetail() {
   useEffect(() => {
     loadData()
   }, [id])
+
+  const handleDelete = async () => {
+    if (!id || !confirm('Delete this customer? This cannot be undone.')) return
+    try {
+      await customersApi.delete(id)
+      navigate('/customers')
+    } catch (err) {
+      console.error('Failed to delete customer:', err)
+    }
+  }
+
+  const handleCreateQuote = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    if (!id) return
+    const form = e.currentTarget
+    const formData = new FormData(form)
+    try {
+      const quote = await quotesApi.create({
+        customer_id: id,
+        title: formData.get('title') as string,
+        notes: formData.get('notes') as string || undefined,
+      })
+      navigate(`/quotes/${quote.id}`)
+    } catch (err) {
+      console.error('Failed to create quote:', err)
+    }
+  }
 
   const handleUpdate = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
@@ -85,12 +114,22 @@ export default function CustomerDetail() {
         </Link>
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-display font-bold text-surface-100">{customer.name}</h1>
-          <button
-            onClick={() => setEditing(!editing)}
-            className="px-4 py-2 text-sm text-surface-400 hover:text-surface-200 border border-surface-700 rounded-lg hover:bg-surface-800"
-          >
-            {editing ? 'Cancel' : 'Edit'}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setEditing(!editing)}
+              className="px-4 py-2 text-sm text-surface-400 hover:text-surface-200 border border-surface-700 rounded-lg hover:bg-surface-800"
+            >
+              {editing ? 'Cancel' : 'Edit'}
+            </button>
+            <button
+              onClick={handleDelete}
+              className="inline-flex items-center gap-1.5 px-4 py-2 text-sm text-red-400 hover:bg-red-500/10 border border-red-500/30 rounded-lg"
+              title="Delete customer"
+            >
+              <Trash2 className="h-4 w-4" />
+              Delete
+            </button>
+          </div>
         </div>
       </div>
 
@@ -176,6 +215,15 @@ export default function CustomerDetail() {
 
           {activeTab === 'quotes' && (
             <div className="space-y-2">
+              <div className="flex justify-end mb-1">
+                <button
+                  onClick={() => setShowNewQuote(true)}
+                  className="inline-flex items-center gap-1.5 text-sm text-accent-400 hover:text-accent-300"
+                >
+                  <Plus className="h-4 w-4" />
+                  New Quote
+                </button>
+              </div>
               {quotes.length === 0 ? (
                 <p className="text-sm text-surface-500 py-8 text-center">No quotes for this customer</p>
               ) : (
@@ -231,6 +279,29 @@ export default function CustomerDetail() {
           )}
         </div>
       </div>
+
+      {/* New Quote Modal */}
+      {showNewQuote && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-surface-900 border border-surface-700 rounded-xl p-6 w-full max-w-md">
+            <h2 className="text-lg font-display font-semibold text-surface-100 mb-4">New Quote for {customer.name}</h2>
+            <form onSubmit={handleCreateQuote} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-surface-300 mb-1">Title *</label>
+                <input name="title" required className="w-full px-3 py-2 bg-surface-800 border border-surface-700 rounded-lg text-surface-100 text-sm focus:outline-none focus:ring-1 focus:ring-accent-500" placeholder="e.g. Custom enclosure build" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-surface-300 mb-1">Notes</label>
+                <textarea name="notes" rows={3} className="w-full px-3 py-2 bg-surface-800 border border-surface-700 rounded-lg text-surface-100 text-sm focus:outline-none focus:ring-1 focus:ring-accent-500" />
+              </div>
+              <div className="flex justify-end gap-3 pt-2">
+                <button type="button" onClick={() => setShowNewQuote(false)} className="px-4 py-2 text-sm text-surface-400 hover:text-surface-200">Cancel</button>
+                <button type="submit" className="px-4 py-2 bg-accent-500 text-white rounded-lg hover:bg-accent-600 text-sm font-medium">Create Quote</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

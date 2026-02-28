@@ -1304,7 +1304,7 @@ export const quotesApi = {
   // Line items
   createLineItem: (quoteId: string, optionId: string, data: {
     type: string; description: string; quantity: number; unit: string;
-    unit_price_cents: number; total_cents: number; sort_order?: number
+    unit_price_cents: number; total_cents: number; sort_order?: number; project_id?: string
   }) =>
     fetchApi<import('../types').QuoteLineItem>(`/quotes/${quoteId}/options/${optionId}/items`, {
       method: 'POST',

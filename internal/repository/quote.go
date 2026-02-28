@@ -188,9 +188,9 @@ func (r *QuoteRepository) CreateLineItem(ctx context.Context, item *model.QuoteL
 	item.CreatedAt = time.Now()
 
 	_, err := r.db.ExecContext(ctx, `
-		INSERT INTO quote_line_items (id, option_id, type, description, quantity, unit, unit_price_cents, total_cents, sort_order, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, item.ID, item.OptionID, item.Type, item.Description, item.Quantity, item.Unit, item.UnitPriceCents, item.TotalCents, item.SortOrder, item.CreatedAt)
+		INSERT INTO quote_line_items (id, option_id, type, description, quantity, unit, unit_price_cents, total_cents, sort_order, project_id, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, item.ID, item.OptionID, item.Type, item.Description, item.Quantity, item.Unit, item.UnitPriceCents, item.TotalCents, item.SortOrder, item.ProjectID, item.CreatedAt)
 	return err
 }
 
@@ -198,10 +198,10 @@ func (r *QuoteRepository) CreateLineItem(ctx context.Context, item *model.QuoteL
 func (r *QuoteRepository) GetLineItem(ctx context.Context, id uuid.UUID) (*model.QuoteLineItem, error) {
 	var item model.QuoteLineItem
 	row := r.db.QueryRowContext(ctx, `
-		SELECT id, option_id, type, description, quantity, unit, unit_price_cents, total_cents, sort_order, created_at
+		SELECT id, option_id, type, description, quantity, unit, unit_price_cents, total_cents, sort_order, project_id, created_at
 		FROM quote_line_items WHERE id = ?
 	`, id)
-	err := scanRow(row, &item.ID, &item.OptionID, &item.Type, &item.Description, &item.Quantity, &item.Unit, &item.UnitPriceCents, &item.TotalCents, &item.SortOrder, &item.CreatedAt)
+	err := scanRow(row, &item.ID, &item.OptionID, &item.Type, &item.Description, &item.Quantity, &item.Unit, &item.UnitPriceCents, &item.TotalCents, &item.SortOrder, &item.ProjectID, &item.CreatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -211,7 +211,7 @@ func (r *QuoteRepository) GetLineItem(ctx context.Context, id uuid.UUID) (*model
 // GetLineItemsByOptionID retrieves all line items for an option.
 func (r *QuoteRepository) GetLineItemsByOptionID(ctx context.Context, optionID uuid.UUID) ([]model.QuoteLineItem, error) {
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT id, option_id, type, description, quantity, unit, unit_price_cents, total_cents, sort_order, created_at
+		SELECT id, option_id, type, description, quantity, unit, unit_price_cents, total_cents, sort_order, project_id, created_at
 		FROM quote_line_items WHERE option_id = ? ORDER BY sort_order ASC
 	`, optionID)
 	if err != nil {
@@ -222,7 +222,7 @@ func (r *QuoteRepository) GetLineItemsByOptionID(ctx context.Context, optionID u
 	var items []model.QuoteLineItem
 	for rows.Next() {
 		var item model.QuoteLineItem
-		if err := scanRow(rows, &item.ID, &item.OptionID, &item.Type, &item.Description, &item.Quantity, &item.Unit, &item.UnitPriceCents, &item.TotalCents, &item.SortOrder, &item.CreatedAt); err != nil {
+		if err := scanRow(rows, &item.ID, &item.OptionID, &item.Type, &item.Description, &item.Quantity, &item.Unit, &item.UnitPriceCents, &item.TotalCents, &item.SortOrder, &item.ProjectID, &item.CreatedAt); err != nil {
 			return nil, err
 		}
 		items = append(items, item)
@@ -233,9 +233,9 @@ func (r *QuoteRepository) GetLineItemsByOptionID(ctx context.Context, optionID u
 // UpdateLineItem updates a line item.
 func (r *QuoteRepository) UpdateLineItem(ctx context.Context, item *model.QuoteLineItem) error {
 	_, err := r.db.ExecContext(ctx, `
-		UPDATE quote_line_items SET type = ?, description = ?, quantity = ?, unit = ?, unit_price_cents = ?, total_cents = ?, sort_order = ?
+		UPDATE quote_line_items SET type = ?, description = ?, quantity = ?, unit = ?, unit_price_cents = ?, total_cents = ?, sort_order = ?, project_id = ?
 		WHERE id = ?
-	`, item.Type, item.Description, item.Quantity, item.Unit, item.UnitPriceCents, item.TotalCents, item.SortOrder, item.ID)
+	`, item.Type, item.Description, item.Quantity, item.Unit, item.UnitPriceCents, item.TotalCents, item.SortOrder, item.ProjectID, item.ID)
 	return err
 }
 

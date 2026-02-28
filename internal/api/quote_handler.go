@@ -362,6 +362,7 @@ type CreateLineItemRequest struct {
 	UnitPriceCents int     `json:"unit_price_cents"`
 	TotalCents     int     `json:"total_cents"`
 	SortOrder      int     `json:"sort_order"`
+	ProjectID      *string `json:"project_id,omitempty"`
 }
 
 // CreateLineItem adds a line item to a quote option.
@@ -389,6 +390,15 @@ func (h *QuoteHandler) CreateLineItem(w http.ResponseWriter, r *http.Request) {
 		SortOrder:      req.SortOrder,
 	}
 
+	if req.ProjectID != nil && *req.ProjectID != "" {
+		pid, err := uuid.Parse(*req.ProjectID)
+		if err != nil {
+			respondError(w, http.StatusBadRequest, "invalid project ID")
+			return
+		}
+		item.ProjectID = &pid
+	}
+
 	if err := h.service.CreateLineItem(r.Context(), item); err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -406,6 +416,7 @@ type UpdateLineItemRequest struct {
 	UnitPriceCents *int     `json:"unit_price_cents,omitempty"`
 	TotalCents     *int     `json:"total_cents,omitempty"`
 	SortOrder      *int     `json:"sort_order,omitempty"`
+	ProjectID      *string  `json:"project_id,omitempty"`
 }
 
 // UpdateLineItem updates a line item.
@@ -453,6 +464,18 @@ func (h *QuoteHandler) UpdateLineItem(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.SortOrder != nil {
 		item.SortOrder = *req.SortOrder
+	}
+	if req.ProjectID != nil {
+		if *req.ProjectID == "" {
+			item.ProjectID = nil
+		} else {
+			pid, err := uuid.Parse(*req.ProjectID)
+			if err != nil {
+				respondError(w, http.StatusBadRequest, "invalid project ID")
+				return
+			}
+			item.ProjectID = &pid
+		}
 	}
 
 	if err := h.service.UpdateLineItem(r.Context(), item); err != nil {

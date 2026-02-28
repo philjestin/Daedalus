@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { FileText, Plus, ChevronRight, Send, CheckCircle, XCircle, Clock, Edit3 } from 'lucide-react'
+import { FileText, Plus, ChevronRight, Send, CheckCircle, XCircle, Clock, Edit3, Trash2 } from 'lucide-react'
 import { quotesApi, customersApi } from '../api/client'
 import type { Quote, QuoteStatus, Customer } from '../types'
 
@@ -56,6 +56,16 @@ export default function Quotes() {
       loadData()
     } catch (err) {
       console.error('Failed to create quote:', err)
+    }
+  }
+
+  const handleDelete = async (quoteId: string) => {
+    if (!confirm('Delete this quote?')) return
+    try {
+      await quotesApi.delete(quoteId)
+      loadData()
+    } catch (err) {
+      console.error('Failed to delete quote:', err)
     }
   }
 
@@ -165,9 +175,16 @@ export default function Quotes() {
                       {new Date(quote.created_at).toLocaleDateString()}
                     </td>
                     <td className="px-4 py-3">
-                      <Link to={`/quotes/${quote.id}`} className="text-surface-500 hover:text-surface-300">
-                        <ChevronRight className="h-4 w-4" />
-                      </Link>
+                      <div className="flex items-center gap-1">
+                        {quote.status === 'draft' && (
+                          <button onClick={() => handleDelete(quote.id)} className="text-surface-600 hover:text-red-400" title="Delete quote">
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                        <Link to={`/quotes/${quote.id}`} className="text-surface-500 hover:text-surface-300">
+                          <ChevronRight className="h-4 w-4" />
+                        </Link>
+                      </div>
                     </td>
                   </tr>
                 )

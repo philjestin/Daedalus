@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { ArrowLeft, Send, CheckCircle, XCircle, Plus, Trash2, Clock, Edit3 } from 'lucide-react'
-import { quotesApi } from '../api/client'
-import type { Quote, QuoteStatus, QuoteOption, QuoteLineItemType } from '../types'
+import { quotesApi, projectsApi } from '../api/client'
+import type { Quote, QuoteStatus, QuoteOption, QuoteLineItemType, Project } from '../types'
 
 const statusConfig: Record<QuoteStatus, { label: string; color: string; icon: typeof Clock }> = {
   draft: { label: 'Draft', color: 'bg-surface-700 text-surface-300', icon: Edit3 },
@@ -20,6 +20,20 @@ const lineItemTypes: { value: QuoteLineItemType; label: string }[] = [
   { value: 'other', label: 'Other' },
 ]
 
+interface PendingLineItem {
+  key: number
+  project_id: string
+  type: string
+  description: string
+  quantity: string
+  unit: string
+  unit_price: string
+}
+
+function emptyPendingItem(key: number): PendingLineItem {
+  return { key, project_id: '', type: 'printing', description: '', quantity: '1', unit: 'each', unit_price: '' }
+}
+
 function formatCents(cents: number): string {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(cents / 100)
 }
@@ -32,6 +46,12 @@ export default function QuoteDetail() {
   const [actionLoading, setActionLoading] = useState(false)
   const [showAddOption, setShowAddOption] = useState(false)
   const [addingItemToOption, setAddingItemToOption] = useState<string | null>(null)
+  const [projects, setProjects] = useState<Project[]>([])
+  const [pendingItems, setPendingItems] = useState<PendingLineItem[]>([])
+
+  useEffect(() => {
+    projectsApi.list().then(setProjects).catch(() => {})
+  }, [])
 
   const loadQuote = async () => {
     if (!id) return
@@ -88,17 +108,38 @@ export default function QuoteDetail() {
     }
   }
 
+  const openAddOptionModal = () => {
+    setPendingItems([emptyPendingItem(0)])
+    setShowAddOption(true)
+  }
+
   const handleAddOption = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     if (!id) return
     const form = e.currentTarget
     const formData = new FormData(form)
     try {
-      await quotesApi.createOption(id, {
+      const option = await quotesApi.createOption(id, {
         name: formData.get('name') as string,
         description: formData.get('description') as string || undefined,
       })
+      // Create all pending line items
+      for (const item of pendingItems) {
+        if (!item.description) continue
+        const quantity = parseFloat(item.quantity) || 1
+        const unitPriceCents = Math.round(parseFloat(item.unit_price) * 100) || 0
+        await quotesApi.createLineItem(id, option.id, {
+          type: item.type,
+          description: item.description,
+          quantity,
+          unit: item.unit,
+          unit_price_cents: unitPriceCents,
+          total_cents: Math.round(quantity * unitPriceCents),
+          project_id: item.project_id || undefined,
+        })
+      }
       setShowAddOption(false)
+      setPendingItems([])
       loadQuote()
     } catch (err) {
       console.error('Failed to add option:', err)
@@ -123,6 +164,7 @@ export default function QuoteDetail() {
     const quantity = parseFloat(formData.get('quantity') as string) || 1
     const unitPriceCents = Math.round(parseFloat(formData.get('unit_price') as string) * 100) || 0
     const totalCents = Math.round(quantity * unitPriceCents)
+    const projectId = formData.get('project_id') as string || undefined
     try {
       await quotesApi.createLineItem(id, optionId, {
         type: formData.get('type') as string,
@@ -131,6 +173,7 @@ export default function QuoteDetail() {
         unit: formData.get('unit') as string,
         unit_price_cents: unitPriceCents,
         total_cents: totalCents,
+        project_id: projectId,
       })
       setAddingItemToOption(null)
       loadQuote()
@@ -213,7 +256,7 @@ export default function QuoteDetail() {
               <h2 className="text-lg font-display font-semibold text-surface-100">Options</h2>
               {isDraft && (
                 <button
-                  onClick={() => setShowAddOption(true)}
+                  onClick={openAddOptionModal}
                   className="inline-flex items-center gap-1.5 text-sm text-accent-400 hover:text-accent-300"
                 >
                   <Plus className="h-4 w-4" />
@@ -237,6 +280,7 @@ export default function QuoteDetail() {
                     isSent={isSent}
                     isAccepted={quote.accepted_option_id === option.id}
                     addingItem={addingItemToOption === option.id}
+                    projects={projects}
                     onAddItem={() => setAddingItemToOption(option.id)}
                     onCancelAddItem={() => setAddingItemToOption(null)}
                     onSubmitItem={(e) => handleAddLineItem(e, option.id)}
@@ -281,7 +325,7 @@ export default function QuoteDetail() {
                 className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium disabled:opacity-50"
               >
                 <Send className="h-4 w-4" />
-                Send to Customer
+                Mark as Sent
               </button>
             )}
             {isSent && (
@@ -332,19 +376,76 @@ export default function QuoteDetail() {
       {/* Add Option Modal */}
       {showAddOption && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-surface-900 border border-surface-700 rounded-xl p-6 w-full max-w-md">
+          <div className="bg-surface-900 border border-surface-700 rounded-xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
             <h2 className="text-lg font-display font-semibold text-surface-100 mb-4">Add Option</h2>
             <form onSubmit={handleAddOption} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-surface-300 mb-1">Name *</label>
-                <input name="name" required className="w-full px-3 py-2 bg-surface-800 border border-surface-700 rounded-lg text-surface-100 text-sm focus:outline-none focus:ring-1 focus:ring-accent-500" placeholder="e.g. Standard Package" />
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-surface-300 mb-1">Name *</label>
+                  <input name="name" required className="w-full px-3 py-2 bg-surface-800 border border-surface-700 rounded-lg text-surface-100 text-sm focus:outline-none focus:ring-1 focus:ring-accent-500" placeholder="e.g. Standard Package" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-surface-300 mb-1">Description</label>
+                  <input name="description" className="w-full px-3 py-2 bg-surface-800 border border-surface-700 rounded-lg text-surface-100 text-sm focus:outline-none focus:ring-1 focus:ring-accent-500" />
+                </div>
               </div>
+
+              {/* Line Items */}
               <div>
-                <label className="block text-sm font-medium text-surface-300 mb-1">Description</label>
-                <textarea name="description" rows={2} className="w-full px-3 py-2 bg-surface-800 border border-surface-700 rounded-lg text-surface-100 text-sm focus:outline-none focus:ring-1 focus:ring-accent-500" />
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-sm font-medium text-surface-300">Line Items</label>
+                  <button type="button" onClick={() => setPendingItems(prev => [...prev, emptyPendingItem(Date.now())])} className="inline-flex items-center gap-1 text-xs text-accent-400 hover:text-accent-300">
+                    <Plus className="h-3.5 w-3.5" />
+                    Add Item
+                  </button>
+                </div>
+                <div className="space-y-3">
+                  {pendingItems.map((item, idx) => (
+                    <div key={item.key} className="bg-surface-800/50 border border-surface-700 rounded-lg p-3 space-y-2">
+                      <div className="flex items-center gap-2">
+                        <select value={item.project_id} onChange={(e) => {
+                          const project = projects.find(p => p.id === e.target.value)
+                          setPendingItems(prev => prev.map((it, i) => i === idx ? {
+                            ...it,
+                            project_id: e.target.value,
+                            description: it.description || (project?.name ?? ''),
+                            unit_price: it.unit_price || (project?.price_cents ? (project.price_cents / 100).toFixed(2) : ''),
+                          } : it))
+                        }} className="flex-1 px-2 py-1.5 bg-surface-800 border border-surface-700 rounded text-sm text-surface-200 focus:outline-none focus:ring-1 focus:ring-accent-500">
+                          <option value="">No project (free text)</option>
+                          {projects.map((p) => (
+                            <option key={p.id} value={p.id}>{p.name}{p.sku ? ` (${p.sku})` : ''}</option>
+                          ))}
+                        </select>
+                        {pendingItems.length > 1 && (
+                          <button type="button" onClick={() => setPendingItems(prev => prev.filter((_, i) => i !== idx))} className="text-surface-500 hover:text-red-400">
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </div>
+                      <div className="grid grid-cols-6 gap-2">
+                        <select value={item.type} onChange={(e) => setPendingItems(prev => prev.map((it, i) => i === idx ? { ...it, type: e.target.value } : it))} className="col-span-1 px-2 py-1.5 bg-surface-800 border border-surface-700 rounded text-sm text-surface-200 focus:outline-none focus:ring-1 focus:ring-accent-500">
+                          {lineItemTypes.map((t) => (
+                            <option key={t.value} value={t.value}>{t.label}</option>
+                          ))}
+                        </select>
+                        <input value={item.description} onChange={(e) => setPendingItems(prev => prev.map((it, i) => i === idx ? { ...it, description: e.target.value } : it))} placeholder="Description *" className="col-span-2 px-2 py-1.5 bg-surface-800 border border-surface-700 rounded text-sm text-surface-200 focus:outline-none focus:ring-1 focus:ring-accent-500" />
+                        <input value={item.quantity} onChange={(e) => setPendingItems(prev => prev.map((it, i) => i === idx ? { ...it, quantity: e.target.value } : it))} type="number" step="any" placeholder="Qty" className="col-span-1 px-2 py-1.5 bg-surface-800 border border-surface-700 rounded text-sm text-surface-200 text-right focus:outline-none focus:ring-1 focus:ring-accent-500" />
+                        <select value={item.unit} onChange={(e) => setPendingItems(prev => prev.map((it, i) => i === idx ? { ...it, unit: e.target.value } : it))} className="col-span-1 px-2 py-1.5 bg-surface-800 border border-surface-700 rounded text-sm text-surface-200 focus:outline-none focus:ring-1 focus:ring-accent-500">
+                          <option value="each">each</option>
+                          <option value="hours">hours</option>
+                          <option value="units">units</option>
+                          <option value="grams">grams</option>
+                        </select>
+                        <input value={item.unit_price} onChange={(e) => setPendingItems(prev => prev.map((it, i) => i === idx ? { ...it, unit_price: e.target.value } : it))} type="number" step="0.01" placeholder="Rate $" className="col-span-1 px-2 py-1.5 bg-surface-800 border border-surface-700 rounded text-sm text-surface-200 text-right focus:outline-none focus:ring-1 focus:ring-accent-500" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
-              <div className="flex justify-end gap-3 pt-2">
-                <button type="button" onClick={() => setShowAddOption(false)} className="px-4 py-2 text-sm text-surface-400 hover:text-surface-200">Cancel</button>
+
+              <div className="flex justify-end gap-3 pt-2 border-t border-surface-800">
+                <button type="button" onClick={() => { setShowAddOption(false); setPendingItems([]) }} className="px-4 py-2 text-sm text-surface-400 hover:text-surface-200">Cancel</button>
                 <button type="submit" className="px-4 py-2 bg-accent-500 text-white rounded-lg hover:bg-accent-600 text-sm font-medium">Add Option</button>
               </div>
             </form>
@@ -362,6 +463,7 @@ interface OptionCardProps {
   isSent: boolean
   isAccepted: boolean
   addingItem: boolean
+  projects: Project[]
   actionLoading: boolean
   onAddItem: () => void
   onCancelAddItem: () => void
@@ -371,7 +473,8 @@ interface OptionCardProps {
   onAccept: () => void
 }
 
-function OptionCard({ option, isDraft, isSent, isAccepted, addingItem, actionLoading, onAddItem, onCancelAddItem, onSubmitItem, onDeleteItem, onDelete, onAccept }: OptionCardProps) {
+function OptionCard({ option, isDraft, isSent, isAccepted, addingItem, projects, actionLoading, onAddItem, onCancelAddItem, onSubmitItem, onDeleteItem, onDelete, onAccept }: OptionCardProps) {
+  const projectMap = new Map(projects.map(p => [p.id, p]))
   return (
     <div className={`bg-surface-900 border rounded-lg overflow-hidden ${isAccepted ? 'border-green-500/50' : 'border-surface-800'}`}>
       <div className="flex items-center justify-between px-4 py-3 border-b border-surface-800">
@@ -411,7 +514,14 @@ function OptionCard({ option, isDraft, isSent, isAccepted, addingItem, actionLoa
                 <td className="px-4 py-2">
                   <span className="text-xs px-1.5 py-0.5 rounded bg-surface-800 text-surface-400">{item.type}</span>
                 </td>
-                <td className="px-4 py-2 text-sm text-surface-300">{item.description}</td>
+                <td className="px-4 py-2 text-sm text-surface-300">
+                  {item.description}
+                  {item.project_id && projectMap.get(item.project_id) && (
+                    <Link to={`/projects/${item.project_id}`} className="ml-1.5 text-xs text-accent-400 hover:text-accent-300">
+                      ({projectMap.get(item.project_id)!.name})
+                    </Link>
+                  )}
+                </td>
                 <td className="px-4 py-2 text-sm text-surface-400 text-right">{item.quantity} {item.unit}</td>
                 <td className="px-4 py-2 text-sm text-surface-400 text-right font-mono">{formatCents(item.unit_price_cents)}</td>
                 <td className="px-4 py-2 text-sm text-surface-200 text-right font-mono">{formatCents(item.total_cents)}</td>
@@ -431,6 +541,27 @@ function OptionCard({ option, isDraft, isSent, isAccepted, addingItem, actionLoa
       {/* Add Line Item Form */}
       {addingItem && (
         <form onSubmit={onSubmitItem} className="px-4 py-3 border-t border-surface-800 bg-surface-800/30">
+          <div className="mb-2">
+            <label className="block text-xs font-medium text-surface-400 mb-1">Project (optional)</label>
+            <select name="project_id" className="w-full px-2 py-1.5 bg-surface-800 border border-surface-700 rounded text-sm text-surface-200 focus:outline-none focus:ring-1 focus:ring-accent-500" onChange={(e) => {
+              const form = e.target.form
+              if (!form) return
+              const project = projects.find(p => p.id === e.target.value)
+              if (project) {
+                const descInput = form.elements.namedItem('description') as HTMLInputElement
+                if (descInput && !descInput.value) descInput.value = project.name
+                if (project.price_cents) {
+                  const priceInput = form.elements.namedItem('unit_price') as HTMLInputElement
+                  if (priceInput && !priceInput.value) priceInput.value = (project.price_cents / 100).toFixed(2)
+                }
+              }
+            }}>
+              <option value="">No project (free text)</option>
+              {projects.map((p) => (
+                <option key={p.id} value={p.id}>{p.name}{p.sku ? ` (${p.sku})` : ''}</option>
+              ))}
+            </select>
+          </div>
           <div className="grid grid-cols-6 gap-2">
             <select name="type" required className="col-span-1 px-2 py-1.5 bg-surface-800 border border-surface-700 rounded text-sm text-surface-200 focus:outline-none focus:ring-1 focus:ring-accent-500">
               {lineItemTypes.map((t) => (

@@ -252,13 +252,14 @@ func (s *QuoteService) Accept(ctx context.Context, quoteID uuid.UUID, optionID u
 		return nil, fmt.Errorf("failed to create order: %w", err)
 	}
 
-	// Create order items from printing-type line items
+	// Create order items from line items that are printing-type or linked to a project
 	for _, item := range items {
-		if item.Type == model.QuoteLineItemTypePrinting {
+		if item.Type == model.QuoteLineItemTypePrinting || item.ProjectID != nil {
 			orderItem := &model.OrderItem{
-				OrderID:  order.ID,
-				Quantity: int(item.Quantity),
-				Notes:    item.Description,
+				OrderID:   order.ID,
+				ProjectID: item.ProjectID,
+				Quantity:  int(item.Quantity),
+				Notes:     item.Description,
 			}
 			if orderItem.Quantity < 1 {
 				orderItem.Quantity = 1

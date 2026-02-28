@@ -1449,6 +1449,7 @@ type QuoteLineItem struct {
 	UnitPriceCents int               `json:"unit_price_cents"`
 	TotalCents     int               `json:"total_cents"`
 	SortOrder      int               `json:"sort_order"`
+	ProjectID      *uuid.UUID        `json:"project_id,omitempty"`
 	CreatedAt      time.Time         `json:"created_at"`
 }
 
