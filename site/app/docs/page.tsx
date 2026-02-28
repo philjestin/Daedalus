@@ -48,7 +48,7 @@ export default function DocsHome() {
       <p>
         Daedalus is an all-in-one desktop platform for managing 3D printers, fulfilling orders
         from Etsy, Shopify &amp; Squarespace, tracking materials, and growing your maker business.
-        It runs as a native desktop app (macOS/Windows), a Docker container, or in the cloud on Fly.io.
+        It runs as a native desktop app (macOS/Windows) or a Docker container.
       </p>
 
       <h2>Prerequisites</h2>

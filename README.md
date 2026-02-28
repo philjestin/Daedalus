@@ -4,7 +4,7 @@
 
 A comprehensive platform for makers and small 3D print farms. Manage your product catalog, track orders from multiple sales channels, and coordinate print jobs across your printer fleet.
 
-Runs as a **desktop app** (macOS/Windows via [Wails](https://wails.io)) or as a **self-hosted web app** (Docker / Fly.io).
+Runs as a **desktop app** (macOS/Windows via [Wails](https://wails.io)) or as a **self-hosted web app** (Docker).
 
 ## Features
 
@@ -45,7 +45,7 @@ Projects (product catalog)
 | Real-time | WebSocket |
 | Desktop | Wails v2 |
 | Build | Vite 7 |
-| Deployment | Docker, Fly.io |
+| Deployment | Docker |
 
 ## Quick Start
 
@@ -122,7 +122,6 @@ The built app is output to `build/bin/`.
 │       └── lib/          # Utilities
 ├── Makefile              # Build automation
 ├── Dockerfile            # Multi-stage production build
-├── fly.toml              # Fly.io deployment config
 └── wails.json            # Wails desktop app config
 ```
 
@@ -276,14 +275,6 @@ make test
 docker build -t daedalus .
 docker run -p 8080:8080 -v daedalus-data:/app/data daedalus
 ```
-
-### Deploy to Fly.io
-
-```bash
-fly deploy
-```
-
-Configuration is in `fly.toml`. Data is persisted via a mounted volume.
 
 ## Environment Variables
 

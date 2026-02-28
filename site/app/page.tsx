@@ -765,9 +765,9 @@ export default function Home() {
               },
               {
                 icon: <Cloud className="h-6 w-6" />,
-                title: "Cloud (Fly.io)",
-                desc: "Deploy to Fly.io with the included configuration. Persistent volumes for your database, zero-downtime deploys.",
-                code: "fly deploy",
+                title: "Self-Hosted",
+                desc: "Deploy anywhere with Docker. Mount a volume for your database, configure with environment variables, and you're live.",
+                code: "docker compose up -d",
               },
             ].map((item, i) => (
               <AnimatedSection key={item.title} delay={i * 100}>

@@ -1,6 +1,6 @@
 export const metadata = {
   title: "Deployment - Daedalus Docs",
-  description: "Deploy Daedalus as a desktop app, Docker container, or to Fly.io with environment variables.",
+  description: "Deploy Daedalus as a desktop app or Docker container with environment variables.",
 };
 
 export default function DeploymentDocs() {
@@ -8,15 +8,14 @@ export default function DeploymentDocs() {
     <div className="docs-prose">
       <h1>Deployment</h1>
       <p className="text-lg !text-surface-300">
-        Run Daedalus as a native desktop app, a Docker container on your own server,
-        or deploy to the cloud on Fly.io. Your data, your infrastructure.
+        Run Daedalus as a native desktop app or a Docker container on your own server.
+        Your data, your infrastructure.
       </p>
 
       <h2>Overview</h2>
       <p>
         Daedalus is designed to run wherever works best for your setup. The desktop app
-        is ideal for a single workstation, Docker works great for a home server or NAS,
-        and Fly.io gives you cloud access from anywhere.
+        is ideal for a single workstation, and Docker works great for a home server or NAS.
       </p>
 
       <h2>Desktop App (Wails)</h2>
@@ -92,32 +91,6 @@ docker compose up -d`}</code></pre>
         <li>Health check endpoint at <code>/health</code></li>
       </ul>
 
-      <h2>Fly.io</h2>
-      <p>
-        Deploy to Fly.io for cloud access with persistent volumes:
-      </p>
-
-      <h3>Deploying</h3>
-      <pre><code>{`# Install the Fly CLI
-curl -L https://fly.io/install.sh | sh
-
-# Launch a new app (first time only)
-fly launch
-
-# Deploy
-fly deploy
-
-# Attach a persistent volume
-fly volumes create daedalus_data --size 1`}</code></pre>
-
-      <h3>Fly.io Features</h3>
-      <ul>
-        <li>Zero-downtime deploys</li>
-        <li>Persistent volumes for SQLite database</li>
-        <li>Global edge network for fast access</li>
-        <li>Built-in TLS/SSL</li>
-      </ul>
-
       <h2>Environment Variables</h2>
       <table>
         <thead>
@@ -183,8 +156,7 @@ fly volumes create daedalus_data --size 1`}</code></pre>
 
       <div className="docs-callout">
         <strong>Tip:</strong> For local development with LAN-connected printers, the desktop
-        app or Docker on the same network gives the best experience. Use Fly.io when you
-        need remote access or Bambu Cloud-paired printers.
+        app or Docker on the same network gives the best experience.
       </div>
     </div>
   );
