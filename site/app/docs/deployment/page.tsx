@@ -29,7 +29,7 @@ export default function DeploymentDocs() {
 go install github.com/wailsapp/wails/v2/cmd/wails@latest
 
 # Clone the repository
-git clone https://github.com/your-org/daedalus.git
+git clone https://github.com/philjestin/Daedalus.git
 cd daedalus
 
 # Run in development mode
