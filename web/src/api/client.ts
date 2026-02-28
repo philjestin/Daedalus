@@ -1321,3 +1321,26 @@ export const quotesApi = {
     fetchApi<void>(`/quotes/${quoteId}/options/${optionId}/items/${itemId}`, { method: 'DELETE' }),
 }
 
+// Public API (no auth, for shareable pages)
+const PUBLIC_API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8080'
+
+async function fetchPublicApi<T>(path: string): Promise<T> {
+  const url = `${PUBLIC_API_URL}/api/public${path}`
+  const response = await fetch(url, {
+    headers: { 'Content-Type': 'application/json' },
+  })
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: 'Unknown error' }))
+    throw new Error(error.error || `HTTP ${response.status}`)
+  }
+  return response.json() as Promise<T>
+}
+
+export const publicApi = {
+  getQuote: (token: string) =>
+    fetchPublicApi<import('../types').Quote>(`/quotes/${token}`),
+
+  getBusinessInfo: () =>
+    fetchPublicApi<Record<string, string>>(`/business-info`),
+}
+

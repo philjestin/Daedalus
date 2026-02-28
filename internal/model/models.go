@@ -1359,19 +1359,35 @@ type Feedback struct {
 }
 
 // ============================================
+// Addresses
+// ============================================
+
+// Address is a reusable struct for billing/shipping addresses, stored as JSON TEXT in SQLite.
+type Address struct {
+	Line1   string `json:"line1,omitempty"`
+	Line2   string `json:"line2,omitempty"`
+	City    string `json:"city,omitempty"`
+	State   string `json:"state,omitempty"`
+	Zip     string `json:"zip,omitempty"`
+	Country string `json:"country,omitempty"`
+}
+
+// ============================================
 // Customers
 // ============================================
 
 // Customer represents a customer for quotes and orders.
 type Customer struct {
-	ID        uuid.UUID `json:"id"`
-	Name      string    `json:"name"`
-	Email     string    `json:"email,omitempty"`
-	Company   string    `json:"company,omitempty"`
-	Phone     string    `json:"phone,omitempty"`
-	Notes     string    `json:"notes,omitempty"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID              uuid.UUID `json:"id"`
+	Name            string    `json:"name"`
+	Email           string    `json:"email,omitempty"`
+	Company         string    `json:"company,omitempty"`
+	Phone           string    `json:"phone,omitempty"`
+	Notes           string    `json:"notes,omitempty"`
+	BillingAddress  *Address  `json:"billing_address,omitempty"`
+	ShippingAddress *Address  `json:"shipping_address,omitempty"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
 }
 
 // CustomerFilters defines filter options for listing customers.
@@ -1405,6 +1421,19 @@ const (
 	QuoteLineItemTypeConsulting     QuoteLineItemType = "consulting"
 	QuoteLineItemTypeDesign         QuoteLineItemType = "design"
 	QuoteLineItemTypeOther          QuoteLineItemType = "other"
+	QuoteLineItemTypeLabor          QuoteLineItemType = "labor"
+	QuoteLineItemTypeConsumables    QuoteLineItemType = "consumables"
+	QuoteLineItemTypeShipping       QuoteLineItemType = "shipping"
+	QuoteLineItemTypeFinishing      QuoteLineItemType = "finishing"
+)
+
+// DiscountType represents the type of discount applied to a quote.
+type DiscountType string
+
+const (
+	DiscountTypeNone    DiscountType = "none"
+	DiscountTypeFlat    DiscountType = "flat"
+	DiscountTypePercent DiscountType = "percent"
 )
 
 // Quote represents a customer quote with options.
@@ -1418,6 +1447,15 @@ type Quote struct {
 	ValidUntil       *time.Time    `json:"valid_until,omitempty"`
 	AcceptedOptionID *uuid.UUID    `json:"accepted_option_id,omitempty"`
 	OrderID          *uuid.UUID    `json:"order_id,omitempty"`
+	DiscountType     DiscountType  `json:"discount_type"`
+	DiscountValue    int           `json:"discount_value"`
+	RushFeeCents     int           `json:"rush_fee_cents"`
+	TaxRate          int           `json:"tax_rate"`
+	Terms            string        `json:"terms,omitempty"`
+	RequestedDueDate *time.Time    `json:"requested_due_date,omitempty"`
+	BillingAddress   *Address      `json:"billing_address,omitempty"`
+	ShippingAddress  *Address      `json:"shipping_address,omitempty"`
+	ShareToken       string        `json:"share_token,omitempty"`
 	CreatedAt        time.Time     `json:"created_at"`
 	UpdatedAt        time.Time     `json:"updated_at"`
 	SentAt           *time.Time    `json:"sent_at,omitempty"`

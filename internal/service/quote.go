@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"log/slog"
 	"time"
@@ -38,6 +40,15 @@ func NewQuoteService(
 	}
 }
 
+// generateShareToken creates a 32-char hex token from 16 random bytes.
+func generateShareToken() (string, error) {
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(b), nil
+}
+
 // Create creates a new quote with auto-generated quote number.
 func (s *QuoteService) Create(ctx context.Context, quote *model.Quote) error {
 	if quote.Title == "" {
@@ -63,6 +74,23 @@ func (s *QuoteService) Create(ctx context.Context, quote *model.Quote) error {
 	}
 	quote.QuoteNumber = quoteNumber
 
+	// Generate share token
+	token, err := generateShareToken()
+	if err != nil {
+		return fmt.Errorf("failed to generate share token: %w", err)
+	}
+	quote.ShareToken = token
+
+	// Copy customer addresses to quote if not already set
+	if quote.BillingAddress == nil && customer.BillingAddress != nil {
+		addr := *customer.BillingAddress
+		quote.BillingAddress = &addr
+	}
+	if quote.ShippingAddress == nil && customer.ShippingAddress != nil {
+		addr := *customer.ShippingAddress
+		quote.ShippingAddress = &addr
+	}
+
 	if err := s.quoteRepo.Create(ctx, quote); err != nil {
 		return err
 	}
@@ -86,6 +114,21 @@ func (s *QuoteService) GetByID(ctx context.Context, id uuid.UUID) (*model.Quote,
 		return quote, err
 	}
 
+	return s.enrichQuote(ctx, quote)
+}
+
+// GetByShareToken retrieves a quote by its share token with full enrichment.
+func (s *QuoteService) GetByShareToken(ctx context.Context, token string) (*model.Quote, error) {
+	quote, err := s.quoteRepo.GetByShareToken(ctx, token)
+	if err != nil || quote == nil {
+		return quote, err
+	}
+
+	return s.enrichQuote(ctx, quote)
+}
+
+// enrichQuote loads customer, options (with line items), and events for a quote.
+func (s *QuoteService) enrichQuote(ctx context.Context, quote *model.Quote) (*model.Quote, error) {
 	// Load customer
 	customer, err := s.customerRepo.GetByID(ctx, quote.CustomerID)
 	if err != nil {
@@ -94,7 +137,7 @@ func (s *QuoteService) GetByID(ctx context.Context, id uuid.UUID) (*model.Quote,
 	quote.Customer = customer
 
 	// Load options with line items
-	options, err := s.quoteRepo.GetOptionsByQuoteID(ctx, id)
+	options, err := s.quoteRepo.GetOptionsByQuoteID(ctx, quote.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -108,7 +151,7 @@ func (s *QuoteService) GetByID(ctx context.Context, id uuid.UUID) (*model.Quote,
 	quote.Options = options
 
 	// Load events
-	events, err := s.quoteRepo.GetEvents(ctx, id)
+	events, err := s.quoteRepo.GetEvents(ctx, quote.ID)
 	if err != nil {
 		return nil, err
 	}

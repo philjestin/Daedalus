@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/philjestin/daedalus/internal/model"
 	"github.com/philjestin/daedalus/internal/service"
@@ -68,10 +69,18 @@ func (h *QuoteHandler) Get(w http.ResponseWriter, r *http.Request) {
 
 // CreateQuoteRequest represents a request to create a new quote.
 type CreateQuoteRequest struct {
-	CustomerID string     `json:"customer_id"`
-	Title      string     `json:"title"`
-	Notes      string     `json:"notes"`
-	ValidUntil *time.Time `json:"valid_until"`
+	CustomerID       string         `json:"customer_id"`
+	Title            string         `json:"title"`
+	Notes            string         `json:"notes"`
+	ValidUntil       *time.Time     `json:"valid_until"`
+	DiscountType     string         `json:"discount_type"`
+	DiscountValue    *int           `json:"discount_value"`
+	RushFeeCents     *int           `json:"rush_fee_cents"`
+	TaxRate          *int           `json:"tax_rate"`
+	Terms            string         `json:"terms"`
+	RequestedDueDate *time.Time     `json:"requested_due_date"`
+	BillingAddress   *model.Address `json:"billing_address"`
+	ShippingAddress  *model.Address `json:"shipping_address"`
 }
 
 // Create creates a new quote.
@@ -89,10 +98,26 @@ func (h *QuoteHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	quote := &model.Quote{
-		CustomerID: customerID,
-		Title:      req.Title,
-		Notes:      req.Notes,
-		ValidUntil: req.ValidUntil,
+		CustomerID:       customerID,
+		Title:            req.Title,
+		Notes:            req.Notes,
+		ValidUntil:       req.ValidUntil,
+		Terms:            req.Terms,
+		RequestedDueDate: req.RequestedDueDate,
+		BillingAddress:   req.BillingAddress,
+		ShippingAddress:  req.ShippingAddress,
+	}
+	if req.DiscountType != "" {
+		quote.DiscountType = model.DiscountType(req.DiscountType)
+	}
+	if req.DiscountValue != nil {
+		quote.DiscountValue = *req.DiscountValue
+	}
+	if req.RushFeeCents != nil {
+		quote.RushFeeCents = *req.RushFeeCents
+	}
+	if req.TaxRate != nil {
+		quote.TaxRate = *req.TaxRate
 	}
 
 	if err := h.service.Create(r.Context(), quote); err != nil {
@@ -105,10 +130,18 @@ func (h *QuoteHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 // UpdateQuoteRequest represents a request to update a quote.
 type UpdateQuoteRequest struct {
-	Title      *string    `json:"title,omitempty"`
-	Notes      *string    `json:"notes,omitempty"`
-	ValidUntil *time.Time `json:"valid_until,omitempty"`
-	CustomerID *string    `json:"customer_id,omitempty"`
+	Title            *string        `json:"title,omitempty"`
+	Notes            *string        `json:"notes,omitempty"`
+	ValidUntil       *time.Time     `json:"valid_until,omitempty"`
+	CustomerID       *string        `json:"customer_id,omitempty"`
+	DiscountType     *string        `json:"discount_type,omitempty"`
+	DiscountValue    *int           `json:"discount_value,omitempty"`
+	RushFeeCents     *int           `json:"rush_fee_cents,omitempty"`
+	TaxRate          *int           `json:"tax_rate,omitempty"`
+	Terms            *string        `json:"terms,omitempty"`
+	RequestedDueDate *time.Time     `json:"requested_due_date,omitempty"`
+	BillingAddress   *model.Address `json:"billing_address,omitempty"`
+	ShippingAddress  *model.Address `json:"shipping_address,omitempty"`
 }
 
 // Update updates a quote.
@@ -151,6 +184,30 @@ func (h *QuoteHandler) Update(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		quote.CustomerID = cID
+	}
+	if req.DiscountType != nil {
+		quote.DiscountType = model.DiscountType(*req.DiscountType)
+	}
+	if req.DiscountValue != nil {
+		quote.DiscountValue = *req.DiscountValue
+	}
+	if req.RushFeeCents != nil {
+		quote.RushFeeCents = *req.RushFeeCents
+	}
+	if req.TaxRate != nil {
+		quote.TaxRate = *req.TaxRate
+	}
+	if req.Terms != nil {
+		quote.Terms = *req.Terms
+	}
+	if req.RequestedDueDate != nil {
+		quote.RequestedDueDate = req.RequestedDueDate
+	}
+	if req.BillingAddress != nil {
+		quote.BillingAddress = req.BillingAddress
+	}
+	if req.ShippingAddress != nil {
+		quote.ShippingAddress = req.ShippingAddress
 	}
 
 	if err := h.service.Update(r.Context(), quote); err != nil {
@@ -484,6 +541,27 @@ func (h *QuoteHandler) UpdateLineItem(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondJSON(w, http.StatusOK, item)
+}
+
+// GetByShareToken retrieves a quote by its public share token.
+func (h *QuoteHandler) GetByShareToken(w http.ResponseWriter, r *http.Request) {
+	token := chi.URLParam(r, "token")
+	if token == "" {
+		respondError(w, http.StatusBadRequest, "token is required")
+		return
+	}
+
+	quote, err := h.service.GetByShareToken(r.Context(), token)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if quote == nil {
+		respondError(w, http.StatusNotFound, "quote not found")
+		return
+	}
+
+	respondJSON(w, http.StatusOK, quote)
 }
 
 // DeleteLineItem removes a line item.

@@ -445,6 +445,190 @@ func TestQuoteService_Reject(t *testing.T) {
 	}
 }
 
+func TestQuoteService_Create_GeneratesShareToken(t *testing.T) {
+	quoteSvc, customerSvc, _, _ := newQuoteTestServices(t)
+	ctx := context.Background()
+
+	customer := createQuoteTestCustomer(t, customerSvc, ctx)
+
+	quote := &model.Quote{
+		CustomerID: customer.ID,
+		Title:      "Token Test",
+	}
+	if err := quoteSvc.Create(ctx, quote); err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+
+	if quote.ShareToken == "" {
+		t.Error("Create should generate a share token")
+	}
+	if len(quote.ShareToken) != 32 {
+		t.Errorf("ShareToken length = %d, want 32 (16 bytes hex)", len(quote.ShareToken))
+	}
+
+	// Second quote should have a different token
+	quote2 := &model.Quote{
+		CustomerID: customer.ID,
+		Title:      "Token Test 2",
+	}
+	if err := quoteSvc.Create(ctx, quote2); err != nil {
+		t.Fatalf("Create second quote failed: %v", err)
+	}
+	if quote2.ShareToken == quote.ShareToken {
+		t.Error("Each quote should have a unique share token")
+	}
+}
+
+func TestQuoteService_Create_CopiesCustomerAddresses(t *testing.T) {
+	quoteSvc, customerSvc, _, _ := newQuoteTestServices(t)
+	ctx := context.Background()
+
+	customer := &model.Customer{
+		Name:  "Address Copy Customer",
+		Email: "addrcopy@example.com",
+		BillingAddress: &model.Address{
+			Line1: "100 Billing St",
+			City:  "BillCity",
+			State: "BC",
+			Zip:   "11111",
+		},
+		ShippingAddress: &model.Address{
+			Line1: "200 Shipping Ave",
+			City:  "ShipCity",
+			State: "SC",
+			Zip:   "22222",
+		},
+	}
+	if err := customerSvc.Create(ctx, customer); err != nil {
+		t.Fatalf("Create customer failed: %v", err)
+	}
+
+	// Create quote without providing addresses — should copy from customer
+	quote := &model.Quote{
+		CustomerID: customer.ID,
+		Title:      "Address Copy Test",
+	}
+	if err := quoteSvc.Create(ctx, quote); err != nil {
+		t.Fatalf("Create quote failed: %v", err)
+	}
+
+	if quote.BillingAddress == nil {
+		t.Fatal("BillingAddress should be copied from customer")
+	}
+	if quote.BillingAddress.Line1 != "100 Billing St" {
+		t.Errorf("BillingAddress.Line1 = %q, want %q", quote.BillingAddress.Line1, "100 Billing St")
+	}
+	if quote.ShippingAddress == nil {
+		t.Fatal("ShippingAddress should be copied from customer")
+	}
+	if quote.ShippingAddress.Line1 != "200 Shipping Ave" {
+		t.Errorf("ShippingAddress.Line1 = %q, want %q", quote.ShippingAddress.Line1, "200 Shipping Ave")
+	}
+
+	// Verify the copy was persisted by fetching
+	got, err := quoteSvc.GetByID(ctx, quote.ID)
+	if err != nil {
+		t.Fatalf("GetByID failed: %v", err)
+	}
+	if got.BillingAddress == nil || got.BillingAddress.Line1 != "100 Billing St" {
+		t.Error("Persisted billing address should match customer")
+	}
+
+	// Create quote WITH explicit addresses — should NOT be overridden
+	customAddr := &model.Address{Line1: "Custom Address"}
+	quote2 := &model.Quote{
+		CustomerID:     customer.ID,
+		Title:          "Custom Address Test",
+		BillingAddress: customAddr,
+	}
+	if err := quoteSvc.Create(ctx, quote2); err != nil {
+		t.Fatalf("Create quote2 failed: %v", err)
+	}
+	if quote2.BillingAddress.Line1 != "Custom Address" {
+		t.Errorf("Explicit billing should not be overridden, got %q", quote2.BillingAddress.Line1)
+	}
+	// Shipping should still be copied from customer
+	if quote2.ShippingAddress == nil || quote2.ShippingAddress.Line1 != "200 Shipping Ave" {
+		t.Error("Shipping should be copied from customer when not explicitly set")
+	}
+}
+
+func TestQuoteService_GetByShareToken(t *testing.T) {
+	quoteSvc, customerSvc, _, _ := newQuoteTestServices(t)
+	ctx := context.Background()
+
+	customer := createQuoteTestCustomer(t, customerSvc, ctx)
+
+	quote := &model.Quote{
+		CustomerID: customer.ID,
+		Title:      "Share Token Fetch",
+	}
+	if err := quoteSvc.Create(ctx, quote); err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+
+	// Add an option with items
+	option := &model.QuoteOption{
+		QuoteID: quote.ID,
+		Name:    "Option A",
+	}
+	if err := quoteSvc.CreateOption(ctx, option); err != nil {
+		t.Fatalf("CreateOption failed: %v", err)
+	}
+
+	item := &model.QuoteLineItem{
+		OptionID:       option.ID,
+		Type:           model.QuoteLineItemTypePrinting,
+		Description:    "Widget",
+		Quantity:       2,
+		Unit:           "each",
+		UnitPriceCents: 1000,
+		TotalCents:     2000,
+	}
+	if err := quoteSvc.CreateLineItem(ctx, item); err != nil {
+		t.Fatalf("CreateLineItem failed: %v", err)
+	}
+
+	// Fetch by share token — should be fully enriched
+	got, err := quoteSvc.GetByShareToken(ctx, quote.ShareToken)
+	if err != nil {
+		t.Fatalf("GetByShareToken failed: %v", err)
+	}
+	if got == nil {
+		t.Fatal("GetByShareToken returned nil")
+	}
+	if got.ID != quote.ID {
+		t.Errorf("ID = %v, want %v", got.ID, quote.ID)
+	}
+	if got.Customer == nil {
+		t.Error("GetByShareToken should enrich customer")
+	}
+	if got.Customer != nil && got.Customer.Name != "Test Customer" {
+		t.Errorf("Customer.Name = %q, want %q", got.Customer.Name, "Test Customer")
+	}
+	if len(got.Options) != 1 {
+		t.Fatalf("len(Options) = %d, want 1", len(got.Options))
+	}
+	if len(got.Options[0].Items) != 1 {
+		t.Fatalf("len(Options[0].Items) = %d, want 1", len(got.Options[0].Items))
+	}
+	if got.Options[0].Items[0].Description != "Widget" {
+		t.Errorf("Item description = %q, want %q", got.Options[0].Items[0].Description, "Widget")
+	}
+	if len(got.Events) == 0 {
+		t.Error("GetByShareToken should enrich events")
+	}
+
+	// Non-existent token
+	missing, err := quoteSvc.GetByShareToken(ctx, "nonexistent_token")
+	if err != nil {
+		t.Fatalf("GetByShareToken for missing token failed: %v", err)
+	}
+	if missing != nil {
+		t.Error("GetByShareToken should return nil for non-existent token")
+	}
+}
+
 func TestQuoteService_LineItem_RecalculatesTotal(t *testing.T) {
 	quoteSvc, customerSvc, _, repos := newQuoteTestServices(t)
 	ctx := context.Background()

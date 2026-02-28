@@ -243,6 +243,101 @@ func TestCustomerRepository_Update(t *testing.T) {
 	}
 }
 
+func TestCustomerRepository_AddressRoundTrip(t *testing.T) {
+	db := openTestDB(t)
+	repo := &CustomerRepository{db: db}
+	ctx := context.Background()
+
+	billing := &model.Address{
+		Line1:   "123 Main St",
+		Line2:   "Suite 100",
+		City:    "Springfield",
+		State:   "IL",
+		Zip:     "62701",
+		Country: "US",
+	}
+	shipping := &model.Address{
+		Line1:   "456 Oak Ave",
+		City:    "Chicago",
+		State:   "IL",
+		Zip:     "60601",
+		Country: "US",
+	}
+
+	customer := &model.Customer{
+		Name:            "Address Test",
+		Email:           "addr@example.com",
+		BillingAddress:  billing,
+		ShippingAddress: shipping,
+	}
+	if err := repo.Create(ctx, customer); err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+
+	// GetByID should return addresses
+	got, err := repo.GetByID(ctx, customer.ID)
+	if err != nil {
+		t.Fatalf("GetByID failed: %v", err)
+	}
+	if got.BillingAddress == nil {
+		t.Fatal("BillingAddress should not be nil")
+	}
+	if got.BillingAddress.Line1 != "123 Main St" {
+		t.Errorf("BillingAddress.Line1 = %q, want %q", got.BillingAddress.Line1, "123 Main St")
+	}
+	if got.BillingAddress.Line2 != "Suite 100" {
+		t.Errorf("BillingAddress.Line2 = %q, want %q", got.BillingAddress.Line2, "Suite 100")
+	}
+	if got.BillingAddress.City != "Springfield" {
+		t.Errorf("BillingAddress.City = %q, want %q", got.BillingAddress.City, "Springfield")
+	}
+	if got.ShippingAddress == nil {
+		t.Fatal("ShippingAddress should not be nil")
+	}
+	if got.ShippingAddress.Line1 != "456 Oak Ave" {
+		t.Errorf("ShippingAddress.Line1 = %q, want %q", got.ShippingAddress.Line1, "456 Oak Ave")
+	}
+
+	// GetByEmail should also return addresses
+	byEmail, err := repo.GetByEmail(ctx, "addr@example.com")
+	if err != nil {
+		t.Fatalf("GetByEmail failed: %v", err)
+	}
+	if byEmail.BillingAddress == nil || byEmail.BillingAddress.Line1 != "123 Main St" {
+		t.Error("GetByEmail should return billing address")
+	}
+
+	// Update: change billing, clear shipping
+	got.BillingAddress.Line1 = "789 New St"
+	got.ShippingAddress = nil
+	if err := repo.Update(ctx, got); err != nil {
+		t.Fatalf("Update failed: %v", err)
+	}
+
+	updated, err := repo.GetByID(ctx, customer.ID)
+	if err != nil {
+		t.Fatalf("GetByID after update failed: %v", err)
+	}
+	if updated.BillingAddress == nil || updated.BillingAddress.Line1 != "789 New St" {
+		t.Errorf("Updated BillingAddress.Line1 = %v, want %q", updated.BillingAddress, "789 New St")
+	}
+	if updated.ShippingAddress != nil {
+		t.Errorf("ShippingAddress should be nil after clearing, got %v", updated.ShippingAddress)
+	}
+
+	// List should also return addresses
+	list, err := repo.List(ctx, model.CustomerFilters{Search: "Address Test"})
+	if err != nil {
+		t.Fatalf("List failed: %v", err)
+	}
+	if len(list) != 1 {
+		t.Fatalf("List: len = %d, want 1", len(list))
+	}
+	if list[0].BillingAddress == nil || list[0].BillingAddress.Line1 != "789 New St" {
+		t.Error("List should return billing address")
+	}
+}
+
 func TestCustomerRepository_Delete(t *testing.T) {
 	db := openTestDB(t)
 	repo := &CustomerRepository{db: db}

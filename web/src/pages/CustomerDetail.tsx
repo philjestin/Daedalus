@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Mail, Building2, Phone, FileText, Package, Trash2, Plus } from 'lucide-react'
+import { ArrowLeft, Mail, Building2, Phone, FileText, Package, Trash2, Plus, MapPin } from 'lucide-react'
 import { customersApi, quotesApi, ordersApi } from '../api/client'
-import type { Customer, Quote, Order } from '../types'
+import type { Customer, Quote, Order, Address } from '../types'
 
 export default function CustomerDetail() {
   const { id } = useParams<{ id: string }>()
@@ -14,6 +14,8 @@ export default function CustomerDetail() {
   const [activeTab, setActiveTab] = useState<'quotes' | 'orders'>('quotes')
   const [editing, setEditing] = useState(false)
   const [showNewQuote, setShowNewQuote] = useState(false)
+  const [billingAddr, setBillingAddr] = useState<Address>({})
+  const [shippingAddr, setShippingAddr] = useState<Address>({})
 
   const loadData = async () => {
     if (!id) return
@@ -62,11 +64,20 @@ export default function CustomerDetail() {
     }
   }
 
+  const startEditing = () => {
+    if (customer) {
+      setBillingAddr(customer.billing_address || {})
+      setShippingAddr(customer.shipping_address || {})
+    }
+    setEditing(true)
+  }
+
   const handleUpdate = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     if (!id) return
     const form = e.currentTarget
     const formData = new FormData(form)
+    const hasAddr = (a: Address) => !!(a.line1 || a.city || a.state || a.zip)
     try {
       const updated = await customersApi.update(id, {
         name: formData.get('name') as string,
@@ -74,6 +85,8 @@ export default function CustomerDetail() {
         company: formData.get('company') as string || undefined,
         phone: formData.get('phone') as string || undefined,
         notes: formData.get('notes') as string || undefined,
+        billing_address: hasAddr(billingAddr) ? billingAddr : undefined,
+        shipping_address: hasAddr(shippingAddr) ? shippingAddr : undefined,
       })
       setCustomer(updated)
       setEditing(false)
@@ -116,7 +129,7 @@ export default function CustomerDetail() {
           <h1 className="text-2xl font-display font-bold text-surface-100">{customer.name}</h1>
           <div className="flex items-center gap-2">
             <button
-              onClick={() => setEditing(!editing)}
+              onClick={() => editing ? setEditing(false) : startEditing()}
               className="px-4 py-2 text-sm text-surface-400 hover:text-surface-200 border border-surface-700 rounded-lg hover:bg-surface-800"
             >
               {editing ? 'Cancel' : 'Edit'}
@@ -159,6 +172,37 @@ export default function CustomerDetail() {
                   <label className="block text-xs font-medium text-surface-400 mb-1">Notes</label>
                   <textarea name="notes" defaultValue={customer.notes} rows={3} className="w-full px-3 py-2 bg-surface-800 border border-surface-700 rounded-lg text-surface-100 text-sm focus:outline-none focus:ring-1 focus:ring-accent-500" />
                 </div>
+
+                {/* Billing Address */}
+                <div className="pt-2 border-t border-surface-800">
+                  <label className="block text-xs font-medium text-surface-400 mb-1">Billing Address</label>
+                  <div className="space-y-1.5">
+                    <input value={billingAddr.line1 || ''} onChange={e => setBillingAddr(a => ({ ...a, line1: e.target.value }))} placeholder="Address line 1" className="w-full px-3 py-1.5 bg-surface-800 border border-surface-700 rounded-lg text-surface-100 text-sm focus:outline-none focus:ring-1 focus:ring-accent-500" />
+                    <input value={billingAddr.line2 || ''} onChange={e => setBillingAddr(a => ({ ...a, line2: e.target.value }))} placeholder="Address line 2" className="w-full px-3 py-1.5 bg-surface-800 border border-surface-700 rounded-lg text-surface-100 text-sm focus:outline-none focus:ring-1 focus:ring-accent-500" />
+                    <div className="grid grid-cols-3 gap-1.5">
+                      <input value={billingAddr.city || ''} onChange={e => setBillingAddr(a => ({ ...a, city: e.target.value }))} placeholder="City" className="px-3 py-1.5 bg-surface-800 border border-surface-700 rounded-lg text-surface-100 text-sm focus:outline-none focus:ring-1 focus:ring-accent-500" />
+                      <input value={billingAddr.state || ''} onChange={e => setBillingAddr(a => ({ ...a, state: e.target.value }))} placeholder="State" className="px-3 py-1.5 bg-surface-800 border border-surface-700 rounded-lg text-surface-100 text-sm focus:outline-none focus:ring-1 focus:ring-accent-500" />
+                      <input value={billingAddr.zip || ''} onChange={e => setBillingAddr(a => ({ ...a, zip: e.target.value }))} placeholder="Zip" className="px-3 py-1.5 bg-surface-800 border border-surface-700 rounded-lg text-surface-100 text-sm focus:outline-none focus:ring-1 focus:ring-accent-500" />
+                    </div>
+                    <input value={billingAddr.country || ''} onChange={e => setBillingAddr(a => ({ ...a, country: e.target.value }))} placeholder="Country" className="w-full px-3 py-1.5 bg-surface-800 border border-surface-700 rounded-lg text-surface-100 text-sm focus:outline-none focus:ring-1 focus:ring-accent-500" />
+                  </div>
+                </div>
+
+                {/* Shipping Address */}
+                <div>
+                  <label className="block text-xs font-medium text-surface-400 mb-1">Shipping Address</label>
+                  <div className="space-y-1.5">
+                    <input value={shippingAddr.line1 || ''} onChange={e => setShippingAddr(a => ({ ...a, line1: e.target.value }))} placeholder="Address line 1" className="w-full px-3 py-1.5 bg-surface-800 border border-surface-700 rounded-lg text-surface-100 text-sm focus:outline-none focus:ring-1 focus:ring-accent-500" />
+                    <input value={shippingAddr.line2 || ''} onChange={e => setShippingAddr(a => ({ ...a, line2: e.target.value }))} placeholder="Address line 2" className="w-full px-3 py-1.5 bg-surface-800 border border-surface-700 rounded-lg text-surface-100 text-sm focus:outline-none focus:ring-1 focus:ring-accent-500" />
+                    <div className="grid grid-cols-3 gap-1.5">
+                      <input value={shippingAddr.city || ''} onChange={e => setShippingAddr(a => ({ ...a, city: e.target.value }))} placeholder="City" className="px-3 py-1.5 bg-surface-800 border border-surface-700 rounded-lg text-surface-100 text-sm focus:outline-none focus:ring-1 focus:ring-accent-500" />
+                      <input value={shippingAddr.state || ''} onChange={e => setShippingAddr(a => ({ ...a, state: e.target.value }))} placeholder="State" className="px-3 py-1.5 bg-surface-800 border border-surface-700 rounded-lg text-surface-100 text-sm focus:outline-none focus:ring-1 focus:ring-accent-500" />
+                      <input value={shippingAddr.zip || ''} onChange={e => setShippingAddr(a => ({ ...a, zip: e.target.value }))} placeholder="Zip" className="px-3 py-1.5 bg-surface-800 border border-surface-700 rounded-lg text-surface-100 text-sm focus:outline-none focus:ring-1 focus:ring-accent-500" />
+                    </div>
+                    <input value={shippingAddr.country || ''} onChange={e => setShippingAddr(a => ({ ...a, country: e.target.value }))} placeholder="Country" className="w-full px-3 py-1.5 bg-surface-800 border border-surface-700 rounded-lg text-surface-100 text-sm focus:outline-none focus:ring-1 focus:ring-accent-500" />
+                  </div>
+                </div>
+
                 <button type="submit" className="w-full px-4 py-2 bg-accent-500 text-white rounded-lg hover:bg-accent-600 text-sm font-medium">Save</button>
               </form>
             </div>
@@ -185,6 +229,42 @@ export default function CustomerDetail() {
               {customer.notes && (
                 <div className="pt-2 border-t border-surface-800">
                   <p className="text-sm text-surface-400">{customer.notes}</p>
+                </div>
+              )}
+              {(customer.billing_address || customer.shipping_address) && (
+                <div className="pt-2 border-t border-surface-800 space-y-2">
+                  {customer.billing_address && (
+                    <div>
+                      <div className="flex items-center gap-1 text-xs font-medium text-surface-400 mb-0.5">
+                        <MapPin className="h-3 w-3" />
+                        Billing
+                      </div>
+                      <div className="text-xs text-surface-300 space-y-0.5">
+                        {customer.billing_address.line1 && <div>{customer.billing_address.line1}</div>}
+                        {customer.billing_address.line2 && <div>{customer.billing_address.line2}</div>}
+                        {(customer.billing_address.city || customer.billing_address.state || customer.billing_address.zip) && (
+                          <div>{[customer.billing_address.city, customer.billing_address.state].filter(Boolean).join(', ')} {customer.billing_address.zip}</div>
+                        )}
+                        {customer.billing_address.country && <div>{customer.billing_address.country}</div>}
+                      </div>
+                    </div>
+                  )}
+                  {customer.shipping_address && (
+                    <div>
+                      <div className="flex items-center gap-1 text-xs font-medium text-surface-400 mb-0.5">
+                        <MapPin className="h-3 w-3" />
+                        Shipping
+                      </div>
+                      <div className="text-xs text-surface-300 space-y-0.5">
+                        {customer.shipping_address.line1 && <div>{customer.shipping_address.line1}</div>}
+                        {customer.shipping_address.line2 && <div>{customer.shipping_address.line2}</div>}
+                        {(customer.shipping_address.city || customer.shipping_address.state || customer.shipping_address.zip) && (
+                          <div>{[customer.shipping_address.city, customer.shipping_address.state].filter(Boolean).join(', ')} {customer.shipping_address.zip}</div>
+                        )}
+                        {customer.shipping_address.country && <div>{customer.shipping_address.country}</div>}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
               <div className="pt-2 border-t border-surface-800 text-xs text-surface-500">

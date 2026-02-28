@@ -729,6 +729,8 @@ CREATE TABLE IF NOT EXISTS customers (
     company TEXT,
     phone TEXT,
     notes TEXT,
+    billing_address_json TEXT,
+    shipping_address_json TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -797,6 +799,15 @@ CREATE TABLE IF NOT EXISTS quotes (
     valid_until TEXT,
     accepted_option_id TEXT,
     order_id TEXT REFERENCES orders(id) ON DELETE SET NULL,
+    discount_type TEXT DEFAULT 'none',
+    discount_value INTEGER DEFAULT 0,
+    rush_fee_cents INTEGER DEFAULT 0,
+    tax_rate INTEGER DEFAULT 0,
+    terms TEXT,
+    requested_due_date TEXT,
+    billing_address_json TEXT,
+    shipping_address_json TEXT,
+    share_token TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     sent_at TEXT,
@@ -805,6 +816,7 @@ CREATE TABLE IF NOT EXISTS quotes (
 CREATE INDEX IF NOT EXISTS idx_quotes_status ON quotes(status);
 CREATE INDEX IF NOT EXISTS idx_quotes_customer ON quotes(customer_id);
 CREATE INDEX IF NOT EXISTS idx_quotes_quote_number ON quotes(quote_number);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_quotes_share_token ON quotes(share_token);
 
 CREATE TABLE IF NOT EXISTS quote_options (
     id TEXT PRIMARY KEY,

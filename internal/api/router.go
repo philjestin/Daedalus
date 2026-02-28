@@ -49,6 +49,30 @@ func NewRouter(services *service.Services, hub *realtime.Hub) http.Handler {
 	// WebSocket endpoint
 	r.Get("/ws", hub.HandleWebSocket)
 
+	// Public API routes (no auth required)
+	r.Route("/api/public", func(r chi.Router) {
+		// Public quote by share token
+		if services.Quotes != nil {
+			quoteHandler := NewQuoteHandler(services.Quotes)
+			r.Get("/quotes/{token}", quoteHandler.GetByShareToken)
+		}
+		// Public business info
+		if services.Settings != nil {
+			r.Get("/business-info", func(w http.ResponseWriter, req *http.Request) {
+				ctx := req.Context()
+				keys := []string{"business_name", "business_address_json", "business_phone", "business_email", "business_website"}
+				result := map[string]interface{}{}
+				for _, key := range keys {
+					setting, err := services.Settings.Get(ctx, key)
+					if err == nil && setting != nil {
+						result[key] = setting.Value
+					}
+				}
+				respondJSON(w, http.StatusOK, result)
+			})
+		}
+	})
+
 	// API routes
 	r.Route("/api", func(r chi.Router) {
 		// Projects (Product Catalog)

@@ -1271,6 +1271,19 @@ export interface Feedback {
 }
 
 // ============================================
+// Addresses
+// ============================================
+
+export interface Address {
+  line1?: string
+  line2?: string
+  city?: string
+  state?: string
+  zip?: string
+  country?: string
+}
+
+// ============================================
 // Customers
 // ============================================
 
@@ -1281,6 +1294,8 @@ export interface Customer {
   company?: string
   phone?: string
   notes?: string
+  billing_address?: Address
+  shipping_address?: Address
   created_at: string
   updated_at: string
 }
@@ -1290,7 +1305,8 @@ export interface Customer {
 // ============================================
 
 export type QuoteStatus = 'draft' | 'sent' | 'accepted' | 'rejected' | 'expired'
-export type QuoteLineItemType = 'printing' | 'post_processing' | 'consulting' | 'design' | 'other'
+export type QuoteLineItemType = 'printing' | 'post_processing' | 'consulting' | 'design' | 'other' | 'labor' | 'consumables' | 'shipping' | 'finishing'
+export type DiscountType = 'none' | 'flat' | 'percent'
 
 export interface Quote {
   id: string
@@ -1302,6 +1318,15 @@ export interface Quote {
   valid_until?: string
   accepted_option_id?: string
   order_id?: string
+  discount_type: DiscountType
+  discount_value: number
+  rush_fee_cents: number
+  tax_rate: number
+  terms?: string
+  requested_due_date?: string
+  billing_address?: Address
+  shipping_address?: Address
+  share_token?: string
   created_at: string
   updated_at: string
   sent_at?: string

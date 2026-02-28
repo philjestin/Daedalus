@@ -28,6 +28,37 @@ func (r *QuoteRepository) NextQuoteNumber(ctx context.Context) (string, error) {
 	return fmt.Sprintf("Q-%04d", maxNum+1), nil
 }
 
+// quoteColumns lists all quote columns for SELECT queries.
+const quoteColumns = `id, quote_number, customer_id, status, title, notes, valid_until, accepted_option_id, order_id,
+	discount_type, discount_value, rush_fee_cents, tax_rate, terms, requested_due_date,
+	billing_address_json, shipping_address_json, share_token,
+	created_at, updated_at, sent_at, accepted_at`
+
+// scanQuote scans a row into a Quote struct, handling JSON address fields and time conversion.
+func scanQuote(s scannable) (*model.Quote, error) {
+	var q model.Quote
+	var billingJSON, shippingJSON, shareToken *string
+	err := scanRow(s,
+		&q.ID, &q.QuoteNumber, &q.CustomerID, &q.Status, &q.Title, &q.Notes, &q.ValidUntil,
+		&q.AcceptedOptionID, &q.OrderID,
+		&q.DiscountType, &q.DiscountValue, &q.RushFeeCents, &q.TaxRate, &q.Terms, &q.RequestedDueDate,
+		&billingJSON, &shippingJSON, &shareToken,
+		&q.CreatedAt, &q.UpdatedAt, &q.SentAt, &q.AcceptedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+	q.BillingAddress = unmarshalAddress(billingJSON)
+	q.ShippingAddress = unmarshalAddress(shippingJSON)
+	if shareToken != nil {
+		q.ShareToken = *shareToken
+	}
+	if q.DiscountType == "" {
+		q.DiscountType = model.DiscountTypeNone
+	}
+	return &q, nil
+}
+
 // Create inserts a new quote.
 func (r *QuoteRepository) Create(ctx context.Context, quote *model.Quote) error {
 	quote.ID = uuid.New()
@@ -36,46 +67,65 @@ func (r *QuoteRepository) Create(ctx context.Context, quote *model.Quote) error 
 	if quote.Status == "" {
 		quote.Status = model.QuoteStatusDraft
 	}
+	if quote.DiscountType == "" {
+		quote.DiscountType = model.DiscountTypeNone
+	}
+
+	// Store NULL instead of empty string for share_token to allow UNIQUE index
+	var shareToken *string
+	if quote.ShareToken != "" {
+		shareToken = &quote.ShareToken
+	}
 
 	_, err := r.db.ExecContext(ctx, `
-		INSERT INTO quotes (id, quote_number, customer_id, status, title, notes, valid_until, accepted_option_id, order_id, created_at, updated_at, sent_at, accepted_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, quote.ID, quote.QuoteNumber, quote.CustomerID, quote.Status, quote.Title, quote.Notes, quote.ValidUntil, quote.AcceptedOptionID, quote.OrderID, quote.CreatedAt, quote.UpdatedAt, quote.SentAt, quote.AcceptedAt)
+		INSERT INTO quotes (id, quote_number, customer_id, status, title, notes, valid_until, accepted_option_id, order_id,
+			discount_type, discount_value, rush_fee_cents, tax_rate, terms, requested_due_date,
+			billing_address_json, shipping_address_json, share_token,
+			created_at, updated_at, sent_at, accepted_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, quote.ID, quote.QuoteNumber, quote.CustomerID, quote.Status, quote.Title, quote.Notes, quote.ValidUntil,
+		quote.AcceptedOptionID, quote.OrderID,
+		quote.DiscountType, quote.DiscountValue, quote.RushFeeCents, quote.TaxRate, quote.Terms, quote.RequestedDueDate,
+		marshalAddress(quote.BillingAddress), marshalAddress(quote.ShippingAddress), shareToken,
+		quote.CreatedAt, quote.UpdatedAt, quote.SentAt, quote.AcceptedAt)
 	return err
 }
 
 // GetByID retrieves a quote by ID.
 func (r *QuoteRepository) GetByID(ctx context.Context, id uuid.UUID) (*model.Quote, error) {
-	var q model.Quote
-	row := r.db.QueryRowContext(ctx, `
-		SELECT id, quote_number, customer_id, status, title, notes, valid_until, accepted_option_id, order_id, created_at, updated_at, sent_at, accepted_at
-		FROM quotes WHERE id = ?
-	`, id)
-	err := scanRow(row, &q.ID, &q.QuoteNumber, &q.CustomerID, &q.Status, &q.Title, &q.Notes, &q.ValidUntil, &q.AcceptedOptionID, &q.OrderID, &q.CreatedAt, &q.UpdatedAt, &q.SentAt, &q.AcceptedAt)
+	row := r.db.QueryRowContext(ctx, `SELECT `+quoteColumns+` FROM quotes WHERE id = ?`, id)
+	q, err := scanQuote(row)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
-	return &q, err
+	return q, err
+}
+
+// GetByShareToken retrieves a quote by its share token.
+func (r *QuoteRepository) GetByShareToken(ctx context.Context, token string) (*model.Quote, error) {
+	row := r.db.QueryRowContext(ctx, `SELECT `+quoteColumns+` FROM quotes WHERE share_token = ?`, token)
+	q, err := scanQuote(row)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	return q, err
 }
 
 // List retrieves quotes with optional filtering.
 func (r *QuoteRepository) List(ctx context.Context, filters model.QuoteFilters) ([]model.Quote, error) {
-	query := `
-		SELECT q.id, q.quote_number, q.customer_id, q.status, q.title, q.notes, q.valid_until, q.accepted_option_id, q.order_id, q.created_at, q.updated_at, q.sent_at, q.accepted_at
-		FROM quotes q WHERE 1=1
-	`
+	query := `SELECT ` + quoteColumns + ` FROM quotes WHERE 1=1`
 	args := []interface{}{}
 
 	if filters.Status != nil {
-		query += " AND q.status = ?"
+		query += " AND status = ?"
 		args = append(args, *filters.Status)
 	}
 	if filters.CustomerID != nil {
-		query += " AND q.customer_id = ?"
+		query += " AND customer_id = ?"
 		args = append(args, *filters.CustomerID)
 	}
 
-	query += " ORDER BY q.created_at DESC"
+	query += " ORDER BY created_at DESC"
 
 	if filters.Limit > 0 {
 		query += " LIMIT ?"
@@ -94,11 +144,11 @@ func (r *QuoteRepository) List(ctx context.Context, filters model.QuoteFilters) 
 
 	var quotes []model.Quote
 	for rows.Next() {
-		var q model.Quote
-		if err := scanRow(rows, &q.ID, &q.QuoteNumber, &q.CustomerID, &q.Status, &q.Title, &q.Notes, &q.ValidUntil, &q.AcceptedOptionID, &q.OrderID, &q.CreatedAt, &q.UpdatedAt, &q.SentAt, &q.AcceptedAt); err != nil {
+		q, err := scanQuote(rows)
+		if err != nil {
 			return nil, err
 		}
-		quotes = append(quotes, q)
+		quotes = append(quotes, *q)
 	}
 	return quotes, rows.Err()
 }
@@ -106,10 +156,27 @@ func (r *QuoteRepository) List(ctx context.Context, filters model.QuoteFilters) 
 // Update updates a quote.
 func (r *QuoteRepository) Update(ctx context.Context, quote *model.Quote) error {
 	quote.UpdatedAt = time.Now()
+
+	var shareToken *string
+	if quote.ShareToken != "" {
+		shareToken = &quote.ShareToken
+	}
+
 	_, err := r.db.ExecContext(ctx, `
-		UPDATE quotes SET customer_id = ?, status = ?, title = ?, notes = ?, valid_until = ?, accepted_option_id = ?, order_id = ?, updated_at = ?, sent_at = ?, accepted_at = ?
+		UPDATE quotes SET customer_id = ?, status = ?, title = ?, notes = ?, valid_until = ?,
+			accepted_option_id = ?, order_id = ?,
+			discount_type = ?, discount_value = ?, rush_fee_cents = ?, tax_rate = ?,
+			terms = ?, requested_due_date = ?,
+			billing_address_json = ?, shipping_address_json = ?, share_token = ?,
+			updated_at = ?, sent_at = ?, accepted_at = ?
 		WHERE id = ?
-	`, quote.CustomerID, quote.Status, quote.Title, quote.Notes, quote.ValidUntil, quote.AcceptedOptionID, quote.OrderID, quote.UpdatedAt, quote.SentAt, quote.AcceptedAt, quote.ID)
+	`, quote.CustomerID, quote.Status, quote.Title, quote.Notes, quote.ValidUntil,
+		quote.AcceptedOptionID, quote.OrderID,
+		quote.DiscountType, quote.DiscountValue, quote.RushFeeCents, quote.TaxRate,
+		quote.Terms, quote.RequestedDueDate,
+		marshalAddress(quote.BillingAddress), marshalAddress(quote.ShippingAddress), shareToken,
+		quote.UpdatedAt, quote.SentAt, quote.AcceptedAt,
+		quote.ID)
 	return err
 }
 

@@ -20,6 +20,7 @@ import Quotes from './pages/Quotes'
 import QuoteDetail from './pages/QuoteDetail'
 import Customers from './pages/Customers'
 import CustomerDetail from './pages/CustomerDetail'
+import PublicQuote from './pages/PublicQuote'
 import ErrorFallback from './components/ErrorFallback'
 import { useWebSocket } from './hooks/useWebSocket'
 
@@ -35,6 +36,8 @@ function App() {
   return (
     <Sentry.ErrorBoundary fallback={<ErrorFallback />}>
     <Routes>
+      {/* Public route — outside Layout (no sidebar/nav) */}
+      <Route path="/quote/:token" element={<PublicQuote />} />
       <Route element={<Layout />}>
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
         <Route path="/dashboard" element={<Dashboard />} />

@@ -1,8 +1,14 @@
 import { useEffect, useState } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Send, CheckCircle, XCircle, Plus, Trash2, Clock, Edit3 } from 'lucide-react'
+import {
+  ArrowLeft, Send, CheckCircle, XCircle, Plus, Trash2, Clock, Edit3,
+  Printer, Package, Truck, Wrench, Paintbrush, MessageSquare, Pencil,
+  MoreHorizontal, Copy, MapPin, DollarSign, Link2,
+} from 'lucide-react'
 import { quotesApi, projectsApi } from '../api/client'
-import type { Quote, QuoteStatus, QuoteOption, QuoteLineItemType, Project } from '../types'
+import type { Quote, QuoteStatus, QuoteOption, QuoteLineItem, QuoteLineItemType, Project, Address, DiscountType } from '../types'
+
+// ── Constants ──────────────────────────────────────────────
 
 const statusConfig: Record<QuoteStatus, { label: string; color: string; icon: typeof Clock }> = {
   draft: { label: 'Draft', color: 'bg-surface-700 text-surface-300', icon: Edit3 },
@@ -12,13 +18,53 @@ const statusConfig: Record<QuoteStatus, { label: string; color: string; icon: ty
   expired: { label: 'Expired', color: 'bg-surface-700 text-surface-400', icon: Clock },
 }
 
-const lineItemTypes: { value: QuoteLineItemType; label: string }[] = [
-  { value: 'printing', label: 'Printing' },
-  { value: 'post_processing', label: 'Post Processing' },
-  { value: 'consulting', label: 'Consulting' },
-  { value: 'design', label: 'Design' },
-  { value: 'other', label: 'Other' },
+const typeConfig: Record<QuoteLineItemType, { label: string; icon: typeof Clock; defaultUnit: string }> = {
+  printing: { label: 'Printing', icon: Printer, defaultUnit: 'each' },
+  post_processing: { label: 'Post Processing', icon: Wrench, defaultUnit: 'each' },
+  finishing: { label: 'Finishing', icon: Paintbrush, defaultUnit: 'each' },
+  labor: { label: 'Labor', icon: Clock, defaultUnit: 'hours' },
+  consumables: { label: 'Consumables', icon: Package, defaultUnit: 'each' },
+  design: { label: 'Design', icon: Pencil, defaultUnit: 'hours' },
+  consulting: { label: 'Consulting', icon: MessageSquare, defaultUnit: 'hours' },
+  shipping: { label: 'Shipping', icon: Truck, defaultUnit: 'each' },
+  other: { label: 'Other', icon: MoreHorizontal, defaultUnit: 'each' },
+}
+
+const typeOrder: QuoteLineItemType[] = [
+  'printing', 'post_processing', 'finishing', 'labor', 'consumables', 'design', 'consulting', 'shipping', 'other',
 ]
+
+const lineItemTypes = typeOrder.map(t => ({ value: t, label: typeConfig[t].label }))
+
+// ── Helpers ────────────────────────────────────────────────
+
+function formatCents(cents: number): string {
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(cents / 100)
+}
+
+function calculateFinancials(subtotalCents: number, quote: Quote) {
+  const discountAmount = quote.discount_type === 'flat'
+    ? quote.discount_value
+    : quote.discount_type === 'percent'
+      ? Math.round(subtotalCents * quote.discount_value / 10000)
+      : 0
+  const afterDiscount = subtotalCents - discountAmount
+  const withRush = afterDiscount + quote.rush_fee_cents
+  const taxAmount = Math.round(withRush * quote.tax_rate / 10000)
+  const grandTotal = withRush + taxAmount
+  return { discountAmount, afterDiscount, withRush, taxAmount, grandTotal }
+}
+
+function formatAddressLines(addr?: Address): string[] {
+  if (!addr) return []
+  const lines: string[] = []
+  if (addr.line1) lines.push(addr.line1)
+  if (addr.line2) lines.push(addr.line2)
+  const cityState = [addr.city, addr.state].filter(Boolean).join(', ')
+  if (cityState || addr.zip) lines.push([cityState, addr.zip].filter(Boolean).join(' '))
+  if (addr.country) lines.push(addr.country)
+  return lines
+}
 
 interface PendingLineItem {
   key: number
@@ -34,9 +80,7 @@ function emptyPendingItem(key: number): PendingLineItem {
   return { key, project_id: '', type: 'printing', description: '', quantity: '1', unit: 'each', unit_price: '' }
 }
 
-function formatCents(cents: number): string {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(cents / 100)
-}
+// ── Main Component ─────────────────────────────────────────
 
 export default function QuoteDetail() {
   const { id } = useParams<{ id: string }>()
@@ -48,6 +92,10 @@ export default function QuoteDetail() {
   const [addingItemToOption, setAddingItemToOption] = useState<string | null>(null)
   const [projects, setProjects] = useState<Project[]>([])
   const [pendingItems, setPendingItems] = useState<PendingLineItem[]>([])
+  const [editingBillingAddr, setEditingBillingAddr] = useState(false)
+  const [editingShippingAddr, setEditingShippingAddr] = useState(false)
+  const [copied, setCopied] = useState(false)
+  const [showTerms, setShowTerms] = useState(false)
 
   useEffect(() => {
     projectsApi.list().then(setProjects).catch(() => {})
@@ -68,6 +116,16 @@ export default function QuoteDetail() {
   useEffect(() => {
     loadQuote()
   }, [id])
+
+  const handleUpdateQuote = async (updates: Record<string, unknown>) => {
+    if (!id) return
+    try {
+      const updated = await quotesApi.update(id, updates as Partial<Quote>)
+      setQuote(updated)
+    } catch (err) {
+      console.error('Failed to update quote:', err)
+    }
+  }
 
   const handleSend = async () => {
     if (!id) return
@@ -123,7 +181,6 @@ export default function QuoteDetail() {
         name: formData.get('name') as string,
         description: formData.get('description') as string || undefined,
       })
-      // Create all pending line items
       for (const item of pendingItems) {
         if (!item.description) continue
         const quantity = parseFloat(item.quantity) || 1
@@ -163,8 +220,6 @@ export default function QuoteDetail() {
     const formData = new FormData(form)
     const quantity = parseFloat(formData.get('quantity') as string) || 1
     const unitPriceCents = Math.round(parseFloat(formData.get('unit_price') as string) * 100) || 0
-    const totalCents = Math.round(quantity * unitPriceCents)
-    const projectId = formData.get('project_id') as string || undefined
     try {
       await quotesApi.createLineItem(id, optionId, {
         type: formData.get('type') as string,
@@ -172,8 +227,8 @@ export default function QuoteDetail() {
         quantity,
         unit: formData.get('unit') as string,
         unit_price_cents: unitPriceCents,
-        total_cents: totalCents,
-        project_id: projectId,
+        total_cents: Math.round(quantity * unitPriceCents),
+        project_id: formData.get('project_id') as string || undefined,
       })
       setAddingItemToOption(null)
       loadQuote()
@@ -202,6 +257,22 @@ export default function QuoteDetail() {
     }
   }
 
+  const handleSaveAddress = async (type: 'billing' | 'shipping', addr: Address) => {
+    const key = type === 'billing' ? 'billing_address' : 'shipping_address'
+    await handleUpdateQuote({ [key]: addr })
+    if (type === 'billing') setEditingBillingAddr(false)
+    else setEditingShippingAddr(false)
+  }
+
+  const handleCopyShareLink = () => {
+    if (!quote?.share_token) return
+    const url = `${window.location.origin}/quote/${quote.share_token}`
+    navigator.clipboard.writeText(url).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -218,6 +289,10 @@ export default function QuoteDetail() {
   const StatusIcon = config.icon
   const isDraft = quote.status === 'draft'
   const isSent = quote.status === 'sent'
+
+  // Grand total from the accepted option or first option
+  const primaryOption = quote.options?.find(o => o.id === quote.accepted_option_id) || quote.options?.[0]
+  const primaryFinancials = primaryOption ? calculateFinancials(primaryOption.total_cents, quote) : null
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
@@ -237,6 +312,11 @@ export default function QuoteDetail() {
               <StatusIcon className="h-3.5 w-3.5" />
               {config.label}
             </span>
+            {primaryFinancials && (
+              <span className="text-lg font-mono font-semibold text-surface-200">
+                {formatCents(primaryFinancials.grandTotal)}
+              </span>
+            )}
           </div>
         </div>
         {quote.customer && (
@@ -245,20 +325,65 @@ export default function QuoteDetail() {
             {quote.customer.company && <span className="text-surface-500"> ({quote.customer.company})</span>}
           </p>
         )}
+
+        {/* Option comparison bar */}
+        {quote.options && quote.options.length >= 2 && (
+          <div className="flex items-center gap-3 mt-3">
+            {quote.options.map(opt => {
+              const fin = calculateFinancials(opt.total_cents, quote)
+              const isAccepted = quote.accepted_option_id === opt.id
+              return (
+                <div key={opt.id} className={`px-3 py-1.5 rounded-lg text-xs font-medium border ${isAccepted ? 'border-green-500/50 bg-green-500/10 text-green-400' : 'border-surface-700 bg-surface-800/50 text-surface-300'}`}>
+                  {opt.name}: <span className="font-mono">{formatCents(fin.grandTotal)}</span>
+                </div>
+              )
+            })}
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Main Content */}
         <div className="lg:col-span-2 space-y-6">
+
+          {/* Addresses */}
+          {(quote.billing_address || quote.shipping_address || isDraft) && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <AddressCard
+                label="Bill To"
+                address={quote.billing_address}
+                editing={editingBillingAddr}
+                editable={isDraft}
+                onEdit={() => setEditingBillingAddr(true)}
+                onCancel={() => setEditingBillingAddr(false)}
+                onSave={(addr) => handleSaveAddress('billing', addr)}
+                customerAddress={quote.customer?.billing_address}
+                onCopyFromCustomer={() => {
+                  if (quote.customer?.billing_address) handleSaveAddress('billing', quote.customer.billing_address)
+                }}
+              />
+              <AddressCard
+                label="Ship To"
+                address={quote.shipping_address}
+                editing={editingShippingAddr}
+                editable={isDraft}
+                onEdit={() => setEditingShippingAddr(true)}
+                onCancel={() => setEditingShippingAddr(false)}
+                onSave={(addr) => handleSaveAddress('shipping', addr)}
+                customerAddress={quote.customer?.shipping_address}
+                onCopyFromCustomer={() => {
+                  if (quote.customer?.shipping_address) handleSaveAddress('shipping', quote.customer.shipping_address)
+                }}
+              />
+            </div>
+          )}
+
           {/* Options */}
           <div>
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-lg font-display font-semibold text-surface-100">Options</h2>
               {isDraft && (
-                <button
-                  onClick={openAddOptionModal}
-                  className="inline-flex items-center gap-1.5 text-sm text-accent-400 hover:text-accent-300"
-                >
+                <button onClick={openAddOptionModal} className="inline-flex items-center gap-1.5 text-sm text-accent-400 hover:text-accent-300">
                   <Plus className="h-4 w-4" />
                   Add Option
                 </button>
@@ -275,7 +400,7 @@ export default function QuoteDetail() {
                   <OptionCard
                     key={option.id}
                     option={option}
-                    quoteId={quote.id}
+                    quote={quote}
                     isDraft={isDraft}
                     isSent={isSent}
                     isAccepted={quote.accepted_option_id === option.id}
@@ -319,42 +444,105 @@ export default function QuoteDetail() {
           <div className="bg-surface-900 border border-surface-800 rounded-lg p-4 space-y-3">
             <h3 className="text-sm font-medium text-surface-300">Actions</h3>
             {isDraft && (
-              <button
-                onClick={handleSend}
-                disabled={actionLoading}
-                className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium disabled:opacity-50"
-              >
+              <button onClick={handleSend} disabled={actionLoading} className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium disabled:opacity-50">
                 <Send className="h-4 w-4" />
                 Mark as Sent
               </button>
             )}
             {isSent && (
-              <button
-                onClick={handleReject}
-                disabled={actionLoading}
-                className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 border border-red-500/50 text-red-400 rounded-lg hover:bg-red-500/10 text-sm font-medium disabled:opacity-50"
-              >
+              <button onClick={handleReject} disabled={actionLoading} className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 border border-red-500/50 text-red-400 rounded-lg hover:bg-red-500/10 text-sm font-medium disabled:opacity-50">
                 <XCircle className="h-4 w-4" />
                 Mark Rejected
               </button>
             )}
             {quote.order_id && (
-              <Link
-                to={`/orders/${quote.order_id}`}
-                className="block w-full text-center px-4 py-2 border border-surface-700 text-surface-300 rounded-lg hover:bg-surface-800 text-sm"
-              >
+              <Link to={`/orders/${quote.order_id}`} className="block w-full text-center px-4 py-2 border border-surface-700 text-surface-300 rounded-lg hover:bg-surface-800 text-sm">
                 View Order
               </Link>
             )}
             {isDraft && (
-              <button
-                onClick={handleDelete}
-                className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 text-red-400 hover:bg-red-500/10 rounded-lg text-sm"
-              >
+              <button onClick={handleDelete} className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 text-red-400 hover:bg-red-500/10 rounded-lg text-sm">
                 <Trash2 className="h-4 w-4" />
                 Delete Quote
               </button>
             )}
+          </div>
+
+          {/* Financial Adjustments */}
+          <div className="bg-surface-900 border border-surface-800 rounded-lg p-4 space-y-3">
+            <h3 className="text-sm font-medium text-surface-300 flex items-center gap-1.5">
+              <DollarSign className="h-3.5 w-3.5" />
+              Financial Adjustments
+            </h3>
+
+            {/* Discount */}
+            <div>
+              <label className="block text-xs text-surface-500 mb-1">Discount</label>
+              <div className="flex gap-2">
+                <select
+                  value={quote.discount_type}
+                  onChange={(e) => handleUpdateQuote({
+                    discount_type: e.target.value as DiscountType,
+                    discount_value: e.target.value === 'none' ? 0 : quote.discount_value,
+                  })}
+                  disabled={!isDraft}
+                  className="px-2 py-1.5 bg-surface-800 border border-surface-700 rounded text-xs text-surface-200 focus:outline-none focus:ring-1 focus:ring-accent-500 disabled:opacity-50"
+                >
+                  <option value="none">None</option>
+                  <option value="flat">Flat ($)</option>
+                  <option value="percent">Percent (%)</option>
+                </select>
+                {quote.discount_type !== 'none' && (
+                  <input
+                    type="number"
+                    step="0.01"
+                    defaultValue={(quote.discount_value / 100).toFixed(2)}
+                    key={`discount-${quote.discount_type}-${quote.discount_value}`}
+                    onBlur={(e) => {
+                      const val = parseFloat(e.target.value) || 0
+                      handleUpdateQuote({ discount_value: Math.round(val * 100) })
+                    }}
+                    disabled={!isDraft}
+                    className="flex-1 px-2 py-1.5 bg-surface-800 border border-surface-700 rounded text-xs text-surface-200 text-right focus:outline-none focus:ring-1 focus:ring-accent-500 disabled:opacity-50"
+                    placeholder={quote.discount_type === 'flat' ? '$0.00' : '0.00%'}
+                  />
+                )}
+              </div>
+            </div>
+
+            {/* Rush Fee */}
+            <div>
+              <label className="block text-xs text-surface-500 mb-1">Rush Fee</label>
+              <div className="relative">
+                <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-surface-500">$</span>
+                <input
+                  type="number"
+                  step="0.01"
+                  defaultValue={(quote.rush_fee_cents / 100).toFixed(2)}
+                  key={`rush-${quote.rush_fee_cents}`}
+                  onBlur={(e) => handleUpdateQuote({ rush_fee_cents: Math.round((parseFloat(e.target.value) || 0) * 100) })}
+                  disabled={!isDraft}
+                  className="w-full pl-5 pr-2 py-1.5 bg-surface-800 border border-surface-700 rounded text-xs text-surface-200 text-right focus:outline-none focus:ring-1 focus:ring-accent-500 disabled:opacity-50"
+                />
+              </div>
+            </div>
+
+            {/* Tax Rate */}
+            <div>
+              <label className="block text-xs text-surface-500 mb-1">Tax Rate</label>
+              <div className="relative">
+                <input
+                  type="number"
+                  step="0.01"
+                  defaultValue={(quote.tax_rate / 100).toFixed(2)}
+                  key={`tax-${quote.tax_rate}`}
+                  onBlur={(e) => handleUpdateQuote({ tax_rate: Math.round((parseFloat(e.target.value) || 0) * 100) })}
+                  disabled={!isDraft}
+                  className="w-full pl-2 pr-5 py-1.5 bg-surface-800 border border-surface-700 rounded text-xs text-surface-200 text-right focus:outline-none focus:ring-1 focus:ring-accent-500 disabled:opacity-50"
+                />
+                <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-surface-500">%</span>
+              </div>
+            </div>
           </div>
 
           {/* Details */}
@@ -363,7 +551,83 @@ export default function QuoteDetail() {
             <div className="text-xs text-surface-500">Created: {new Date(quote.created_at).toLocaleString()}</div>
             {quote.sent_at && <div className="text-xs text-surface-500">Sent: {new Date(quote.sent_at).toLocaleString()}</div>}
             {quote.accepted_at && <div className="text-xs text-surface-500">Accepted: {new Date(quote.accepted_at).toLocaleString()}</div>}
-            {quote.valid_until && <div className="text-xs text-surface-500">Valid until: {new Date(quote.valid_until).toLocaleDateString()}</div>}
+
+            {/* Valid Until */}
+            <div>
+              <label className="block text-xs text-surface-500 mb-1 mt-2">Valid Until</label>
+              <input
+                type="date"
+                defaultValue={quote.valid_until ? quote.valid_until.split('T')[0] : ''}
+                key={`valid-${quote.valid_until}`}
+                onBlur={(e) => {
+                  if (e.target.value) handleUpdateQuote({ valid_until: e.target.value + 'T00:00:00Z' })
+                }}
+                disabled={!isDraft}
+                className="w-full px-2 py-1.5 bg-surface-800 border border-surface-700 rounded text-xs text-surface-200 focus:outline-none focus:ring-1 focus:ring-accent-500 disabled:opacity-50"
+              />
+            </div>
+
+            {/* Requested Due Date */}
+            <div>
+              <label className="block text-xs text-surface-500 mb-1">Requested Due Date</label>
+              <input
+                type="date"
+                defaultValue={quote.requested_due_date ? quote.requested_due_date.split('T')[0] : ''}
+                key={`due-${quote.requested_due_date}`}
+                onBlur={(e) => {
+                  if (e.target.value) handleUpdateQuote({ requested_due_date: e.target.value + 'T00:00:00Z' })
+                }}
+                disabled={!isDraft}
+                className="w-full px-2 py-1.5 bg-surface-800 border border-surface-700 rounded text-xs text-surface-200 focus:outline-none focus:ring-1 focus:ring-accent-500 disabled:opacity-50"
+              />
+            </div>
+
+            {/* Terms & Conditions */}
+            <div className="pt-2 border-t border-surface-800">
+              <button
+                onClick={() => setShowTerms(!showTerms)}
+                className="text-xs text-surface-400 hover:text-surface-200 w-full text-left"
+              >
+                Terms & Conditions {showTerms ? '\u25BE' : '\u25B8'}
+              </button>
+              {showTerms && (
+                <textarea
+                  defaultValue={quote.terms || ''}
+                  key={`terms-${quote.id}`}
+                  onBlur={(e) => handleUpdateQuote({ terms: e.target.value || undefined })}
+                  disabled={!isDraft}
+                  rows={4}
+                  placeholder="Enter terms and conditions..."
+                  className="w-full mt-1 px-2 py-1.5 bg-surface-800 border border-surface-700 rounded text-xs text-surface-200 focus:outline-none focus:ring-1 focus:ring-accent-500 disabled:opacity-50"
+                />
+              )}
+            </div>
+
+            {/* Share Link */}
+            {quote.share_token && quote.status !== 'draft' && (
+              <div className="pt-2 border-t border-surface-800">
+                <label className="block text-xs text-surface-500 mb-1">
+                  <Link2 className="h-3 w-3 inline mr-1" />
+                  Share Link
+                </label>
+                <div className="flex gap-1">
+                  <input
+                    readOnly
+                    value={`${window.location.origin}/quote/${quote.share_token}`}
+                    className="flex-1 px-2 py-1 bg-surface-800 border border-surface-700 rounded text-xs text-surface-400 truncate"
+                  />
+                  <button
+                    onClick={handleCopyShareLink}
+                    className="px-2 py-1 bg-surface-800 border border-surface-700 rounded text-xs text-surface-400 hover:text-surface-200 shrink-0"
+                    title="Copy link"
+                  >
+                    {copied ? <CheckCircle className="h-3.5 w-3.5 text-green-400" /> : <Copy className="h-3.5 w-3.5" />}
+                  </button>
+                </div>
+                {copied && <p className="text-xs text-green-400 mt-0.5">Copied!</p>}
+              </div>
+            )}
+
             {quote.notes && (
               <div className="pt-2 border-t border-surface-800">
                 <p className="text-sm text-surface-400">{quote.notes}</p>
@@ -424,7 +688,11 @@ export default function QuoteDetail() {
                         )}
                       </div>
                       <div className="grid grid-cols-6 gap-2">
-                        <select value={item.type} onChange={(e) => setPendingItems(prev => prev.map((it, i) => i === idx ? { ...it, type: e.target.value } : it))} className="col-span-1 px-2 py-1.5 bg-surface-800 border border-surface-700 rounded text-sm text-surface-200 focus:outline-none focus:ring-1 focus:ring-accent-500">
+                        <select value={item.type} onChange={(e) => {
+                          const newType = e.target.value as QuoteLineItemType
+                          const defaultUnit = typeConfig[newType]?.defaultUnit || 'each'
+                          setPendingItems(prev => prev.map((it, i) => i === idx ? { ...it, type: newType, unit: defaultUnit } : it))
+                        }} className="col-span-1 px-2 py-1.5 bg-surface-800 border border-surface-700 rounded text-sm text-surface-200 focus:outline-none focus:ring-1 focus:ring-accent-500">
                           {lineItemTypes.map((t) => (
                             <option key={t.value} value={t.value}>{t.label}</option>
                           ))}
@@ -456,9 +724,82 @@ export default function QuoteDetail() {
   )
 }
 
+// ── AddressCard Component ──────────────────────────────────
+
+interface AddressCardProps {
+  label: string
+  address?: Address
+  editing: boolean
+  editable: boolean
+  onEdit: () => void
+  onCancel: () => void
+  onSave: (addr: Address) => void
+  customerAddress?: Address
+  onCopyFromCustomer: () => void
+}
+
+function AddressCard({ label, address, editing, editable, onEdit, onCancel, onSave, customerAddress, onCopyFromCustomer }: AddressCardProps) {
+  const [form, setForm] = useState<Address>(address || {})
+
+  useEffect(() => {
+    setForm(address || {})
+  }, [address, editing])
+
+  if (editing) {
+    return (
+      <div className="bg-surface-900 border border-surface-800 rounded-lg p-4">
+        <div className="flex items-center justify-between mb-2">
+          <h4 className="text-xs font-medium text-surface-400 uppercase">{label}</h4>
+          {customerAddress && (
+            <button onClick={onCopyFromCustomer} className="text-xs text-accent-400 hover:text-accent-300">Copy from customer</button>
+          )}
+        </div>
+        <div className="space-y-2">
+          <input value={form.line1 || ''} onChange={e => setForm(f => ({ ...f, line1: e.target.value }))} placeholder="Address line 1" className="w-full px-2 py-1.5 bg-surface-800 border border-surface-700 rounded text-xs text-surface-200 focus:outline-none focus:ring-1 focus:ring-accent-500" />
+          <input value={form.line2 || ''} onChange={e => setForm(f => ({ ...f, line2: e.target.value }))} placeholder="Address line 2" className="w-full px-2 py-1.5 bg-surface-800 border border-surface-700 rounded text-xs text-surface-200 focus:outline-none focus:ring-1 focus:ring-accent-500" />
+          <div className="grid grid-cols-3 gap-2">
+            <input value={form.city || ''} onChange={e => setForm(f => ({ ...f, city: e.target.value }))} placeholder="City" className="px-2 py-1.5 bg-surface-800 border border-surface-700 rounded text-xs text-surface-200 focus:outline-none focus:ring-1 focus:ring-accent-500" />
+            <input value={form.state || ''} onChange={e => setForm(f => ({ ...f, state: e.target.value }))} placeholder="State" className="px-2 py-1.5 bg-surface-800 border border-surface-700 rounded text-xs text-surface-200 focus:outline-none focus:ring-1 focus:ring-accent-500" />
+            <input value={form.zip || ''} onChange={e => setForm(f => ({ ...f, zip: e.target.value }))} placeholder="Zip" className="px-2 py-1.5 bg-surface-800 border border-surface-700 rounded text-xs text-surface-200 focus:outline-none focus:ring-1 focus:ring-accent-500" />
+          </div>
+          <input value={form.country || ''} onChange={e => setForm(f => ({ ...f, country: e.target.value }))} placeholder="Country" className="w-full px-2 py-1.5 bg-surface-800 border border-surface-700 rounded text-xs text-surface-200 focus:outline-none focus:ring-1 focus:ring-accent-500" />
+        </div>
+        <div className="flex justify-end gap-2 mt-2">
+          <button onClick={onCancel} className="px-3 py-1 text-xs text-surface-400 hover:text-surface-200">Cancel</button>
+          <button onClick={() => onSave(form)} className="px-3 py-1 bg-accent-500 text-white rounded text-xs hover:bg-accent-600">Save</button>
+        </div>
+      </div>
+    )
+  }
+
+  const lines = formatAddressLines(address)
+  return (
+    <div className="bg-surface-900 border border-surface-800 rounded-lg p-4">
+      <div className="flex items-center justify-between mb-1">
+        <h4 className="text-xs font-medium text-surface-400 uppercase flex items-center gap-1">
+          <MapPin className="h-3 w-3" />
+          {label}
+        </h4>
+        {editable && (
+          <button onClick={onEdit} className="text-xs text-accent-400 hover:text-accent-300">Edit</button>
+        )}
+      </div>
+      {lines.length > 0 ? (
+        <div className="text-sm text-surface-300 space-y-0.5">
+          {lines.map((line, i) => <div key={i}>{line}</div>)}
+        </div>
+      ) : (
+        <p className="text-xs text-surface-500 italic">No address set</p>
+      )}
+    </div>
+  )
+}
+
+// ── OptionCard Component ───────────────────────────────────
+
 interface OptionCardProps {
   option: QuoteOption
-  quoteId: string
+  quote: Quote
   isDraft: boolean
   isSent: boolean
   isAccepted: boolean
@@ -473,10 +814,27 @@ interface OptionCardProps {
   onAccept: () => void
 }
 
-function OptionCard({ option, isDraft, isSent, isAccepted, addingItem, projects, actionLoading, onAddItem, onCancelAddItem, onSubmitItem, onDeleteItem, onDelete, onAccept }: OptionCardProps) {
+function OptionCard({ option, quote, isDraft, isSent, isAccepted, addingItem, projects, actionLoading, onAddItem, onCancelAddItem, onSubmitItem, onDeleteItem, onDelete, onAccept }: OptionCardProps) {
   const projectMap = new Map(projects.map(p => [p.id, p]))
+  const financials = calculateFinancials(option.total_cents, quote)
+  const hasAdjustments = quote.discount_type !== 'none' || quote.rush_fee_cents > 0 || quote.tax_rate > 0
+
+  // Group items by type
+  const groupedItems = new Map<QuoteLineItemType, QuoteLineItem[]>()
+  if (option.items) {
+    for (const item of option.items) {
+      const type = item.type as QuoteLineItemType
+      if (!groupedItems.has(type)) groupedItems.set(type, [])
+      groupedItems.get(type)!.push(item)
+    }
+  }
+  const orderedGroups = typeOrder
+    .filter(t => groupedItems.has(t))
+    .map(t => ({ type: t, items: groupedItems.get(t)! }))
+
   return (
     <div className={`bg-surface-900 border rounded-lg overflow-hidden ${isAccepted ? 'border-green-500/50' : 'border-surface-800'}`}>
+      {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-surface-800">
         <div>
           <h3 className="text-sm font-medium text-surface-100">
@@ -486,7 +844,9 @@ function OptionCard({ option, isDraft, isSent, isAccepted, addingItem, projects,
           {option.description && <p className="text-xs text-surface-500 mt-0.5">{option.description}</p>}
         </div>
         <div className="flex items-center gap-3">
-          <span className="text-sm font-mono font-medium text-surface-200">{formatCents(option.total_cents)}</span>
+          <span className="text-sm font-mono font-medium text-surface-200">
+            {hasAdjustments ? formatCents(financials.grandTotal) : formatCents(option.total_cents)}
+          </span>
           {isDraft && (
             <button onClick={onDelete} className="text-surface-500 hover:text-red-400" title="Delete option">
               <Trash2 className="h-4 w-4" />
@@ -495,47 +855,87 @@ function OptionCard({ option, isDraft, isSent, isAccepted, addingItem, projects,
         </div>
       </div>
 
-      {/* Line Items */}
+      {/* Grouped Line Items */}
+      {orderedGroups.length > 0 && (
+        <div className="divide-y divide-surface-800/30">
+          {orderedGroups.map(({ type, items }) => {
+            const cfg = typeConfig[type]
+            const TypeIcon = cfg.icon
+            const groupTotal = items.reduce((sum, it) => sum + it.total_cents, 0)
+            return (
+              <div key={type}>
+                <div className="flex items-center justify-between px-4 py-2 bg-surface-800/20">
+                  <div className="flex items-center gap-1.5 text-xs font-medium text-surface-400 uppercase tracking-wide">
+                    <TypeIcon className="h-3.5 w-3.5" />
+                    {cfg.label}
+                    <span className="text-surface-600 font-normal">({items.length})</span>
+                  </div>
+                  <span className="text-xs font-mono text-surface-400">{formatCents(groupTotal)}</span>
+                </div>
+                <table className="w-full">
+                  <tbody>
+                    {items.map((item) => (
+                      <tr key={item.id} className="hover:bg-surface-800/30">
+                        <td className="pl-8 pr-4 py-1.5 text-sm text-surface-300">
+                          {item.description}
+                          {item.project_id && projectMap.get(item.project_id) && (
+                            <Link to={`/projects/${item.project_id}`} className="ml-1.5 text-xs text-accent-400 hover:text-accent-300">
+                              ({projectMap.get(item.project_id)!.name})
+                            </Link>
+                          )}
+                        </td>
+                        <td className="px-4 py-1.5 text-xs text-surface-400 text-right whitespace-nowrap">{item.quantity} {item.unit}</td>
+                        <td className="px-4 py-1.5 text-xs text-surface-400 text-right font-mono whitespace-nowrap">@{formatCents(item.unit_price_cents)}</td>
+                        <td className="px-4 py-1.5 text-sm text-surface-200 text-right font-mono whitespace-nowrap">{formatCents(item.total_cents)}</td>
+                        {isDraft && (
+                          <td className="px-2 py-1.5 w-8">
+                            <button onClick={() => onDeleteItem(item.id)} className="text-surface-600 hover:text-red-400">
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </td>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* Financial Summary */}
       {option.items && option.items.length > 0 && (
-        <table className="w-full">
-          <thead>
-            <tr className="border-b border-surface-800/50">
-              <th className="text-left text-xs text-surface-500 px-4 py-2">Type</th>
-              <th className="text-left text-xs text-surface-500 px-4 py-2">Description</th>
-              <th className="text-right text-xs text-surface-500 px-4 py-2">Qty</th>
-              <th className="text-right text-xs text-surface-500 px-4 py-2">Rate</th>
-              <th className="text-right text-xs text-surface-500 px-4 py-2">Total</th>
-              {isDraft && <th className="w-8" />}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-surface-800/30">
-            {option.items.map((item) => (
-              <tr key={item.id} className="hover:bg-surface-800/30">
-                <td className="px-4 py-2">
-                  <span className="text-xs px-1.5 py-0.5 rounded bg-surface-800 text-surface-400">{item.type}</span>
-                </td>
-                <td className="px-4 py-2 text-sm text-surface-300">
-                  {item.description}
-                  {item.project_id && projectMap.get(item.project_id) && (
-                    <Link to={`/projects/${item.project_id}`} className="ml-1.5 text-xs text-accent-400 hover:text-accent-300">
-                      ({projectMap.get(item.project_id)!.name})
-                    </Link>
-                  )}
-                </td>
-                <td className="px-4 py-2 text-sm text-surface-400 text-right">{item.quantity} {item.unit}</td>
-                <td className="px-4 py-2 text-sm text-surface-400 text-right font-mono">{formatCents(item.unit_price_cents)}</td>
-                <td className="px-4 py-2 text-sm text-surface-200 text-right font-mono">{formatCents(item.total_cents)}</td>
-                {isDraft && (
-                  <td className="px-2 py-2">
-                    <button onClick={() => onDeleteItem(item.id)} className="text-surface-600 hover:text-red-400">
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  </td>
-                )}
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <div className="border-t border-surface-700 px-4 py-3 space-y-1">
+          <div className="flex justify-between text-xs text-surface-400">
+            <span>Subtotal</span>
+            <span className="font-mono">{formatCents(option.total_cents)}</span>
+          </div>
+          {quote.discount_type !== 'none' && financials.discountAmount > 0 && (
+            <div className="flex justify-between text-xs text-surface-400">
+              <span>Discount {quote.discount_type === 'percent' ? `(${(quote.discount_value / 100).toFixed(2)}%)` : '(flat)'}</span>
+              <span className="font-mono text-red-400">-{formatCents(financials.discountAmount)}</span>
+            </div>
+          )}
+          {quote.rush_fee_cents > 0 && (
+            <div className="flex justify-between text-xs text-surface-400">
+              <span>Rush Fee</span>
+              <span className="font-mono">{formatCents(quote.rush_fee_cents)}</span>
+            </div>
+          )}
+          {quote.tax_rate > 0 && (
+            <div className="flex justify-between text-xs text-surface-400">
+              <span>Tax ({(quote.tax_rate / 100).toFixed(2)}%)</span>
+              <span className="font-mono">{formatCents(financials.taxAmount)}</span>
+            </div>
+          )}
+          {hasAdjustments && (
+            <div className="flex justify-between text-sm font-medium text-surface-100 pt-1 border-t border-surface-800">
+              <span>Total</span>
+              <span className="font-mono">{formatCents(financials.grandTotal)}</span>
+            </div>
+          )}
+        </div>
       )}
 
       {/* Add Line Item Form */}
@@ -563,7 +963,13 @@ function OptionCard({ option, isDraft, isSent, isAccepted, addingItem, projects,
             </select>
           </div>
           <div className="grid grid-cols-6 gap-2">
-            <select name="type" required className="col-span-1 px-2 py-1.5 bg-surface-800 border border-surface-700 rounded text-sm text-surface-200 focus:outline-none focus:ring-1 focus:ring-accent-500">
+            <select name="type" required className="col-span-1 px-2 py-1.5 bg-surface-800 border border-surface-700 rounded text-sm text-surface-200 focus:outline-none focus:ring-1 focus:ring-accent-500" onChange={(e) => {
+              const form = e.target.form
+              if (!form) return
+              const newType = e.target.value as QuoteLineItemType
+              const unitSelect = form.elements.namedItem('unit') as HTMLSelectElement
+              if (unitSelect) unitSelect.value = typeConfig[newType]?.defaultUnit || 'each'
+            }}>
               {lineItemTypes.map((t) => (
                 <option key={t.value} value={t.value}>{t.label}</option>
               ))}
@@ -585,7 +991,7 @@ function OptionCard({ option, isDraft, isSent, isAccepted, addingItem, projects,
         </form>
       )}
 
-      {/* Footer Actions */}
+      {/* Footer */}
       <div className="flex items-center justify-between px-4 py-2 border-t border-surface-800">
         {isDraft && !addingItem && (
           <button onClick={onAddItem} className="inline-flex items-center gap-1 text-xs text-accent-400 hover:text-accent-300">
@@ -595,11 +1001,7 @@ function OptionCard({ option, isDraft, isSent, isAccepted, addingItem, projects,
         )}
         {!isDraft && <div />}
         {isSent && (
-          <button
-            onClick={onAccept}
-            disabled={actionLoading}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white rounded-lg text-xs font-medium hover:bg-green-700 disabled:opacity-50"
-          >
+          <button onClick={onAccept} disabled={actionLoading} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white rounded-lg text-xs font-medium hover:bg-green-700 disabled:opacity-50">
             <CheckCircle className="h-3.5 w-3.5" />
             Accept This Option
           </button>

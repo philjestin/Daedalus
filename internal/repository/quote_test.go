@@ -631,6 +631,168 @@ func TestQuoteRepository_RecalculateOptionTotal(t *testing.T) {
 	}
 }
 
+func TestQuoteRepository_FinancialFields(t *testing.T) {
+	db := openTestDB(t)
+	customerRepo := &CustomerRepository{db: db}
+	quoteRepo := &QuoteRepository{db: db}
+	ctx := context.Background()
+
+	customer := createTestCustomer(t, customerRepo, ctx)
+
+	billing := &model.Address{
+		Line1: "100 Quote St",
+		City:  "QuoteCity",
+		State: "QC",
+		Zip:   "12345",
+	}
+	shipping := &model.Address{
+		Line1: "200 Ship Ave",
+		City:  "ShipCity",
+	}
+
+	quote := &model.Quote{
+		QuoteNumber:    "Q-0001",
+		CustomerID:     customer.ID,
+		Title:          "Financial Test",
+		DiscountType:   model.DiscountTypePercent,
+		DiscountValue:  750, // 7.5%
+		RushFeeCents:   5000,
+		TaxRate:        825, // 8.25%
+		Terms:          "Net 30. Payment due upon receipt.",
+		BillingAddress: billing,
+		ShippingAddress: shipping,
+		ShareToken:     "abc123def456",
+	}
+
+	requestedDue := time.Now().Add(14 * 24 * time.Hour)
+	quote.RequestedDueDate = &requestedDue
+
+	if err := quoteRepo.Create(ctx, quote); err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+
+	got, err := quoteRepo.GetByID(ctx, quote.ID)
+	if err != nil {
+		t.Fatalf("GetByID failed: %v", err)
+	}
+	if got == nil {
+		t.Fatal("GetByID returned nil")
+	}
+
+	if got.DiscountType != model.DiscountTypePercent {
+		t.Errorf("DiscountType = %q, want %q", got.DiscountType, model.DiscountTypePercent)
+	}
+	if got.DiscountValue != 750 {
+		t.Errorf("DiscountValue = %d, want 750", got.DiscountValue)
+	}
+	if got.RushFeeCents != 5000 {
+		t.Errorf("RushFeeCents = %d, want 5000", got.RushFeeCents)
+	}
+	if got.TaxRate != 825 {
+		t.Errorf("TaxRate = %d, want 825", got.TaxRate)
+	}
+	if got.Terms != "Net 30. Payment due upon receipt." {
+		t.Errorf("Terms = %q, want expected value", got.Terms)
+	}
+	if got.RequestedDueDate == nil {
+		t.Error("RequestedDueDate should not be nil")
+	}
+	if got.ShareToken != "abc123def456" {
+		t.Errorf("ShareToken = %q, want %q", got.ShareToken, "abc123def456")
+	}
+
+	// Verify addresses
+	if got.BillingAddress == nil {
+		t.Fatal("BillingAddress should not be nil")
+	}
+	if got.BillingAddress.Line1 != "100 Quote St" {
+		t.Errorf("BillingAddress.Line1 = %q, want %q", got.BillingAddress.Line1, "100 Quote St")
+	}
+	if got.ShippingAddress == nil {
+		t.Fatal("ShippingAddress should not be nil")
+	}
+	if got.ShippingAddress.Line1 != "200 Ship Ave" {
+		t.Errorf("ShippingAddress.Line1 = %q, want %q", got.ShippingAddress.Line1, "200 Ship Ave")
+	}
+
+	// Update financial fields
+	got.DiscountType = model.DiscountTypeFlat
+	got.DiscountValue = 1000
+	got.RushFeeCents = 0
+	got.TaxRate = 600
+	got.Terms = "Updated terms"
+	got.BillingAddress = nil // clear billing
+	if err := quoteRepo.Update(ctx, got); err != nil {
+		t.Fatalf("Update failed: %v", err)
+	}
+
+	updated, err := quoteRepo.GetByID(ctx, quote.ID)
+	if err != nil {
+		t.Fatalf("GetByID after update failed: %v", err)
+	}
+	if updated.DiscountType != model.DiscountTypeFlat {
+		t.Errorf("Updated DiscountType = %q, want %q", updated.DiscountType, model.DiscountTypeFlat)
+	}
+	if updated.DiscountValue != 1000 {
+		t.Errorf("Updated DiscountValue = %d, want 1000", updated.DiscountValue)
+	}
+	if updated.RushFeeCents != 0 {
+		t.Errorf("Updated RushFeeCents = %d, want 0", updated.RushFeeCents)
+	}
+	if updated.TaxRate != 600 {
+		t.Errorf("Updated TaxRate = %d, want 600", updated.TaxRate)
+	}
+	if updated.Terms != "Updated terms" {
+		t.Errorf("Updated Terms = %q, want %q", updated.Terms, "Updated terms")
+	}
+	if updated.BillingAddress != nil {
+		t.Errorf("BillingAddress should be nil after clearing")
+	}
+}
+
+func TestQuoteRepository_GetByShareToken(t *testing.T) {
+	db := openTestDB(t)
+	customerRepo := &CustomerRepository{db: db}
+	quoteRepo := &QuoteRepository{db: db}
+	ctx := context.Background()
+
+	customer := createTestCustomer(t, customerRepo, ctx)
+
+	quote := &model.Quote{
+		QuoteNumber: "Q-0001",
+		CustomerID:  customer.ID,
+		Title:       "Share Token Test",
+		ShareToken:  "unique_share_token_123",
+	}
+	if err := quoteRepo.Create(ctx, quote); err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+
+	// Get by share token
+	got, err := quoteRepo.GetByShareToken(ctx, "unique_share_token_123")
+	if err != nil {
+		t.Fatalf("GetByShareToken failed: %v", err)
+	}
+	if got == nil {
+		t.Fatal("GetByShareToken returned nil")
+	}
+	if got.ID != quote.ID {
+		t.Errorf("ID = %v, want %v", got.ID, quote.ID)
+	}
+	if got.Title != "Share Token Test" {
+		t.Errorf("Title = %q, want %q", got.Title, "Share Token Test")
+	}
+
+	// Non-existent token should return nil
+	missing, err := quoteRepo.GetByShareToken(ctx, "nonexistent_token")
+	if err != nil {
+		t.Fatalf("GetByShareToken for missing token failed: %v", err)
+	}
+	if missing != nil {
+		t.Error("GetByShareToken should return nil for non-existent token")
+	}
+}
+
 func TestQuoteRepository_Events(t *testing.T) {
 	db := openTestDB(t)
 	customerRepo := &CustomerRepository{db: db}
