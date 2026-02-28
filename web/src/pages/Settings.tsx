@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Store, ShoppingBag, ExternalLink, RefreshCw, Unplug, AlertCircle, CheckCircle2, Key, Eye, EyeOff, Save, Database, Download, Trash2, RotateCcw, Plus, Zap } from 'lucide-react'
+import { Store, ShoppingBag, ExternalLink, RefreshCw, Unplug, AlertCircle, CheckCircle2, Key, Eye, EyeOff, Save, Database, Download, Trash2, RotateCcw, Plus, Zap, Settings as SettingsIcon } from 'lucide-react'
 import { etsyApi, squarespaceApi, settingsApi, backupsApi, dispatchApi } from '../api/client'
 import { cn } from '../lib/utils'
-import type { EtsyIntegration, SquarespaceIntegration, BackupInfo } from '../types'
+import type { EtsyIntegration, SquarespaceIntegration, BackupInfo, BackupConfig } from '../types'
 
 function formatBytes(bytes: number): string {
   if (bytes === 0) return '0 B'
@@ -393,6 +393,9 @@ export default function Settings() {
             </div>
           )}
 
+          {/* Auto-Backup Settings */}
+          <BackupSettings />
+
           <p className="mt-4 text-xs text-surface-500">
             Backups are stored locally in your data directory. Consider copying important backups to external storage.
           </p>
@@ -770,6 +773,132 @@ function AutoDispatchGlobalSettings() {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+function BackupSettings() {
+  const queryClient = useQueryClient()
+
+  const { data: config, isLoading } = useQuery({
+    queryKey: ['backup-config'],
+    queryFn: () => backupsApi.getConfig(),
+  })
+
+  const updateMutation = useMutation({
+    mutationFn: (newConfig: BackupConfig) => backupsApi.updateConfig(newConfig),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['backup-config'] })
+    },
+  })
+
+  const updateField = <K extends keyof BackupConfig>(key: K, value: BackupConfig[K]) => {
+    if (!config) return
+    updateMutation.mutate({ ...config, [key]: value })
+  }
+
+  if (isLoading || !config) {
+    return (
+      <div className="mt-4 pt-4 border-t border-surface-800">
+        <div className="flex items-center gap-2 text-surface-400 text-sm">
+          <RefreshCw className="h-4 w-4 animate-spin" />
+          Loading backup settings...
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="mt-4 pt-4 border-t border-surface-800">
+      <div className="flex items-center gap-2 mb-3">
+        <SettingsIcon className="h-4 w-4 text-surface-400" />
+        <h3 className="text-sm font-medium text-surface-200">Automatic Backups</h3>
+      </div>
+
+      <div className="space-y-3">
+        {/* Backup on startup */}
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm text-surface-300">Backup on startup</p>
+            <p className="text-xs text-surface-500">Create a backup before migrations run on each launch</p>
+          </div>
+          <button
+            onClick={() => updateField('auto_on_startup', !config.auto_on_startup)}
+            disabled={updateMutation.isPending}
+            className={cn(
+              'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
+              config.auto_on_startup ? 'bg-blue-500' : 'bg-surface-600'
+            )}
+          >
+            <span
+              className={cn(
+                'inline-block h-4 w-4 transform rounded-full bg-white transition-transform',
+                config.auto_on_startup ? 'translate-x-6' : 'translate-x-1'
+              )}
+            />
+          </button>
+        </div>
+
+        {/* Scheduled backups */}
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm text-surface-300">Scheduled backups</p>
+            <p className="text-xs text-surface-500">Automatically create backups on a schedule</p>
+          </div>
+          <button
+            onClick={() => updateField('schedule_enabled', !config.schedule_enabled)}
+            disabled={updateMutation.isPending}
+            className={cn(
+              'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
+              config.schedule_enabled ? 'bg-blue-500' : 'bg-surface-600'
+            )}
+          >
+            <span
+              className={cn(
+                'inline-block h-4 w-4 transform rounded-full bg-white transition-transform',
+                config.schedule_enabled ? 'translate-x-6' : 'translate-x-1'
+              )}
+            />
+          </button>
+        </div>
+
+        {/* Schedule interval (only shown when schedule is enabled) */}
+        {config.schedule_enabled && (
+          <div className="flex items-center justify-between pl-4">
+            <p className="text-sm text-surface-300">Interval</p>
+            <select
+              value={config.schedule_interval}
+              onChange={(e) => updateField('schedule_interval', e.target.value as 'daily' | 'weekly')}
+              disabled={updateMutation.isPending}
+              className="bg-surface-800 border border-surface-700 rounded-lg px-3 py-1.5 text-sm text-surface-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="daily">Daily</option>
+              <option value="weekly">Weekly</option>
+            </select>
+          </div>
+        )}
+
+        {/* Retention count */}
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm text-surface-300">Retention count</p>
+            <p className="text-xs text-surface-500">Auto-backups to keep per type (0 = unlimited)</p>
+          </div>
+          <input
+            type="number"
+            min={0}
+            value={config.retention_count}
+            onChange={(e) => {
+              const val = parseInt(e.target.value, 10)
+              if (!isNaN(val) && val >= 0) {
+                updateField('retention_count', val)
+              }
+            }}
+            disabled={updateMutation.isPending}
+            className="w-20 bg-surface-800 border border-surface-700 rounded-lg px-3 py-1.5 text-sm text-surface-100 text-center focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        </div>
+      </div>
     </div>
   )
 }

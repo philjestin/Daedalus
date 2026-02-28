@@ -1,4 +1,13 @@
-.PHONY: help dev build run test clean migrate frontend backend stop start restart db-start db-stop db-restart
+.PHONY: help dev build run test clean migrate frontend backend stop start restart db-start db-stop db-restart show-version bump-patch bump-minor bump-major release
+
+# Version
+VERSION := $(shell cat VERSION | tr -d 'v\n')
+COMMIT  := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+DATE    := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
+LDFLAGS := -X github.com/hyperion/printfarm/internal/version.Version=$(VERSION) \
+           -X github.com/hyperion/printfarm/internal/version.Commit=$(COMMIT) \
+           -X github.com/hyperion/printfarm/internal/version.Date=$(DATE) \
+           -X github.com/hyperion/printfarm/internal/version.BuiltBy=make
 
 # Configuration
 DB_PORT ?= 5433
@@ -36,6 +45,13 @@ help:
 	@echo "Server:"
 	@echo "  make server-stop  - Stop the Go backend server"
 	@echo "  make server-start - Start the Go backend server"
+	@echo ""
+	@echo "Versioning:"
+	@echo "  make show-version - Show current version"
+	@echo "  make bump-patch   - Bump patch version (1.0.0 -> 1.0.1)"
+	@echo "  make bump-minor   - Bump minor version (1.0.0 -> 1.1.0)"
+	@echo "  make bump-major   - Bump major version (1.0.0 -> 2.0.0)"
+	@echo "  make release      - Run interactive release wizard"
 
 # Quick start/stop commands
 start: db-start migrate-docker server-start
@@ -81,8 +97,8 @@ frontend:
 build: build-backend build-frontend
 
 build-backend:
-	@echo "Building Go backend..."
-	go build -buildvcs=false -o bin/server ./cmd/server
+	@echo "Building Go backend (v$(VERSION))..."
+	go build -buildvcs=false -ldflags '$(LDFLAGS)' -o bin/server ./cmd/server
 
 build-frontend:
 	@echo "Building React frontend..."
@@ -163,4 +179,20 @@ deps:
 logs:
 	@echo "=== Recent server logs ==="
 	@tail -50 /tmp/printfarm.log 2>/dev/null || echo "No log file found"
+
+# Versioning
+show-version:
+	@echo "$(VERSION)"
+
+bump-patch:
+	@./scripts/bump-version.sh patch
+
+bump-minor:
+	@./scripts/bump-version.sh minor
+
+bump-major:
+	@./scripts/bump-version.sh major
+
+release:
+	@./scripts/release.sh
 

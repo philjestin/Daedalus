@@ -970,6 +970,13 @@ export interface BackupInfo {
   created_at: string
 }
 
+export interface BackupConfig {
+  auto_on_startup: boolean
+  schedule_enabled: boolean
+  schedule_interval: 'daily' | 'weekly'
+  retention_count: number
+}
+
 // Squarespace Integration types
 export interface SquarespaceIntegration {
   connected: boolean

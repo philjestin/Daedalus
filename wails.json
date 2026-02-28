@@ -11,5 +11,8 @@
   "author": {
     "name": "Daedalus",
     "email": "hello@daedalus.app"
+  },
+  "info": {
+    "productVersion": "1.0.0"
   }
 }
