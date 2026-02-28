@@ -34,6 +34,13 @@ export default function OrdersDocs() {
         <li>The order is created in <strong>Pending</strong> status</li>
       </ol>
 
+      <h3>From Accepted Quotes</h3>
+      <p>
+        When a <a href="/docs/quotes">quote</a> is accepted, Daedalus automatically
+        creates an order from the winning option&apos;s line items. Project links carry
+        through so each order item references the correct product in your catalog.
+      </p>
+
       <h3>Channel Imports</h3>
       <p>
         Orders from connected sales channels (Etsy, Shopify, Squarespace) are imported
