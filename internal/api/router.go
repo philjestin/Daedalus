@@ -333,37 +333,38 @@ func NewRouter(services *service.Services, hub *realtime.Hub) http.Handler {
 			})
 		}
 
-		// Etsy Integration
-		if services.Etsy != nil {
-			etsyHandler := NewEtsyHandler(services.Etsy, services.Orders)
-			etsyHandler.SetTemplateSvc(services.Templates)
-			r.Route("/integrations/etsy", func(r chi.Router) {
-				// Auth
-				r.Get("/auth", etsyHandler.StartAuth)
-				r.Get("/callback", etsyHandler.Callback)
-				r.Get("/status", etsyHandler.GetStatus)
-				r.Post("/disconnect", etsyHandler.Disconnect)
+		// Etsy Integration (always registered — can be configured at runtime)
+		etsyHandler := NewEtsyHandler(services.Etsy, services.Orders)
+		etsyHandler.SetTemplateSvc(services.Templates)
+		r.Route("/integrations/etsy", func(r chi.Router) {
+			// Configuration
+			r.Put("/configure", etsyHandler.Configure)
 
-				// Receipts/Orders
-				r.Post("/receipts/sync", etsyHandler.SyncReceipts)
-				r.Get("/receipts", etsyHandler.ListReceipts)
-				r.Get("/receipts/{id}", etsyHandler.GetReceipt)
-				r.Post("/receipts/{id}/process", etsyHandler.ProcessReceipt)
+			// Auth
+			r.Get("/auth", etsyHandler.StartAuth)
+			r.Get("/callback", etsyHandler.Callback)
+			r.Get("/status", etsyHandler.GetStatus)
+			r.Post("/disconnect", etsyHandler.Disconnect)
 
-				// Listings
-				r.Post("/listings/sync", etsyHandler.SyncListings)
-				r.Get("/listings", etsyHandler.ListListings)
-				r.Get("/listings/{id}", etsyHandler.GetListing)
-				r.Post("/listings/{id}/link", etsyHandler.LinkListing)
-				r.Delete("/listings/{id}/link", etsyHandler.UnlinkListing)
-				r.Post("/listings/{id}/sync-inventory", etsyHandler.SyncInventory)
+			// Receipts/Orders
+			r.Post("/receipts/sync", etsyHandler.SyncReceipts)
+			r.Get("/receipts", etsyHandler.ListReceipts)
+			r.Get("/receipts/{id}", etsyHandler.GetReceipt)
+			r.Post("/receipts/{id}/process", etsyHandler.ProcessReceipt)
 
-				// Webhooks
-				r.Post("/webhook", etsyHandler.HandleWebhook)
-				r.Get("/webhook/events", etsyHandler.ListWebhookEvents)
-				r.Post("/webhook/events/{id}/reprocess", etsyHandler.ReprocessWebhookEvent)
-			})
-		}
+			// Listings
+			r.Post("/listings/sync", etsyHandler.SyncListings)
+			r.Get("/listings", etsyHandler.ListListings)
+			r.Get("/listings/{id}", etsyHandler.GetListing)
+			r.Post("/listings/{id}/link", etsyHandler.LinkListing)
+			r.Delete("/listings/{id}/link", etsyHandler.UnlinkListing)
+			r.Post("/listings/{id}/sync-inventory", etsyHandler.SyncInventory)
+
+			// Webhooks
+			r.Post("/webhook", etsyHandler.HandleWebhook)
+			r.Get("/webhook/events", etsyHandler.ListWebhookEvents)
+			r.Post("/webhook/events/{id}/reprocess", etsyHandler.ReprocessWebhookEvent)
+		})
 
 		// Squarespace Integration
 		if services.Squarespace != nil {

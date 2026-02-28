@@ -11,6 +11,7 @@ import {
   Receipt,
   DollarSign,
   ShoppingBag,
+  GanttChart,
   PanelLeftClose,
   PanelLeftOpen,
 } from 'lucide-react'
@@ -27,6 +28,7 @@ const navigation = [
   { name: 'Expenses', href: '/expenses', icon: Receipt },
   { name: 'Sales', href: '/sales', icon: DollarSign },
   { name: 'Channels', href: '/channels', icon: ShoppingBag },
+  { name: 'Timeline', href: '/timeline', icon: GanttChart },
 ]
 
 export default function Layout() {

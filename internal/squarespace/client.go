@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"math"
 	"net/http"
 	"net/url"
@@ -51,7 +52,13 @@ func (c *Client) do(ctx context.Context, method, path string, query url.Values) 
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", "Daedalus/1.0")
 
-	return c.httpClient.Do(req)
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+
+	slog.Debug("squarespace API request", "method", method, "url", u, "status", resp.StatusCode)
+	return resp, nil
 }
 
 // parseResponse reads and parses a JSON response.
@@ -65,7 +72,15 @@ func parseResponse[T any](resp *http.Response) (T, error) {
 	}
 
 	if resp.StatusCode >= 400 {
-		return result, fmt.Errorf("API error %d: %s", resp.StatusCode, string(body))
+		// Provide helpful messages for common errors
+		switch resp.StatusCode {
+		case 401:
+			return result, fmt.Errorf("invalid API key or insufficient permissions")
+		case 404:
+			return result, fmt.Errorf("Commerce API not available — ensure your Squarespace site has a Commerce plan")
+		default:
+			return result, fmt.Errorf("API error %d: %s", resp.StatusCode, string(body))
+		}
 	}
 
 	if err := json.Unmarshal(body, &result); err != nil {

@@ -466,7 +466,7 @@ export default function Channels() {
             <select
               value={channel}
               onChange={(e) => setChannel(e.target.value as Channel)}
-              className="bg-surface-800 border border-surface-700 rounded-lg px-3 py-1.5 text-sm text-surface-200"
+              className="input h-auto py-1.5 w-auto"
             >
               <option value="all">All Channels</option>
               {etsyStatus?.connected && <option value="etsy">Etsy</option>}
@@ -727,7 +727,7 @@ export default function Channels() {
                     <select
                       value={selectedTemplate[product.id] || ''}
                       onChange={(e) => setSelectedTemplate(prev => ({ ...prev, [product.id]: e.target.value }))}
-                      className="bg-surface-800 border border-surface-700 rounded px-2 py-1 text-sm text-surface-200"
+                      className="input h-auto py-1 w-auto"
                     >
                       <option value="">Select template...</option>
                       {templates.map((template) => (

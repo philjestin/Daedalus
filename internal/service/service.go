@@ -86,7 +86,7 @@ func NewServices(repos *repository.Repositories, store storage.Storage, printerM
 		Sales:     &SaleService{repo: repos.Sales, taskRepo: repos.Tasks},
 		Stats:     &StatsService{expenseRepo: repos.Expenses, saleRepo: repos.Sales, printJobRepo: repos.PrintJobs},
 		Templates: &TemplateService{repo: repos.Templates, projectRepo: repos.Projects, partRepo: repos.Parts, designRepo: repos.Designs, printJobRepo: repos.PrintJobs, spoolRepo: repos.Spools, materialRepo: repos.Materials, printerRepo: repos.Printers},
-		Etsy:            nil, // Initialize separately with NewServicesWithEtsy
+		Etsy:            nil, // Initialize separately with config
 		Squarespace:     nil, // Initialize below after Templates is ready
 		BambuCloud:      NewBambuCloudService(repos.BambuCloud, repos.Printers, printerMgr, bambuCloudClient),
 		Settings:        &SettingsService{repo: repos.Settings},
@@ -132,16 +132,14 @@ func NewServices(repos *repository.Repositories, store storage.Storage, printerM
 // NewServicesWithEtsy creates all service instances including Etsy integration.
 func NewServicesWithEtsy(repos *repository.Repositories, store storage.Storage, printerMgr *printer.Manager, hub *realtime.Hub, etsyConfig EtsyConfig) *Services {
 	services := NewServices(repos, store, printerMgr, hub)
-	services.Etsy = NewEtsyService(repos.Etsy, etsyConfig.ClientID, etsyConfig.RedirectURI)
+	services.Etsy = NewEtsyService(repos.Etsy, etsyConfig.ClientID, etsyConfig.RedirectURI, services.Settings)
 	return services
 }
 
 // NewServicesWithConfig creates all service instances with full configuration.
 func NewServicesWithConfig(repos *repository.Repositories, store storage.Storage, printerMgr *printer.Manager, hub *realtime.Hub, config ServicesConfig) *Services {
 	services := NewServices(repos, store, printerMgr, hub)
-	if config.Etsy.ClientID != "" {
-		services.Etsy = NewEtsyService(repos.Etsy, config.Etsy.ClientID, config.Etsy.RedirectURI)
-	}
+	services.Etsy = NewEtsyService(repos.Etsy, config.Etsy.ClientID, config.Etsy.RedirectURI, services.Settings)
 	return services
 }
 
@@ -4077,6 +4075,7 @@ type SettingsService struct {
 // sensitiveKeys lists settings that should be encrypted at rest.
 var sensitiveKeys = map[string]bool{
 	"anthropic_api_key":       true,
+	"etsy_client_id":          true,
 	"etsy_access_token":       true,
 	"etsy_refresh_token":      true,
 	"bambu_cloud_token":       true,

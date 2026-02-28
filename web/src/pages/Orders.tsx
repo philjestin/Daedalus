@@ -82,7 +82,7 @@ export function Orders() {
         <select
           value={statusFilter}
           onChange={e => setStatusFilter(e.target.value as OrderStatus | '')}
-          className="px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="input h-auto py-2 w-auto"
         >
           <option value="">All Statuses</option>
           {Object.entries(statusConfig).map(([status, config]) => (
@@ -95,7 +95,7 @@ export function Orders() {
         <select
           value={sourceFilter}
           onChange={e => setSourceFilter(e.target.value as OrderSource | '')}
-          className="px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="input h-auto py-2 w-auto"
         >
           <option value="">All Sources</option>
           {Object.entries(sourceLabels).map(([source, label]) => (
@@ -251,52 +251,52 @@ function CreateOrderModal({ onClose, onCreated }: CreateOrderModalProps) {
         <form onSubmit={handleSubmit}>
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-surface-300 mb-1">
                 Customer Name *
               </label>
               <input
                 type="text"
                 value={customerName}
                 onChange={e => setCustomerName(e.target.value)}
-                className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="input"
                 placeholder="John Doe"
                 required
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-surface-300 mb-1">
                 Customer Email
               </label>
               <input
                 type="email"
                 value={customerEmail}
                 onChange={e => setCustomerEmail(e.target.value)}
-                className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="input"
                 placeholder="john@example.com"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-surface-300 mb-1">
                 Due Date
               </label>
               <input
                 type="datetime-local"
                 value={dueDate}
                 onChange={e => setDueDate(e.target.value)}
-                className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="input"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-surface-300 mb-1">
                 Priority
               </label>
               <select
                 value={priority}
                 onChange={e => setPriority(Number(e.target.value))}
-                className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="input"
               >
                 <option value={0}>Normal</option>
                 <option value={1}>High</option>
@@ -305,13 +305,13 @@ function CreateOrderModal({ onClose, onCreated }: CreateOrderModalProps) {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-surface-300 mb-1">
                 Notes
               </label>
               <textarea
                 value={notes}
                 onChange={e => setNotes(e.target.value)}
-                className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="input"
                 rows={3}
                 placeholder="Optional notes..."
               />

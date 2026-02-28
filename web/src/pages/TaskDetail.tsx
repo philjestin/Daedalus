@@ -101,7 +101,7 @@ function CompleteTaskModal({
                   type="text"
                   value={saleForm.item_description}
                   onChange={e => setSaleForm(f => ({ ...f, item_description: e.target.value }))}
-                  className="w-full px-3 py-2 bg-surface-900 border border-surface-700 rounded-lg text-sm text-surface-100 focus:outline-none focus:border-accent-500"
+                  className="input"
                 />
               </div>
               <div className="grid grid-cols-2 gap-3">
@@ -112,7 +112,7 @@ function CompleteTaskModal({
                     min={1}
                     value={saleForm.quantity}
                     onChange={e => setSaleForm(f => ({ ...f, quantity: parseInt(e.target.value) || 1 }))}
-                    className="w-full px-3 py-2 bg-surface-900 border border-surface-700 rounded-lg text-sm text-surface-100 focus:outline-none focus:border-accent-500"
+                    className="input"
                   />
                 </div>
                 <div>
@@ -123,7 +123,7 @@ function CompleteTaskModal({
                     min={0}
                     value={formatDollars(saleForm.gross_cents)}
                     onChange={e => setSaleForm(f => ({ ...f, gross_cents: parseDollars(e.target.value) }))}
-                    className="w-full px-3 py-2 bg-surface-900 border border-surface-700 rounded-lg text-sm text-surface-100 focus:outline-none focus:border-accent-500"
+                    className="input"
                   />
                 </div>
               </div>
@@ -133,7 +133,7 @@ function CompleteTaskModal({
                   <select
                     value={saleForm.channel}
                     onChange={e => setSaleForm(f => ({ ...f, channel: e.target.value as SalesChannel }))}
-                    className="w-full px-3 py-2 bg-surface-900 border border-surface-700 rounded-lg text-sm text-surface-100 focus:outline-none focus:border-accent-500"
+                    className="input"
                   >
                     {SALES_CHANNELS.map(ch => (
                       <option key={ch.value} value={ch.value}>{ch.label}</option>
@@ -148,7 +148,7 @@ function CompleteTaskModal({
                     min={0}
                     value={formatDollars(saleForm.fees_cents)}
                     onChange={e => setSaleForm(f => ({ ...f, fees_cents: parseDollars(e.target.value) }))}
-                    className="w-full px-3 py-2 bg-surface-900 border border-surface-700 rounded-lg text-sm text-surface-100 focus:outline-none focus:border-accent-500"
+                    className="input"
                   />
                 </div>
               </div>

@@ -109,6 +109,19 @@ func main() {
 
 	if etsyClientID != "" {
 		slog.Info("Etsy integration enabled", "redirect_uri", etsyRedirectURI)
+	} else {
+		// Try loading Etsy config from database settings
+		if setting, err := services.Settings.Get(context.Background(), "etsy_client_id"); err == nil && setting != nil && setting.Value != "" {
+			redirectURI := etsyRedirectURI
+			if uriSetting, err := services.Settings.Get(context.Background(), "etsy_redirect_uri"); err == nil && uriSetting != nil && uriSetting.Value != "" {
+				redirectURI = uriSetting.Value
+			}
+			if err := services.Etsy.Configure(context.Background(), setting.Value, redirectURI); err != nil {
+				slog.Warn("failed to load Etsy config from database", "error", err)
+			} else {
+				slog.Info("Etsy integration enabled from stored config", "redirect_uri", redirectURI)
+			}
+		}
 	}
 
 	// Initialize HTTP router
