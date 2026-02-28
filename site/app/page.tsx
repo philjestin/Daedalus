@@ -856,7 +856,7 @@ export default function Home() {
 
             <div className="flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
               <a
-                href="https://github.com"
+                href="https://github.com/philjestin/Daedalus"
                 className="group inline-flex items-center gap-2 rounded-xl bg-accent-500 px-8 py-3.5 text-sm font-semibold text-white transition-all hover:bg-accent-600"
               >
                 <Github className="h-4 w-4" />
@@ -865,7 +865,7 @@ export default function Home() {
               </a>
               <div className="rounded-xl border border-surface-700 bg-surface-900/50 px-6 py-3.5 font-mono text-sm text-surface-300">
                 <span className="text-surface-600">$ </span>
-                git clone daedalus && wails dev
+                git clone philjestin/Daedalus && make dev
               </div>
             </div>
           </AnimatedSection>
