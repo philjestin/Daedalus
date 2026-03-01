@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Store, ShoppingBag, ExternalLink, RefreshCw, Unplug, AlertCircle, CheckCircle2, Key, Eye, EyeOff, Save, Database, Download, Trash2, RotateCcw, Plus, Zap, Settings as SettingsIcon } from 'lucide-react'
+import { Store, ShoppingBag, ExternalLink, RefreshCw, Unplug, AlertCircle, CheckCircle2, Key, Eye, EyeOff, Save, Database, Download, Trash2, RotateCcw, Plus, Zap, Settings as SettingsIcon, Building } from 'lucide-react'
 import { etsyApi, squarespaceApi, settingsApi, backupsApi, dispatchApi } from '../api/client'
 import { cn } from '../lib/utils'
 import type { EtsyIntegration, SquarespaceIntegration, BackupInfo, BackupConfig } from '../types'
@@ -741,6 +741,115 @@ export default function Settings() {
             </div>
           )}
         </div>
+
+        {/* Business Information */}
+        <BusinessInfoSettings />
+      </div>
+    </div>
+  )
+}
+
+function BusinessInfoSettings() {
+  const [businessName, setBusinessName] = useState('')
+  const [phone, setPhone] = useState('')
+  const [email, setEmail] = useState('')
+  const [website, setWebsite] = useState('')
+  const [address, setAddress] = useState({ line1: '', line2: '', city: '', state: '', zip: '', country: '' })
+  const [loaded, setLoaded] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const keys = ['business_name', 'business_phone', 'business_email', 'business_website', 'business_address_json']
+        const results = await Promise.allSettled(keys.map(k => settingsApi.get(k)))
+        const vals: Record<string, string> = {}
+        results.forEach((r, i) => {
+          if (r.status === 'fulfilled') vals[keys[i]] = r.value.value
+        })
+        setBusinessName(vals.business_name || '')
+        setPhone(vals.business_phone || '')
+        setEmail(vals.business_email || '')
+        setWebsite(vals.business_website || '')
+        if (vals.business_address_json) {
+          try { setAddress(JSON.parse(vals.business_address_json)) } catch { /* ignore malformed JSON */ }
+        }
+      } catch { /* ignore load errors */ }
+      setLoaded(true)
+    }
+    load()
+  }, [])
+
+  const handleSave = async () => {
+    setSaving(true)
+    try {
+      await Promise.all([
+        settingsApi.set('business_name', businessName),
+        settingsApi.set('business_phone', phone),
+        settingsApi.set('business_email', email),
+        settingsApi.set('business_website', website),
+        settingsApi.set('business_address_json', JSON.stringify(address)),
+      ])
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2000)
+    } catch (err) {
+      console.error('Failed to save business info:', err)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (!loaded) return null
+
+  return (
+    <div className="bg-surface-900/50 border border-surface-800 rounded-xl p-6 mb-6">
+      <div className="flex items-center gap-3 mb-4">
+        <div className="p-2 bg-accent-500/10 rounded-lg">
+          <Building className="h-6 w-6 text-accent-400" />
+        </div>
+        <div>
+          <h2 className="text-lg font-semibold text-surface-100">Business Information</h2>
+          <p className="text-sm text-surface-400">Shown on customer-facing quotes</p>
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        <div>
+          <label className="block text-xs font-medium text-surface-400 mb-1">Business Name</label>
+          <input value={businessName} onChange={e => setBusinessName(e.target.value)} className="w-full px-3 py-2 bg-surface-800 border border-surface-700 rounded-lg text-surface-100 text-sm focus:outline-none focus:ring-1 focus:ring-accent-500" />
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs font-medium text-surface-400 mb-1">Phone</label>
+            <input value={phone} onChange={e => setPhone(e.target.value)} className="w-full px-3 py-2 bg-surface-800 border border-surface-700 rounded-lg text-surface-100 text-sm focus:outline-none focus:ring-1 focus:ring-accent-500" />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-surface-400 mb-1">Email</label>
+            <input value={email} onChange={e => setEmail(e.target.value)} type="email" className="w-full px-3 py-2 bg-surface-800 border border-surface-700 rounded-lg text-surface-100 text-sm focus:outline-none focus:ring-1 focus:ring-accent-500" />
+          </div>
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-surface-400 mb-1">Website</label>
+          <input value={website} onChange={e => setWebsite(e.target.value)} className="w-full px-3 py-2 bg-surface-800 border border-surface-700 rounded-lg text-surface-100 text-sm focus:outline-none focus:ring-1 focus:ring-accent-500" />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-surface-400 mb-1">Address</label>
+          <div className="space-y-1.5">
+            <input value={address.line1} onChange={e => setAddress(a => ({ ...a, line1: e.target.value }))} placeholder="Address line 1" className="w-full px-3 py-1.5 bg-surface-800 border border-surface-700 rounded-lg text-surface-100 text-sm focus:outline-none focus:ring-1 focus:ring-accent-500" />
+            <input value={address.line2} onChange={e => setAddress(a => ({ ...a, line2: e.target.value }))} placeholder="Address line 2" className="w-full px-3 py-1.5 bg-surface-800 border border-surface-700 rounded-lg text-surface-100 text-sm focus:outline-none focus:ring-1 focus:ring-accent-500" />
+            <div className="grid grid-cols-3 gap-1.5">
+              <input value={address.city} onChange={e => setAddress(a => ({ ...a, city: e.target.value }))} placeholder="City" className="px-3 py-1.5 bg-surface-800 border border-surface-700 rounded-lg text-surface-100 text-sm focus:outline-none focus:ring-1 focus:ring-accent-500" />
+              <input value={address.state} onChange={e => setAddress(a => ({ ...a, state: e.target.value }))} placeholder="State" className="px-3 py-1.5 bg-surface-800 border border-surface-700 rounded-lg text-surface-100 text-sm focus:outline-none focus:ring-1 focus:ring-accent-500" />
+              <input value={address.zip} onChange={e => setAddress(a => ({ ...a, zip: e.target.value }))} placeholder="Zip" className="px-3 py-1.5 bg-surface-800 border border-surface-700 rounded-lg text-surface-100 text-sm focus:outline-none focus:ring-1 focus:ring-accent-500" />
+            </div>
+            <input value={address.country} onChange={e => setAddress(a => ({ ...a, country: e.target.value }))} placeholder="Country" className="w-full px-3 py-1.5 bg-surface-800 border border-surface-700 rounded-lg text-surface-100 text-sm focus:outline-none focus:ring-1 focus:ring-accent-500" />
+          </div>
+        </div>
+        <button onClick={handleSave} disabled={saving} className="flex items-center gap-2 px-4 py-2 bg-accent-500 text-white rounded-lg hover:bg-accent-600 text-sm font-medium disabled:opacity-50">
+          {saving ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+          {saved ? 'Saved!' : 'Save Business Info'}
+        </button>
       </div>
     </div>
   )

@@ -109,10 +109,30 @@ func RunMigrations(db *sql.DB) error {
 		`ALTER TABLE order_items ADD COLUMN project_id TEXT REFERENCES projects(id)`,
 		// Task pickup/shipping date
 		`ALTER TABLE tasks ADD COLUMN pickup_date TEXT`,
+		// Quote line items link to projects
+		`ALTER TABLE quote_line_items ADD COLUMN project_id TEXT REFERENCES projects(id) ON DELETE SET NULL`,
+		// Sales link to customers
+		`ALTER TABLE sales ADD COLUMN customer_id TEXT REFERENCES customers(id) ON DELETE SET NULL`,
+		// Customer addresses
+		`ALTER TABLE customers ADD COLUMN billing_address_json TEXT`,
+		`ALTER TABLE customers ADD COLUMN shipping_address_json TEXT`,
+		// Quote financial fields
+		`ALTER TABLE quotes ADD COLUMN discount_type TEXT DEFAULT 'none'`,
+		`ALTER TABLE quotes ADD COLUMN discount_value INTEGER DEFAULT 0`,
+		`ALTER TABLE quotes ADD COLUMN rush_fee_cents INTEGER DEFAULT 0`,
+		`ALTER TABLE quotes ADD COLUMN tax_rate INTEGER DEFAULT 0`,
+		`ALTER TABLE quotes ADD COLUMN terms TEXT`,
+		`ALTER TABLE quotes ADD COLUMN requested_due_date TEXT`,
+		`ALTER TABLE quotes ADD COLUMN billing_address_json TEXT`,
+		`ALTER TABLE quotes ADD COLUMN shipping_address_json TEXT`,
+		`ALTER TABLE quotes ADD COLUMN share_token TEXT`,
 	}
 	for _, stmt := range alterStatements {
 		db.Exec(stmt) // Ignore error if column already exists
 	}
+
+	// Create indexes that may not exist
+	db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_quotes_share_token ON quotes(share_token)`)
 
 	return nil
 }

@@ -983,6 +983,7 @@ type Sale struct {
 	NetCents             int          `json:"net_cents"`
 	Currency             string       `json:"currency"`
 	ProjectID            *uuid.UUID   `json:"project_id,omitempty"`
+	CustomerID           *uuid.UUID   `json:"customer_id,omitempty"`
 	OrderReference       string       `json:"order_reference,omitempty"`
 	CustomerName         string       `json:"customer_name,omitempty"`
 	ItemDescription      string       `json:"item_description"`
@@ -1192,6 +1193,7 @@ const (
 	OrderSourceEtsy        OrderSource = "etsy"
 	OrderSourceSquarespace OrderSource = "squarespace"
 	OrderSourceShopify     OrderSource = "shopify"
+	OrderSourceQuote       OrderSource = "quote"
 )
 
 // Order represents a unified order from any source.
@@ -1199,6 +1201,7 @@ type Order struct {
 	ID            uuid.UUID    `json:"id"`
 	Source        OrderSource  `json:"source"`
 	SourceOrderID string       `json:"source_order_id,omitempty"`
+	CustomerID    *uuid.UUID   `json:"customer_id,omitempty"`
 	CustomerName  string       `json:"customer_name"`
 	CustomerEmail string       `json:"customer_email,omitempty"`
 	Status        OrderStatus  `json:"status"`
@@ -1353,5 +1356,156 @@ type Feedback struct {
 	Page       string    `json:"page,omitempty"`
 	AppVersion string    `json:"app_version,omitempty"`
 	CreatedAt  time.Time `json:"created_at"`
+}
+
+// ============================================
+// Addresses
+// ============================================
+
+// Address is a reusable struct for billing/shipping addresses, stored as JSON TEXT in SQLite.
+type Address struct {
+	Line1   string `json:"line1,omitempty"`
+	Line2   string `json:"line2,omitempty"`
+	City    string `json:"city,omitempty"`
+	State   string `json:"state,omitempty"`
+	Zip     string `json:"zip,omitempty"`
+	Country string `json:"country,omitempty"`
+}
+
+// ============================================
+// Customers
+// ============================================
+
+// Customer represents a customer for quotes and orders.
+type Customer struct {
+	ID              uuid.UUID `json:"id"`
+	Name            string    `json:"name"`
+	Email           string    `json:"email,omitempty"`
+	Company         string    `json:"company,omitempty"`
+	Phone           string    `json:"phone,omitempty"`
+	Notes           string    `json:"notes,omitempty"`
+	BillingAddress  *Address  `json:"billing_address,omitempty"`
+	ShippingAddress *Address  `json:"shipping_address,omitempty"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
+}
+
+// CustomerFilters defines filter options for listing customers.
+type CustomerFilters struct {
+	Search string `json:"search,omitempty"`
+	Limit  int    `json:"limit,omitempty"`
+	Offset int    `json:"offset,omitempty"`
+}
+
+// ============================================
+// Quotes
+// ============================================
+
+// QuoteStatus represents the status of a quote.
+type QuoteStatus string
+
+const (
+	QuoteStatusDraft    QuoteStatus = "draft"
+	QuoteStatusSent     QuoteStatus = "sent"
+	QuoteStatusAccepted QuoteStatus = "accepted"
+	QuoteStatusRejected QuoteStatus = "rejected"
+	QuoteStatusExpired  QuoteStatus = "expired"
+)
+
+// QuoteLineItemType represents the type of a line item.
+type QuoteLineItemType string
+
+const (
+	QuoteLineItemTypePrinting       QuoteLineItemType = "printing"
+	QuoteLineItemTypePostProcessing QuoteLineItemType = "post_processing"
+	QuoteLineItemTypeConsulting     QuoteLineItemType = "consulting"
+	QuoteLineItemTypeDesign         QuoteLineItemType = "design"
+	QuoteLineItemTypeOther          QuoteLineItemType = "other"
+	QuoteLineItemTypeLabor          QuoteLineItemType = "labor"
+	QuoteLineItemTypeConsumables    QuoteLineItemType = "consumables"
+	QuoteLineItemTypeShipping       QuoteLineItemType = "shipping"
+	QuoteLineItemTypeFinishing      QuoteLineItemType = "finishing"
+)
+
+// DiscountType represents the type of discount applied to a quote.
+type DiscountType string
+
+const (
+	DiscountTypeNone    DiscountType = "none"
+	DiscountTypeFlat    DiscountType = "flat"
+	DiscountTypePercent DiscountType = "percent"
+)
+
+// Quote represents a customer quote with options.
+type Quote struct {
+	ID               uuid.UUID     `json:"id"`
+	QuoteNumber      string        `json:"quote_number"`
+	CustomerID       uuid.UUID     `json:"customer_id"`
+	Status           QuoteStatus   `json:"status"`
+	Title            string        `json:"title"`
+	Notes            string        `json:"notes,omitempty"`
+	ValidUntil       *time.Time    `json:"valid_until,omitempty"`
+	AcceptedOptionID *uuid.UUID    `json:"accepted_option_id,omitempty"`
+	OrderID          *uuid.UUID    `json:"order_id,omitempty"`
+	DiscountType     DiscountType  `json:"discount_type"`
+	DiscountValue    int           `json:"discount_value"`
+	RushFeeCents     int           `json:"rush_fee_cents"`
+	TaxRate          int           `json:"tax_rate"`
+	Terms            string        `json:"terms,omitempty"`
+	RequestedDueDate *time.Time    `json:"requested_due_date,omitempty"`
+	BillingAddress   *Address      `json:"billing_address,omitempty"`
+	ShippingAddress  *Address      `json:"shipping_address,omitempty"`
+	ShareToken       string        `json:"share_token,omitempty"`
+	CreatedAt        time.Time     `json:"created_at"`
+	UpdatedAt        time.Time     `json:"updated_at"`
+	SentAt           *time.Time    `json:"sent_at,omitempty"`
+	AcceptedAt       *time.Time    `json:"accepted_at,omitempty"`
+	Customer         *Customer     `json:"customer,omitempty"`
+	Options          []QuoteOption `json:"options,omitempty"`
+	Events           []QuoteEvent  `json:"events,omitempty"`
+}
+
+// QuoteOption represents one option within a quote.
+type QuoteOption struct {
+	ID          uuid.UUID       `json:"id"`
+	QuoteID     uuid.UUID       `json:"quote_id"`
+	Name        string          `json:"name"`
+	Description string          `json:"description,omitempty"`
+	SortOrder   int             `json:"sort_order"`
+	TotalCents  int             `json:"total_cents"`
+	CreatedAt   time.Time       `json:"created_at"`
+	Items       []QuoteLineItem `json:"items,omitempty"`
+}
+
+// QuoteLineItem represents a line item within a quote option.
+type QuoteLineItem struct {
+	ID             uuid.UUID         `json:"id"`
+	OptionID       uuid.UUID         `json:"option_id"`
+	Type           QuoteLineItemType `json:"type"`
+	Description    string            `json:"description"`
+	Quantity       float64           `json:"quantity"`
+	Unit           string            `json:"unit"`
+	UnitPriceCents int               `json:"unit_price_cents"`
+	TotalCents     int               `json:"total_cents"`
+	SortOrder      int               `json:"sort_order"`
+	ProjectID      *uuid.UUID        `json:"project_id,omitempty"`
+	CreatedAt      time.Time         `json:"created_at"`
+}
+
+// QuoteEvent records an event in the quote lifecycle.
+type QuoteEvent struct {
+	ID        uuid.UUID `json:"id"`
+	QuoteID   uuid.UUID `json:"quote_id"`
+	EventType string    `json:"event_type"`
+	Message   string    `json:"message,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// QuoteFilters defines filter options for listing quotes.
+type QuoteFilters struct {
+	Status     *QuoteStatus `json:"status,omitempty"`
+	CustomerID *uuid.UUID   `json:"customer_id,omitempty"`
+	Limit      int          `json:"limit,omitempty"`
+	Offset     int          `json:"offset,omitempty"`
 }
 

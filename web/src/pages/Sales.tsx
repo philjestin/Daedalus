@@ -14,9 +14,9 @@ import {
   TrendingUp,
   TrendingDown,
 } from 'lucide-react'
-import { salesApi, statsApi, projectsApi } from '../api/client'
+import { salesApi, statsApi, projectsApi, customersApi } from '../api/client'
 import { cn } from '../lib/utils'
-import type { Sale, SalesChannel, ProjectSummary, WeeklyInsights } from '../types'
+import type { Sale, SalesChannel, ProjectSummary, WeeklyInsights, Customer } from '../types'
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -514,6 +514,7 @@ function SaleModal({
   const isEdit = !!sale
 
   const [selectedProjectId, setSelectedProjectId] = useState<string>(sale?.project_id || '')
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string>(sale?.customer_id || '')
   const [projectSummary, setProjectSummary] = useState<ProjectSummary | null>(null)
   const [loadingSummary, setLoadingSummary] = useState(false)
 
@@ -538,6 +539,12 @@ function SaleModal({
   const { data: projects = [] } = useQuery({
     queryKey: ['projects'],
     queryFn: () => projectsApi.list(),
+  })
+
+  // Fetch customers for dropdown
+  const { data: customers = [] } = useQuery({
+    queryKey: ['customers'],
+    queryFn: () => customersApi.list(),
   })
 
   // Fetch project summary when project is selected
@@ -565,6 +572,16 @@ function SaleModal({
     }
   }
 
+  const handleCustomerChange = (customerId: string) => {
+    setSelectedCustomerId(customerId)
+    if (customerId) {
+      const customer = customers.find((c: Customer) => c.id === customerId)
+      if (customer) {
+        setCustomerName(customer.name)
+      }
+    }
+  }
+
   const netCents = toCents(gross) - toCents(fees) - toCents(shippingCost)
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -584,6 +601,7 @@ function SaleModal({
         tax_collected_cents: toCents(taxCollected),
         net_cents: netCents,
         customer_name: customerName,
+        customer_id: selectedCustomerId || undefined,
         order_reference: orderReference,
         notes,
         project_id: selectedProjectId || undefined,
@@ -814,17 +832,31 @@ function SaleModal({
             </div>
           </div>
 
-          {/* Row 6: Customer Name + Order Reference */}
+          {/* Row 6: Customer + Order Reference */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm text-surface-400 mb-1">Customer Name</label>
-              <input
-                type="text"
-                value={customerName}
-                onChange={(e) => setCustomerName(e.target.value)}
+              <label className="block text-sm text-surface-400 mb-1">Customer</label>
+              <select
+                value={selectedCustomerId}
+                onChange={(e) => handleCustomerChange(e.target.value)}
                 className="input w-full"
-                placeholder="Optional"
-              />
+              >
+                <option value="">-- No customer --</option>
+                {customers.map((c: Customer) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}{c.company ? ` (${c.company})` : ''}
+                  </option>
+                ))}
+              </select>
+              {!selectedCustomerId && (
+                <input
+                  type="text"
+                  value={customerName}
+                  onChange={(e) => setCustomerName(e.target.value)}
+                  className="input w-full mt-2"
+                  placeholder="Or type a name for one-off sales"
+                />
+              )}
             </div>
             <div>
               <label className="block text-sm text-surface-400 mb-1">Order Reference</label>

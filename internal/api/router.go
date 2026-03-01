@@ -49,6 +49,30 @@ func NewRouter(services *service.Services, hub *realtime.Hub) http.Handler {
 	// WebSocket endpoint
 	r.Get("/ws", hub.HandleWebSocket)
 
+	// Public API routes (no auth required)
+	r.Route("/api/public", func(r chi.Router) {
+		// Public quote by share token
+		if services.Quotes != nil {
+			quoteHandler := NewQuoteHandler(services.Quotes)
+			r.Get("/quotes/{token}", quoteHandler.GetByShareToken)
+		}
+		// Public business info
+		if services.Settings != nil {
+			r.Get("/business-info", func(w http.ResponseWriter, req *http.Request) {
+				ctx := req.Context()
+				keys := []string{"business_name", "business_address_json", "business_phone", "business_email", "business_website"}
+				result := map[string]interface{}{}
+				for _, key := range keys {
+					setting, err := services.Settings.Get(ctx, key)
+					if err == nil && setting != nil {
+						result[key] = setting.Value
+					}
+				}
+				respondJSON(w, http.StatusOK, result)
+			})
+		}
+	})
+
 	// API routes
 	r.Route("/api", func(r chi.Router) {
 		// Projects (Product Catalog)
@@ -424,6 +448,49 @@ func NewRouter(services *service.Services, hub *realtime.Hub) http.Handler {
 					r.Post("/items", orderHandler.AddItem)
 					r.Delete("/items/{itemId}", orderHandler.RemoveItem)
 					r.Post("/items/{itemId}/process", orderHandler.ProcessItem)
+				})
+			})
+		}
+
+		// Customers
+		if services.Customers != nil {
+			customerHandler := NewCustomerHandler(services.Customers)
+			r.Route("/customers", func(r chi.Router) {
+				r.Get("/", customerHandler.List)
+				r.Post("/", customerHandler.Create)
+				r.Route("/{id}", func(r chi.Router) {
+					r.Get("/", customerHandler.Get)
+					r.Patch("/", customerHandler.Update)
+					r.Delete("/", customerHandler.Delete)
+				})
+			})
+		}
+
+		// Quotes
+		if services.Quotes != nil {
+			quoteHandler := NewQuoteHandler(services.Quotes)
+			r.Route("/quotes", func(r chi.Router) {
+				r.Get("/", quoteHandler.List)
+				r.Post("/", quoteHandler.Create)
+				r.Route("/{id}", func(r chi.Router) {
+					r.Get("/", quoteHandler.Get)
+					r.Patch("/", quoteHandler.Update)
+					r.Delete("/", quoteHandler.Delete)
+					r.Post("/send", quoteHandler.Send)
+					r.Post("/accept", quoteHandler.Accept)
+					r.Post("/reject", quoteHandler.Reject)
+					// Options
+					r.Post("/options", quoteHandler.CreateOption)
+					r.Route("/options/{optionId}", func(r chi.Router) {
+						r.Patch("/", quoteHandler.UpdateOption)
+						r.Delete("/", quoteHandler.DeleteOption)
+						// Line items
+						r.Post("/items", quoteHandler.CreateLineItem)
+						r.Route("/items/{itemId}", func(r chi.Router) {
+							r.Patch("/", quoteHandler.UpdateLineItem)
+							r.Delete("/", quoteHandler.DeleteLineItem)
+						})
+					})
 				})
 			})
 		}

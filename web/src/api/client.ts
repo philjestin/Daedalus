@@ -1217,3 +1217,130 @@ export const feedbackApi = {
     }),
 }
 
+// Customers API
+export const customersApi = {
+  list: (params?: { search?: string }) => {
+    const searchParams = new URLSearchParams()
+    if (params?.search) searchParams.set('search', params.search)
+    const query = searchParams.toString()
+    return fetchApi<import('../types').Customer[]>(`/customers${query ? `?${query}` : ''}`)
+  },
+
+  get: (id: string) =>
+    fetchApi<import('../types').Customer>(`/customers/${id}`),
+
+  create: (data: { name: string; email?: string; company?: string; phone?: string; notes?: string }) =>
+    fetchApi<import('../types').Customer>('/customers', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  update: (id: string, data: Partial<import('../types').Customer>) =>
+    fetchApi<import('../types').Customer>(`/customers/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+
+  delete: (id: string) =>
+    fetchApi<void>(`/customers/${id}`, { method: 'DELETE' }),
+}
+
+// Quotes API
+export const quotesApi = {
+  list: (params?: { status?: string; customer_id?: string }) => {
+    const searchParams = new URLSearchParams()
+    if (params?.status) searchParams.set('status', params.status)
+    if (params?.customer_id) searchParams.set('customer_id', params.customer_id)
+    const query = searchParams.toString()
+    return fetchApi<import('../types').Quote[]>(`/quotes${query ? `?${query}` : ''}`)
+  },
+
+  get: (id: string) =>
+    fetchApi<import('../types').Quote>(`/quotes/${id}`),
+
+  create: (data: { customer_id: string; title: string; notes?: string; valid_until?: string }) =>
+    fetchApi<import('../types').Quote>('/quotes', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  update: (id: string, data: Partial<import('../types').Quote>) =>
+    fetchApi<import('../types').Quote>(`/quotes/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+
+  delete: (id: string) =>
+    fetchApi<void>(`/quotes/${id}`, { method: 'DELETE' }),
+
+  send: (id: string) =>
+    fetchApi<import('../types').Quote>(`/quotes/${id}/send`, { method: 'POST' }),
+
+  accept: (id: string, optionId: string) =>
+    fetchApi<import('../types').Quote>(`/quotes/${id}/accept`, {
+      method: 'POST',
+      body: JSON.stringify({ option_id: optionId }),
+    }),
+
+  reject: (id: string) =>
+    fetchApi<import('../types').Quote>(`/quotes/${id}/reject`, { method: 'POST' }),
+
+  // Options
+  createOption: (quoteId: string, data: { name: string; description?: string; sort_order?: number }) =>
+    fetchApi<import('../types').QuoteOption>(`/quotes/${quoteId}/options`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  updateOption: (quoteId: string, optionId: string, data: Partial<import('../types').QuoteOption>) =>
+    fetchApi<import('../types').QuoteOption>(`/quotes/${quoteId}/options/${optionId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+
+  deleteOption: (quoteId: string, optionId: string) =>
+    fetchApi<void>(`/quotes/${quoteId}/options/${optionId}`, { method: 'DELETE' }),
+
+  // Line items
+  createLineItem: (quoteId: string, optionId: string, data: {
+    type: string; description: string; quantity: number; unit: string;
+    unit_price_cents: number; total_cents: number; sort_order?: number; project_id?: string
+  }) =>
+    fetchApi<import('../types').QuoteLineItem>(`/quotes/${quoteId}/options/${optionId}/items`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  updateLineItem: (quoteId: string, optionId: string, itemId: string, data: Partial<import('../types').QuoteLineItem>) =>
+    fetchApi<import('../types').QuoteLineItem>(`/quotes/${quoteId}/options/${optionId}/items/${itemId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+
+  deleteLineItem: (quoteId: string, optionId: string, itemId: string) =>
+    fetchApi<void>(`/quotes/${quoteId}/options/${optionId}/items/${itemId}`, { method: 'DELETE' }),
+}
+
+// Public API (no auth, for shareable pages)
+const PUBLIC_API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8080'
+
+async function fetchPublicApi<T>(path: string): Promise<T> {
+  const url = `${PUBLIC_API_URL}/api/public${path}`
+  const response = await fetch(url, {
+    headers: { 'Content-Type': 'application/json' },
+  })
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: 'Unknown error' }))
+    throw new Error(error.error || `HTTP ${response.status}`)
+  }
+  return response.json() as Promise<T>
+}
+
+export const publicApi = {
+  getQuote: (token: string) =>
+    fetchPublicApi<import('../types').Quote>(`/quotes/${token}`),
+
+  getBusinessInfo: () =>
+    fetchPublicApi<Record<string, string>>(`/business-info`),
+}
+

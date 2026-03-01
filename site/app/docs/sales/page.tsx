@@ -32,10 +32,20 @@ export default function SalesDocs() {
       </p>
       <ol>
         <li>Click <strong>Record Sale</strong></li>
-        <li>Select the project, quantity, and sale price</li>
+        <li>Optionally link to a project and/or customer</li>
+        <li>Enter the item description, quantity, and sale price</li>
         <li>Choose the sales channel (or &ldquo;Direct&rdquo; for non-marketplace sales)</li>
         <li>The sale is added to your analytics immediately</li>
       </ol>
+
+      <h3>Customer Linking</h3>
+      <p>
+        When recording a sale, you can select a customer from the dropdown to associate
+        the revenue with a specific buyer. Selecting a customer auto-fills the customer
+        name. For one-off sales without a customer record, leave the dropdown empty and
+        type a name in the text field instead. See{" "}
+        <a href="/docs/customers">Customers</a> for more on managing customer records.
+      </p>
 
       <h3>Weekly Insights</h3>
       <p>

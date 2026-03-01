@@ -14,6 +14,8 @@ import {
   GanttChart,
   PanelLeftClose,
   PanelLeftOpen,
+  FileText,
+  Users,
 } from 'lucide-react'
 import { cn } from '../lib/utils'
 import DispatchNotificationProvider from './DispatchNotificationProvider'
@@ -21,6 +23,8 @@ import FeedbackButton from './FeedbackButton'
 
 const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
+  { name: 'Quotes', href: '/quotes', icon: FileText },
+  { name: 'Customers', href: '/customers', icon: Users },
   { name: 'Projects', href: '/projects', icon: FolderKanban },
   { name: 'Tasks', href: '/tasks', icon: ListTodo },
   { name: 'Printers', href: '/printers', icon: Printer },

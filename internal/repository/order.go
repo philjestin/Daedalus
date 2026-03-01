@@ -24,9 +24,9 @@ func (r *OrderRepository) Create(ctx context.Context, order *model.Order) error 
 	}
 
 	_, err := r.db.ExecContext(ctx, `
-		INSERT INTO orders (id, source, source_order_id, customer_name, customer_email, status, priority, due_date, notes, created_at, updated_at, completed_at, shipped_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, order.ID, order.Source, order.SourceOrderID, order.CustomerName, order.CustomerEmail, order.Status, order.Priority, order.DueDate, order.Notes, order.CreatedAt, order.UpdatedAt, order.CompletedAt, order.ShippedAt)
+		INSERT INTO orders (id, source, source_order_id, customer_id, customer_name, customer_email, status, priority, due_date, notes, created_at, updated_at, completed_at, shipped_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, order.ID, order.Source, order.SourceOrderID, order.CustomerID, order.CustomerName, order.CustomerEmail, order.Status, order.Priority, order.DueDate, order.Notes, order.CreatedAt, order.UpdatedAt, order.CompletedAt, order.ShippedAt)
 	return err
 }
 
@@ -34,10 +34,10 @@ func (r *OrderRepository) Create(ctx context.Context, order *model.Order) error 
 func (r *OrderRepository) GetByID(ctx context.Context, id uuid.UUID) (*model.Order, error) {
 	var order model.Order
 	row := r.db.QueryRowContext(ctx, `
-		SELECT id, source, source_order_id, customer_name, customer_email, status, priority, due_date, notes, created_at, updated_at, completed_at, shipped_at
+		SELECT id, source, source_order_id, customer_id, customer_name, customer_email, status, priority, due_date, notes, created_at, updated_at, completed_at, shipped_at
 		FROM orders WHERE id = ?
 	`, id)
-	err := scanRow(row, &order.ID, &order.Source, &order.SourceOrderID, &order.CustomerName, &order.CustomerEmail, &order.Status, &order.Priority, &order.DueDate, &order.Notes, &order.CreatedAt, &order.UpdatedAt, &order.CompletedAt, &order.ShippedAt)
+	err := scanRow(row, &order.ID, &order.Source, &order.SourceOrderID, &order.CustomerID, &order.CustomerName, &order.CustomerEmail, &order.Status, &order.Priority, &order.DueDate, &order.Notes, &order.CreatedAt, &order.UpdatedAt, &order.CompletedAt, &order.ShippedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -48,10 +48,10 @@ func (r *OrderRepository) GetByID(ctx context.Context, id uuid.UUID) (*model.Ord
 func (r *OrderRepository) GetBySourceID(ctx context.Context, source model.OrderSource, sourceID string) (*model.Order, error) {
 	var order model.Order
 	row := r.db.QueryRowContext(ctx, `
-		SELECT id, source, source_order_id, customer_name, customer_email, status, priority, due_date, notes, created_at, updated_at, completed_at, shipped_at
+		SELECT id, source, source_order_id, customer_id, customer_name, customer_email, status, priority, due_date, notes, created_at, updated_at, completed_at, shipped_at
 		FROM orders WHERE source = ? AND source_order_id = ?
 	`, source, sourceID)
-	err := scanRow(row, &order.ID, &order.Source, &order.SourceOrderID, &order.CustomerName, &order.CustomerEmail, &order.Status, &order.Priority, &order.DueDate, &order.Notes, &order.CreatedAt, &order.UpdatedAt, &order.CompletedAt, &order.ShippedAt)
+	err := scanRow(row, &order.ID, &order.Source, &order.SourceOrderID, &order.CustomerID, &order.CustomerName, &order.CustomerEmail, &order.Status, &order.Priority, &order.DueDate, &order.Notes, &order.CreatedAt, &order.UpdatedAt, &order.CompletedAt, &order.ShippedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -61,7 +61,7 @@ func (r *OrderRepository) GetBySourceID(ctx context.Context, source model.OrderS
 // List retrieves orders with optional filtering.
 func (r *OrderRepository) List(ctx context.Context, filters model.OrderFilters) ([]model.Order, error) {
 	query := `
-		SELECT id, source, source_order_id, customer_name, customer_email, status, priority, due_date, notes, created_at, updated_at, completed_at, shipped_at
+		SELECT id, source, source_order_id, customer_id, customer_name, customer_email, status, priority, due_date, notes, created_at, updated_at, completed_at, shipped_at
 		FROM orders WHERE 1=1
 	`
 	args := []interface{}{}
@@ -103,7 +103,7 @@ func (r *OrderRepository) List(ctx context.Context, filters model.OrderFilters) 
 	var orders []model.Order
 	for rows.Next() {
 		var order model.Order
-		if err := scanRow(rows, &order.ID, &order.Source, &order.SourceOrderID, &order.CustomerName, &order.CustomerEmail, &order.Status, &order.Priority, &order.DueDate, &order.Notes, &order.CreatedAt, &order.UpdatedAt, &order.CompletedAt, &order.ShippedAt); err != nil {
+		if err := scanRow(rows, &order.ID, &order.Source, &order.SourceOrderID, &order.CustomerID, &order.CustomerName, &order.CustomerEmail, &order.Status, &order.Priority, &order.DueDate, &order.Notes, &order.CreatedAt, &order.UpdatedAt, &order.CompletedAt, &order.ShippedAt); err != nil {
 			return nil, err
 		}
 		orders = append(orders, order)
@@ -115,9 +115,9 @@ func (r *OrderRepository) List(ctx context.Context, filters model.OrderFilters) 
 func (r *OrderRepository) Update(ctx context.Context, order *model.Order) error {
 	order.UpdatedAt = time.Now()
 	_, err := r.db.ExecContext(ctx, `
-		UPDATE orders SET source = ?, source_order_id = ?, customer_name = ?, customer_email = ?, status = ?, priority = ?, due_date = ?, notes = ?, updated_at = ?, completed_at = ?, shipped_at = ?
+		UPDATE orders SET source = ?, source_order_id = ?, customer_id = ?, customer_name = ?, customer_email = ?, status = ?, priority = ?, due_date = ?, notes = ?, updated_at = ?, completed_at = ?, shipped_at = ?
 		WHERE id = ?
-	`, order.Source, order.SourceOrderID, order.CustomerName, order.CustomerEmail, order.Status, order.Priority, order.DueDate, order.Notes, order.UpdatedAt, order.CompletedAt, order.ShippedAt, order.ID)
+	`, order.Source, order.SourceOrderID, order.CustomerID, order.CustomerName, order.CustomerEmail, order.Status, order.Priority, order.DueDate, order.Notes, order.UpdatedAt, order.CompletedAt, order.ShippedAt, order.ID)
 	return err
 }
 
