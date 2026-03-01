@@ -258,8 +258,14 @@ export default function QuoteDetail() {
   }
 
   const handleSaveAddress = async (type: 'billing' | 'shipping', addr: Address) => {
+    if (!id) return
     const key = type === 'billing' ? 'billing_address' : 'shipping_address'
-    await handleUpdateQuote({ [key]: addr })
+    try {
+      await quotesApi.update(id, { [key]: addr } as Partial<Quote>)
+      await loadQuote()
+    } catch (err) {
+      console.error('Failed to save address:', err)
+    }
     if (type === 'billing') setEditingBillingAddr(false)
     else setEditingShippingAddr(false)
   }
@@ -374,6 +380,8 @@ export default function QuoteDetail() {
                 onCopyFromCustomer={() => {
                   if (quote.customer?.shipping_address) handleSaveAddress('shipping', quote.customer.shipping_address)
                 }}
+                copyFromAddress={quote.billing_address}
+                copyFromLabel="Use billing address"
               />
             </div>
           )}
@@ -736,23 +744,34 @@ interface AddressCardProps {
   onSave: (addr: Address) => void
   customerAddress?: Address
   onCopyFromCustomer: () => void
+  copyFromAddress?: Address
+  copyFromLabel?: string
 }
 
-function AddressCard({ label, address, editing, editable, onEdit, onCancel, onSave, customerAddress, onCopyFromCustomer }: AddressCardProps) {
+function AddressCard({ label, address, editing, editable, onEdit, onCancel, onSave, customerAddress, onCopyFromCustomer, copyFromAddress, copyFromLabel }: AddressCardProps) {
   const [form, setForm] = useState<Address>(address || {})
+  const [prevAddress, setPrevAddress] = useState(address)
+  const [prevEditing, setPrevEditing] = useState(editing)
 
-  useEffect(() => {
+  if (address !== prevAddress || editing !== prevEditing) {
+    setPrevAddress(address)
+    setPrevEditing(editing)
     setForm(address || {})
-  }, [address, editing])
+  }
 
   if (editing) {
     return (
       <div className="bg-surface-900 border border-surface-800 rounded-lg p-4">
         <div className="flex items-center justify-between mb-2">
           <h4 className="text-xs font-medium text-surface-400 uppercase">{label}</h4>
-          {customerAddress && (
-            <button onClick={onCopyFromCustomer} className="text-xs text-accent-400 hover:text-accent-300">Copy from customer</button>
-          )}
+          <div className="flex gap-2">
+            {copyFromAddress && copyFromLabel && (
+              <button onClick={() => onSave(copyFromAddress)} className="text-xs text-accent-400 hover:text-accent-300">{copyFromLabel}</button>
+            )}
+            {customerAddress && (
+              <button onClick={onCopyFromCustomer} className="text-xs text-accent-400 hover:text-accent-300">Copy from customer</button>
+            )}
+          </div>
         </div>
         <div className="space-y-2">
           <input value={form.line1 || ''} onChange={e => setForm(f => ({ ...f, line1: e.target.value }))} placeholder="Address line 1" className="w-full px-2 py-1.5 bg-surface-800 border border-surface-700 rounded text-xs text-surface-200 focus:outline-none focus:ring-1 focus:ring-accent-500" />
@@ -780,9 +799,14 @@ function AddressCard({ label, address, editing, editable, onEdit, onCancel, onSa
           <MapPin className="h-3 w-3" />
           {label}
         </h4>
-        {editable && (
-          <button onClick={onEdit} className="text-xs text-accent-400 hover:text-accent-300">Edit</button>
-        )}
+        <div className="flex gap-2">
+          {editable && !lines.length && copyFromAddress && copyFromLabel && (
+            <button onClick={() => onSave(copyFromAddress)} className="text-xs text-accent-400 hover:text-accent-300">{copyFromLabel}</button>
+          )}
+          {editable && (
+            <button onClick={onEdit} className="text-xs text-accent-400 hover:text-accent-300">Edit</button>
+          )}
+        </div>
       </div>
       {lines.length > 0 ? (
         <div className="text-sm text-surface-300 space-y-0.5">

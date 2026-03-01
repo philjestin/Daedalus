@@ -87,7 +87,7 @@ export default function PublicQuote() {
       }
       const addrJson = (b as Record<string, string>).business_address_json
       if (addrJson) {
-        try { info.business_address = JSON.parse(addrJson) } catch {}
+        try { info.business_address = JSON.parse(addrJson) } catch { /* ignore malformed JSON */ }
       }
       setBusiness(info)
     }).catch((err) => {

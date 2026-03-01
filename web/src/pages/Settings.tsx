@@ -773,9 +773,9 @@ function BusinessInfoSettings() {
         setEmail(vals.business_email || '')
         setWebsite(vals.business_website || '')
         if (vals.business_address_json) {
-          try { setAddress(JSON.parse(vals.business_address_json)) } catch {}
+          try { setAddress(JSON.parse(vals.business_address_json)) } catch { /* ignore malformed JSON */ }
         }
-      } catch {}
+      } catch { /* ignore load errors */ }
       setLoaded(true)
     }
     load()
