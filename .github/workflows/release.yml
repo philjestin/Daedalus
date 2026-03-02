@@ -34,6 +34,7 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Extract version info
+        shell: bash
         run: |
           echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
           echo "COMMIT=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
@@ -68,6 +69,7 @@ jobs:
           npm run build
 
       - name: Build Wails app
+        shell: bash
         run: |
           wails build -platform ${{ matrix.platform }} ${{ matrix.wails_flags }} \
             -ldflags "-X github.com/philjestin/daedalus/internal/version.Version=${{ env.VERSION }} -X github.com/philjestin/daedalus/internal/version.Commit=${{ env.COMMIT }} -X github.com/philjestin/daedalus/internal/version.Date=${{ env.DATE }} -X github.com/philjestin/daedalus/internal/version.BuiltBy=ci"
