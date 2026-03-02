@@ -19,6 +19,7 @@ import {
   CalendarRange,
   Settings,
   Cloud,
+  Download,
   Menu,
   X,
   ArrowLeft,
@@ -41,6 +42,7 @@ const navItems = [
   { href: "/docs/timeline", label: "Timeline", icon: CalendarRange },
   { href: "/docs/settings", label: "Settings", icon: Settings },
   { href: "/docs/deployment", label: "Deployment", icon: Cloud },
+  { href: "/docs/downloads", label: "Downloads", icon: Download },
 ];
 
 export default function DocsLayout({
