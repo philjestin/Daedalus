@@ -1,0 +1,105 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  enable:
+    - errcheck
+    - govet
+    - staticcheck
+    - unused
+    - ineffassign
+    - gocritic
+    - misspell
+    - bodyclose
+    - durationcheck
+    - errname
+    - nilerr
+    - sqlclosecheck
+    - unconvert
+    - unparam
+    - wastedassign
+
+  settings:
+    errcheck:
+      check-type-assertions: false
+      check-blank: false
+      exclude-functions:
+        # Network cleanup — errors not actionable
+        - (net.Conn).Close
+        - (net.Conn).SetDeadline
+        - (net.Conn).SetReadDeadline
+        - (*net.UDPConn).Close
+        - (*net.UDPConn).SetDeadline
+        - (*net.UDPConn).SetReadDeadline
+        - (*net.UDPConn).WriteToUDP
+        - (*database/sql.DB).Close
+        - (*os.File).Close
+        - (io.Closer).Close
+        - (*io.PipeWriter).Close
+        - (*mime/multipart.Writer).Close
+        - (*net/http.Response).Body.Close
+        - os.Remove
+        - os.MkdirAll
+        - encoding/json.Unmarshal
+        - (*encoding/json.Encoder).Encode
+        - (*encoding/json.Decoder).Decode
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - performance
+      disabled-checks:
+        - hugeParam
+        - rangeValCopy
+        - ifElseChain
+        - filepathJoin
+        - exitAfterDefer
+    misspell:
+      locale: US
+
+  exclusions:
+    paths:
+      - web
+      - site
+      - build
+      - migrations
+    rules:
+      # Test files: relax errcheck and unparam
+      - path: _test\.go
+        linters:
+          - unparam
+          - errcheck
+          - gocritic
+      # Defer cleanup — error is not actionable
+      - linters:
+          - errcheck
+        source: "defer "
+      # Deprecated websocket library — tracked separately
+      - linters:
+          - staticcheck
+        text: "SA1019:"
+      # IPv6 hostport in printer discovery
+      - linters:
+          - govet
+        text: "hostport"
+      # "cancelled" is used in JSON struct tags and API responses
+      - linters:
+          - misspell
+        text: "(?i)cancelled"
+      # Best-effort event logging / audit trail
+      - linters:
+          - errcheck
+        source: "AddEvent|AppendEvent"
+      # Best-effort cleanup of OAuth state
+      - linters:
+          - errcheck
+        source: "DeleteOAuthState|UpdateLastSync|UpdateWebhookEventProcessed"
+      # Background printer connections (fire-and-forget goroutines)
+      - linters:
+          - errcheck
+        source: "go s\\.(manager|printerMgr)\\.Connect"
+      # Migration ALTER TABLE — intentionally ignores "column already exists"
+      - linters:
+          - errcheck
+        source: "// Ignore error if"

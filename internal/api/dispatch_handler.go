@@ -162,8 +162,3 @@ func (h *DispatchHandler) UpdatePrinterSettings(w http.ResponseWriter, r *http.R
 
 	respondJSON(w, http.StatusOK, settings)
 }
-
-// PrintJobHandler extension for priority update
-type printJobPriorityRequest struct {
-	Priority int `json:"priority"`
-}

@@ -196,6 +196,7 @@ func NewRouter(services *service.Services, hub *realtime.Hub) http.Handler {
 			r.Get("/", spoolHandler.List)
 			r.Post("/", spoolHandler.Create)
 			r.Get("/{id}", spoolHandler.Get)
+			r.Delete("/{id}", spoolHandler.Delete)
 		})
 
 		// Print Jobs

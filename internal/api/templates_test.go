@@ -109,14 +109,6 @@ func (m *MockTemplateService) CreateProjectFromTemplate(ctx context.Context, tem
 	return project, []model.PrintJob{}, nil
 }
 
-// Test helper to create a template handler with mock service
-func setupTemplateHandler() (*TemplateHandler, *MockTemplateService) {
-	mock := NewMockTemplateService()
-	// We need to wrap the mock in a real service struct for the handler
-	// For now, we'll test via HTTP handlers directly
-	return nil, mock
-}
-
 func TestTemplateHandler_Create(t *testing.T) {
 	// Create a test template
 	template := model.Template{

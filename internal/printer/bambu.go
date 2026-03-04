@@ -262,7 +262,7 @@ func (c *BambuClient) requestPushAll() {
 			Command:  "pushall",
 		},
 	}
-	c.sendCommand(cmd)
+	c.sendCommand(cmd) //nolint:errcheck // fire-and-forget status refresh
 }
 
 // sendCommand sends a command to the printer via MQTT.
@@ -415,7 +415,7 @@ func (c *BambuClient) uploadFile(localPath string, remoteName string) (string, e
 	remoteDir := "/cache"
 	if err := conn.ChangeDir(remoteDir); err != nil {
 		remoteDir = "/"
-		conn.ChangeDir(remoteDir)
+		conn.ChangeDir(remoteDir) //nolint:errcheck // fallback to root dir
 	}
 
 	// Upload file

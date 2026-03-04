@@ -1122,6 +1122,12 @@ func (r *SpoolRepository) List(ctx context.Context) ([]model.MaterialSpool, erro
 	return spools, rows.Err()
 }
 
+// Delete deletes a spool by ID.
+func (r *SpoolRepository) Delete(ctx context.Context, id uuid.UUID) error {
+	_, err := r.db.ExecContext(ctx, `DELETE FROM material_spools WHERE id = ?`, id)
+	return err
+}
+
 // Update updates a spool.
 func (r *SpoolRepository) Update(ctx context.Context, s *model.MaterialSpool) error {
 	s.UpdatedAt = time.Now()
@@ -2280,7 +2286,7 @@ func (r *TemplateRepository) GetByID(ctx context.Context, id uuid.UUID) (*model.
 	if checklistJSON != nil {
 		json.Unmarshal(checklistJSON, &t.PostProcessChecklist)
 	}
-	if constraintsJSON != nil && len(constraintsJSON) > 2 {
+	if len(constraintsJSON) > 2 {
 		var constraints model.PrinterConstraints
 		if err := json.Unmarshal(constraintsJSON, &constraints); err == nil {
 			t.PrinterConstraints = &constraints
@@ -2307,7 +2313,7 @@ func (r *TemplateRepository) GetBySKU(ctx context.Context, sku string) (*model.T
 	if checklistJSON != nil {
 		json.Unmarshal(checklistJSON, &t.PostProcessChecklist)
 	}
-	if constraintsJSON != nil && len(constraintsJSON) > 2 {
+	if len(constraintsJSON) > 2 {
 		var constraints model.PrinterConstraints
 		if err := json.Unmarshal(constraintsJSON, &constraints); err == nil {
 			t.PrinterConstraints = &constraints
@@ -2341,7 +2347,7 @@ func (r *TemplateRepository) List(ctx context.Context, activeOnly bool) ([]model
 		if checklistJSON != nil {
 			json.Unmarshal(checklistJSON, &t.PostProcessChecklist)
 		}
-		if constraintsJSON != nil && len(constraintsJSON) > 2 {
+		if len(constraintsJSON) > 2 {
 			var constraints model.PrinterConstraints
 			if err := json.Unmarshal(constraintsJSON, &constraints); err == nil {
 				t.PrinterConstraints = &constraints
@@ -2456,7 +2462,7 @@ func (r *TemplateRepository) GetRecipeMaterials(ctx context.Context, recipeID uu
 		if err := scanRow(rows, &m.ID, &m.RecipeID, &m.MaterialType, &colorSpecJSON, &m.WeightGrams, &m.AMSPosition, &m.SequenceOrder, &m.Notes, &m.CreatedAt); err != nil {
 			return nil, err
 		}
-		if colorSpecJSON != nil && len(colorSpecJSON) > 2 {
+		if len(colorSpecJSON) > 2 {
 			var colorSpec model.ColorSpec
 			if err := json.Unmarshal(colorSpecJSON, &colorSpec); err == nil {
 				m.ColorSpec = &colorSpec
@@ -2481,7 +2487,7 @@ func (r *TemplateRepository) GetRecipeMaterialByID(ctx context.Context, id uuid.
 	if err != nil {
 		return nil, err
 	}
-	if colorSpecJSON != nil && len(colorSpecJSON) > 2 {
+	if len(colorSpecJSON) > 2 {
 		var colorSpec model.ColorSpec
 		if err := json.Unmarshal(colorSpecJSON, &colorSpec); err == nil {
 			m.ColorSpec = &colorSpec

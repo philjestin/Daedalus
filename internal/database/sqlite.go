@@ -132,7 +132,7 @@ func RunMigrations(db *sql.DB) error {
 	}
 
 	// Create indexes that may not exist
-	db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_quotes_share_token ON quotes(share_token)`)
+	db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_quotes_share_token ON quotes(share_token)`) //nolint:errcheck // best-effort index creation
 
 	return nil
 }

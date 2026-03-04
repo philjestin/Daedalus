@@ -1,4 +1,4 @@
-.PHONY: help dev build run test clean frontend backend stop start restart show-version bump-patch bump-minor bump-major release site site-build
+.PHONY: help dev build run test clean frontend backend stop start restart show-version bump-patch bump-minor bump-major release site site-build lint lint-go lint-web
 
 # Version
 VERSION := $(shell cat VERSION | tr -d 'v\n')
@@ -23,6 +23,9 @@ help:
 	@echo "  make frontend   - Run React frontend only"
 	@echo "  make build      - Build production binaries"
 	@echo "  make test       - Run tests"
+	@echo "  make lint       - Run all linters"
+	@echo "  make lint-go    - Run Go linter (golangci-lint)"
+	@echo "  make lint-web   - Run frontend linter (ESLint)"
 	@echo "  make clean      - Clean build artifacts"
 	@echo ""
 	@echo "Site:"
@@ -67,6 +70,15 @@ test:
 test-coverage:
 	go test -coverprofile=coverage.out ./...
 	go tool cover -html=coverage.out
+
+# Linting
+lint: lint-go lint-web
+
+lint-go:
+	golangci-lint run ./...
+
+lint-web:
+	cd web && npm run lint
 
 # Cleanup
 clean:

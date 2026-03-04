@@ -79,10 +79,7 @@ func TestGetOrders(t *testing.T) {
 		}
 
 		// Check query params
-		modifiedAfter := r.URL.Query().Get("modifiedAfter")
-		if modifiedAfter == "" {
-			// Return all orders
-		}
+		_ = r.URL.Query().Get("modifiedAfter")
 
 		resp := OrdersResponse{
 			Result: []Order{

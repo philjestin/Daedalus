@@ -63,11 +63,9 @@ func (c *OctoPrintClient) GetStatus() (*model.PrinterState, error) {
 	// Get printer state
 	printerResp, err := c.doRequest("GET", "/api/printer", nil)
 	if err != nil {
-		return &model.PrinterState{
-			PrinterID: c.printerID,
-			Status:    model.PrinterStatusOffline,
-			UpdatedAt: time.Now(),
-		}, nil
+		// Connection failure means the printer is offline, not an application error
+		offlineState := &model.PrinterState{PrinterID: c.printerID, Status: model.PrinterStatusOffline, UpdatedAt: time.Now()}
+		return offlineState, nil //nolint:nilerr
 	}
 
 	// Get job state

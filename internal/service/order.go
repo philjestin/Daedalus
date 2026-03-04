@@ -230,9 +230,10 @@ func (s *OrderService) ProcessItem(ctx context.Context, orderID, itemID uuid.UUI
 
 	// Get the project (product catalog entry) - check ProjectID first, then fall back to template
 	var projectID uuid.UUID
-	if item.ProjectID != nil {
+	switch {
+	case item.ProjectID != nil:
 		projectID = *item.ProjectID
-	} else if item.TemplateID != nil {
+	case item.TemplateID != nil:
 		// Legacy: look up projects by template
 		projects, err := s.projectRepo.ListByTemplateID(ctx, *item.TemplateID)
 		if err != nil {
@@ -242,7 +243,7 @@ func (s *OrderService) ProcessItem(ctx context.Context, orderID, itemID uuid.UUI
 			return nil, fmt.Errorf("no project found for template %s", item.TemplateID)
 		}
 		projectID = projects[0].ID
-	} else {
+	default:
 		return nil, fmt.Errorf("item has no project or template assigned")
 	}
 
@@ -279,7 +280,7 @@ func (s *OrderService) ProcessItem(ctx context.Context, orderID, itemID uuid.UUI
 
 	// Update order status to in_progress if pending
 	if order.Status == model.OrderStatusPending {
-		s.UpdateStatus(ctx, orderID, model.OrderStatusInProgress)
+		s.UpdateStatus(ctx, orderID, model.OrderStatusInProgress) //nolint:errcheck // best-effort status promotion
 	}
 
 	slog.Info("processed order item", "order_id", orderID, "item_id", itemID, "task_id", task.ID)

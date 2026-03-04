@@ -40,6 +40,11 @@ export default function Materials() {
     },
   })
 
+  const deleteSpool = useMutation({
+    mutationFn: (id: string) => spoolsApi.delete(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['spools'] }),
+  })
+
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
 
   const handleDeleteMaterial = (material: Material) => {
@@ -48,6 +53,15 @@ export default function Materials() {
       setConfirmDeleteId(null)
     } else {
       setConfirmDeleteId(material.id)
+    }
+  }
+
+  const handleDeleteSpool = (spool: MaterialSpool) => {
+    if (confirmDeleteId === spool.id) {
+      deleteSpool.mutate(spool.id)
+      setConfirmDeleteId(null)
+    } else {
+      setConfirmDeleteId(spool.id)
     }
   }
 
@@ -188,7 +202,7 @@ export default function Materials() {
               return (
                 <div key={spool.id} className="card p-4">
                   <div className="flex items-center gap-3 mb-3">
-                    <div 
+                    <div
                       className="w-8 h-8 rounded-full border-2 border-surface-700"
                       style={{ backgroundColor: material?.color_hex || '#666' }}
                     />
@@ -200,6 +214,24 @@ export default function Materials() {
                         {material?.type?.toUpperCase()}
                       </p>
                     </div>
+                    {confirmDeleteId === spool.id ? (
+                      <button
+                        onClick={() => handleDeleteSpool(spool)}
+                        onBlur={() => setConfirmDeleteId(null)}
+                        className="text-xs px-2 py-1 rounded bg-red-500/20 text-red-400 border border-red-500/50 hover:bg-red-500/30 transition-colors"
+                        autoFocus
+                      >
+                        Delete?
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => handleDeleteSpool(spool)}
+                        className="p-1.5 rounded-lg text-surface-500 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                        title="Delete spool"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    )}
                   </div>
                   
                   <div className="space-y-2">

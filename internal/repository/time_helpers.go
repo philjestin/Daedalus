@@ -17,11 +17,11 @@ type scannable interface {
 func scanRow(s scannable, dest ...interface{}) error {
 	wrapped := make([]interface{}, len(dest))
 	for i, d := range dest {
-		switch d.(type) {
+		switch v := d.(type) {
 		case *time.Time:
-			wrapped[i] = &sqliteTime{dest: d.(*time.Time)}
+			wrapped[i] = &sqliteTime{dest: v}
 		case **time.Time:
-			wrapped[i] = &sqliteNullTime{dest: d.(**time.Time)}
+			wrapped[i] = &sqliteNullTime{dest: v}
 		default:
 			wrapped[i] = d
 		}

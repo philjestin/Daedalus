@@ -108,9 +108,10 @@ func (s *TimelineService) GetTimeline(ctx context.Context, startDate, endDate *t
 // orderToTimelineItem converts an order to a timeline item.
 func (s *TimelineService) orderToTimelineItem(order model.Order) model.TimelineItem {
 	progress := 0.0
-	if order.Status == model.OrderStatusCompleted || order.Status == model.OrderStatusShipped {
+	switch order.Status {
+	case model.OrderStatusCompleted, model.OrderStatusShipped:
 		progress = 100
-	} else if order.Status == model.OrderStatusInProgress {
+	case model.OrderStatusInProgress:
 		progress = 50 // Will be refined based on jobs
 	}
 
@@ -215,7 +216,7 @@ func (s *TimelineService) GetOrderTimeline(ctx context.Context, orderID uuid.UUI
 	// Get tasks for this order
 	tasks, err := s.taskRepo.ListByOrder(ctx, orderID)
 	if err != nil {
-		return &item, nil
+		return &item, nil //nolint:nilerr // Return partial timeline on sub-query failure
 	}
 
 	totalJobs := 0
@@ -272,7 +273,7 @@ func (s *TimelineService) GetTaskTimeline(ctx context.Context, taskID uuid.UUID)
 	// Get jobs for this task
 	jobs, err := s.printJobRepo.ListByTask(ctx, taskID)
 	if err != nil {
-		return &item, nil
+		return &item, nil //nolint:nilerr // Return partial timeline on sub-query failure
 	}
 
 	totalJobs := 0
@@ -307,7 +308,7 @@ func (s *TimelineService) GetProjectTimeline(ctx context.Context, projectID uuid
 	// Get tasks for this project
 	tasks, err := s.taskRepo.ListByProject(ctx, projectID)
 	if err != nil {
-		return &item, nil
+		return &item, nil //nolint:nilerr // Return partial timeline on sub-query failure
 	}
 
 	totalJobs := 0

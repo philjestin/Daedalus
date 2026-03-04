@@ -77,9 +77,7 @@ func TestEnforceRetention_deletesOld(t *testing.T) {
 	svc := NewBackupService(db, dbPath)
 
 	// Set up settings service with retention count = 2
-	settingsRepo := &repository.SettingsRepository{}
-	// We need a real settings repo backed by our db
-	settingsRepo = newSettingsRepo(t, db)
+	settingsRepo := newSettingsRepo(t, db)
 	settingsSvc := &SettingsService{repo: settingsRepo}
 	svc.SetSettingsService(settingsSvc)
 
