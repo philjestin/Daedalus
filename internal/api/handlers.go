@@ -519,7 +519,7 @@ func (h *DesignHandler) Download(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Disposition", "attachment; filename="+design.FileName)
 	w.Header().Set("Content-Type", "application/octet-stream")
-	io.Copy(w, reader)
+	io.Copy(w, reader) //nolint:errcheck // best-effort streaming to HTTP client
 }
 
 // OpenExternal opens a design file in an external application.
@@ -916,6 +916,22 @@ func (h *SpoolHandler) Get(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondJSON(w, http.StatusOK, spool)
+}
+
+// Delete deletes a spool by ID.
+func (h *SpoolHandler) Delete(w http.ResponseWriter, r *http.Request) {
+	id, err := parseUUID(r, "id")
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid spool ID")
+		return
+	}
+
+	if err := h.service.Delete(r.Context(), id); err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // PrintJobHandler handles print job endpoints.
@@ -1396,7 +1412,7 @@ func (h *FileHandler) Get(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Disposition", "attachment; filename="+file.OriginalName)
 	w.Header().Set("Content-Type", file.ContentType)
-	io.Copy(w, reader)
+	io.Copy(w, reader) //nolint:errcheck // best-effort streaming to HTTP client
 }
 
 // ExpenseHandler handles expense endpoints.

@@ -160,7 +160,7 @@ func (m *Manager) Disconnect(id uuid.UUID) {
 	defer m.mu.Unlock()
 
 	if client, ok := m.clients[id]; ok {
-		client.Disconnect()
+		client.Disconnect() //nolint:errcheck // best-effort cleanup
 		delete(m.clients, id)
 	}
 	delete(m.states, id)
@@ -178,7 +178,7 @@ func (m *Manager) DisconnectAll() {
 
 	for id, client := range m.clients {
 		slog.Info("disconnecting printer", "printer_id", id)
-		client.Disconnect()
+		client.Disconnect() //nolint:errcheck // best-effort shutdown cleanup
 		delete(m.clients, id)
 	}
 	// Clear all states

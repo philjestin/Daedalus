@@ -26,6 +26,14 @@ jobs:
       - name: Install dependencies
         run: go mod download
 
+      - name: Create frontend stub for embed
+        run: mkdir -p web/dist && touch web/dist/.gitkeep
+
+      - name: Lint
+        uses: golangci/golangci-lint-action@v7
+        with:
+          version: v2.10
+
       # Build internal packages and cmd/server (excludes Wails app which needs web/dist)
       - name: Build
         run: |

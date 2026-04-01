@@ -59,11 +59,9 @@ func (c *MoonrakerClient) GetStatus() (*model.PrinterState, error) {
 	// Get printer status
 	resp, err := c.doRequest("GET", "/printer/objects/query?print_stats&extruder&heater_bed", nil)
 	if err != nil {
-		return &model.PrinterState{
-			PrinterID: c.printerID,
-			Status:    model.PrinterStatusOffline,
-			UpdatedAt: time.Now(),
-		}, nil
+		// Connection failure means the printer is offline, not an application error
+		offlineState := &model.PrinterState{PrinterID: c.printerID, Status: model.PrinterStatusOffline, UpdatedAt: time.Now()}
+		return offlineState, nil //nolint:nilerr
 	}
 
 	state := c.parseState(resp)
@@ -110,7 +108,7 @@ func (c *MoonrakerClient) SetStatusCallback(cb func(*model.PrinterState)) {
 }
 
 // doRequest performs an HTTP request to the Moonraker API.
-func (c *MoonrakerClient) doRequest(method string, path string, body []byte) ([]byte, error) {
+func (c *MoonrakerClient) doRequest(method string, path string, body []byte) ([]byte, error) { //nolint:unparam // body kept for future POST/PUT support
 	var bodyReader io.Reader
 	if body != nil {
 		bodyReader = bytes.NewReader(body)

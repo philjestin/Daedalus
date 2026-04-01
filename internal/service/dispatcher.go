@@ -203,7 +203,7 @@ func (s *DispatcherService) checkMaterialCompatibility(ctx context.Context, reci
 		return false
 	}
 
-	if template.Materials == nil || len(template.Materials) == 0 {
+	if len(template.Materials) == 0 {
 		return true // No material requirements
 	}
 

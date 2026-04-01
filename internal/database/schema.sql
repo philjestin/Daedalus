@@ -115,7 +115,7 @@ CREATE INDEX IF NOT EXISTS idx_projects_sku ON projects(sku);
 -- Tasks table (Work Instances - created when processing orders)
 CREATE TABLE IF NOT EXISTS tasks (
     id TEXT PRIMARY KEY,
-    project_id TEXT NOT NULL REFERENCES projects(id),
+    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     order_id TEXT REFERENCES orders(id),
     order_item_id TEXT REFERENCES order_items(id),
     name TEXT NOT NULL,
@@ -816,7 +816,7 @@ CREATE TABLE IF NOT EXISTS quotes (
 CREATE INDEX IF NOT EXISTS idx_quotes_status ON quotes(status);
 CREATE INDEX IF NOT EXISTS idx_quotes_customer ON quotes(customer_id);
 CREATE INDEX IF NOT EXISTS idx_quotes_quote_number ON quotes(quote_number);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_quotes_share_token ON quotes(share_token);
+-- idx_quotes_share_token is created in sqlite.go after ALTER TABLE adds the column for existing databases
 
 CREATE TABLE IF NOT EXISTS quote_options (
     id TEXT PRIMARY KEY,

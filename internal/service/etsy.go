@@ -62,7 +62,7 @@ func (s *EtsyService) IsConfigured() bool {
 // StartOAuth initiates the OAuth flow and returns the authorization URL.
 func (s *EtsyService) StartOAuth(ctx context.Context) (string, error) {
 	if s.client == nil {
-		return "", fmt.Errorf("Etsy integration not configured")
+		return "", fmt.Errorf("etsy integration not configured")
 	}
 
 	// Clean up any expired states
@@ -103,7 +103,7 @@ func (s *EtsyService) StartOAuth(ctx context.Context) (string, error) {
 // HandleCallback processes the OAuth callback and saves the integration.
 func (s *EtsyService) HandleCallback(ctx context.Context, state, code string) (*model.EtsyIntegration, error) {
 	if s.client == nil {
-		return nil, fmt.Errorf("Etsy integration not configured")
+		return nil, fmt.Errorf("etsy integration not configured")
 	}
 
 	// Retrieve and validate state
@@ -176,7 +176,7 @@ func (s *EtsyService) Disconnect(ctx context.Context) error {
 // Should be called before making API requests.
 func (s *EtsyService) RefreshTokenIfNeeded(ctx context.Context) error {
 	if s.client == nil {
-		return fmt.Errorf("Etsy integration not configured")
+		return fmt.Errorf("etsy integration not configured")
 	}
 
 	integration, err := s.repo.GetIntegration(ctx)

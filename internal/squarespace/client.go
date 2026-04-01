@@ -37,7 +37,7 @@ func NewClient(apiKey string) *Client {
 }
 
 // do performs an HTTP request with authentication.
-func (c *Client) do(ctx context.Context, method, path string, query url.Values) (*http.Response, error) {
+func (c *Client) do(ctx context.Context, method, path string, query url.Values) (*http.Response, error) { //nolint:unparam // method kept for future POST/PUT support
 	u := BaseURL + path
 	if len(query) > 0 {
 		u += "?" + query.Encode()
@@ -77,7 +77,7 @@ func parseResponse[T any](resp *http.Response) (T, error) {
 		case 401:
 			return result, fmt.Errorf("invalid API key or insufficient permissions")
 		case 404:
-			return result, fmt.Errorf("Commerce API not available — ensure your Squarespace site has a Commerce plan")
+			return result, fmt.Errorf("commerce API not available — ensure your Squarespace site has a Commerce plan")
 		default:
 			return result, fmt.Errorf("API error %d: %s", resp.StatusCode, string(body))
 		}
@@ -115,6 +115,7 @@ func (c *Client) GetWebsite(ctx context.Context) (*Website, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer resp.Body.Close()
 
 	result, err := parseResponse[Website](resp)
 	if err != nil {
@@ -228,6 +229,7 @@ func (c *Client) GetOrders(ctx context.Context, opts *OrdersOptions) (*OrdersRes
 	if err != nil {
 		return nil, err
 	}
+	defer resp.Body.Close()
 
 	return parseResponse[*OrdersResponse](resp)
 }
@@ -238,6 +240,7 @@ func (c *Client) GetOrder(ctx context.Context, orderID string) (*Order, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer resp.Body.Close()
 
 	return parseResponse[*Order](resp)
 }
@@ -331,6 +334,7 @@ func (c *Client) GetProducts(ctx context.Context, opts *ProductsOptions) (*Produ
 	if err != nil {
 		return nil, err
 	}
+	defer resp.Body.Close()
 
 	return parseResponse[*ProductsResponse](resp)
 }
@@ -341,6 +345,7 @@ func (c *Client) GetProduct(ctx context.Context, productID string) (*Product, er
 	if err != nil {
 		return nil, err
 	}
+	defer resp.Body.Close()
 
 	return parseResponse[*Product](resp)
 }

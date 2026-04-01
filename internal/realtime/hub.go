@@ -54,7 +54,7 @@ func (h *Hub) Run() {
 			h.mu.Lock()
 			for client := range h.clients {
 				close(client.send)
-				client.conn.Close(websocket.StatusGoingAway, "server shutting down")
+				client.conn.Close(websocket.StatusGoingAway, "server shutting down") //nolint:errcheck // best-effort shutdown
 				delete(h.clients, client)
 			}
 			h.stopped = true
@@ -127,7 +127,7 @@ func (h *Hub) writePump(client *Client) {
 	ticker := time.NewTicker(30 * time.Second)
 	defer func() {
 		ticker.Stop()
-		client.conn.Close(websocket.StatusNormalClosure, "")
+		client.conn.Close(websocket.StatusNormalClosure, "") //nolint:errcheck // best-effort cleanup
 	}()
 
 	for {
@@ -163,7 +163,7 @@ func (h *Hub) writePump(client *Client) {
 func (h *Hub) readPump(client *Client) {
 	defer func() {
 		h.unregister <- client
-		client.conn.Close(websocket.StatusNormalClosure, "")
+		client.conn.Close(websocket.StatusNormalClosure, "") //nolint:errcheck // best-effort cleanup
 	}()
 
 	for {

@@ -301,14 +301,14 @@ func (s *ShopifyService) convertAPILineItem(orderID uuid.UUID, api ShopifyAPILin
 // parseMoneyToCents parses a money string like "19.99" to cents.
 func parseMoneyToCents(money string) int {
 	var cents int
-	fmt.Sscanf(money, "%d", &cents)
+	fmt.Sscanf(money, "%d", &cents) //nolint:errcheck // best-effort parse
 	// Simple conversion - proper implementation would handle decimals
 	if strings.Contains(money, ".") {
 		parts := strings.Split(money, ".")
 		var dollars, pennies int
-		fmt.Sscanf(parts[0], "%d", &dollars)
+		fmt.Sscanf(parts[0], "%d", &dollars) //nolint:errcheck // best-effort parse
 		if len(parts) > 1 {
-			fmt.Sscanf(parts[1], "%d", &pennies)
+			fmt.Sscanf(parts[1], "%d", &pennies) //nolint:errcheck // best-effort parse
 			if len(parts[1]) == 1 {
 				pennies *= 10
 			}
@@ -324,7 +324,7 @@ func normalizeShopDomain(domain string) string {
 	domain = strings.TrimPrefix(domain, "http://")
 	domain = strings.TrimSuffix(domain, "/")
 	if !strings.HasSuffix(domain, ".myshopify.com") {
-		domain = domain + ".myshopify.com"
+		domain += ".myshopify.com"
 	}
 	return domain
 }

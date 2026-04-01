@@ -76,7 +76,7 @@ func NewServices(repos *repository.Repositories, store storage.Storage, printerM
 	bambuCloudClient := bambu.NewCloudClient()
 
 	services := &Services{
-		Projects:  &ProjectService{repo: repos.Projects, printJobRepo: repos.PrintJobs, printerRepo: repos.Printers, spoolRepo: repos.Spools, templateRepo: repos.Templates, designRepo: repos.Designs, saleRepo: repos.Sales, partRepo: repos.Parts, supplyRepo: repos.ProjectSupplies, printerMgr: printerMgr, hub: hub, storage: store},
+		Projects:  &ProjectService{repo: repos.Projects, printJobRepo: repos.PrintJobs, printerRepo: repos.Printers, spoolRepo: repos.Spools, templateRepo: repos.Templates, designRepo: repos.Designs, saleRepo: repos.Sales, partRepo: repos.Parts, supplyRepo: repos.ProjectSupplies, repos: repos, printerMgr: printerMgr, hub: hub, storage: store},
 		Parts:     &PartService{repo: repos.Parts},
 		Designs:   &DesignService{repo: repos.Designs, fileRepo: repos.Files, storage: store},
 		Printers:  &PrinterService{repo: repos.Printers, printJobRepo: repos.PrintJobs, saleRepo: repos.Sales, manager: printerMgr, hub: hub, discovery: printer.NewDiscovery(), bambuCloudRepo: repos.BambuCloud, bambuCloud: bambuCloudClient},
@@ -163,6 +163,7 @@ type ProjectService struct {
 	saleRepo        *repository.SaleRepository
 	partRepo        *repository.PartRepository
 	supplyRepo      *repository.ProjectSupplyRepository
+	repos           *repository.Repositories // For transaction support
 	printerMgr      *printer.Manager
 	hub             *realtime.Hub
 	storage         storage.Storage
@@ -191,9 +192,24 @@ func (s *ProjectService) Update(ctx context.Context, p *model.Project) error {
 	return s.repo.Update(ctx, p)
 }
 
-// Delete removes a project.
+// Delete removes a project and clears nullable FK references that would block deletion.
 func (s *ProjectService) Delete(ctx context.Context, id uuid.UUID) error {
-	return s.repo.Delete(ctx, id)
+	return s.repos.WithTransaction(ctx, func(tx *sql.Tx) error {
+		// Clear nullable FK references that would block deletion (RESTRICT)
+		for _, stmt := range []string{
+			`UPDATE print_jobs SET project_id = NULL WHERE project_id = ?`,
+			`UPDATE sales SET project_id = NULL WHERE project_id = ?`,
+			`UPDATE etsy_receipts SET project_id = NULL WHERE project_id = ?`,
+			`UPDATE order_items SET project_id = NULL WHERE project_id = ?`,
+		} {
+			if _, err := tx.ExecContext(ctx, stmt, id); err != nil {
+				return err
+			}
+		}
+		// tasks, parts, and project_supplies cascade via FK constraints
+		_, err := tx.ExecContext(ctx, `DELETE FROM projects WHERE id = ?`, id)
+		return err
+	})
 }
 
 // GetJobStats retrieves job statistics for a project.
@@ -413,12 +429,7 @@ func (s *ProjectService) StartProduction(ctx context.Context, projectID uuid.UUI
 						continue
 					}
 				}
-				// Check printer constraints if specified
-				if template.PrinterConstraints != nil {
-					// Note: Printer model doesn't have HasEnclosure/HasAMS yet
-					// These checks would need printer model updates to fully work
-					// For now, we skip these checks
-				}
+				// TODO: Check printer constraints (HasEnclosure/HasAMS) once printer model supports them
 			}
 			selectedPrinter = p
 			break
@@ -513,7 +524,7 @@ func (s *ProjectService) StartProduction(ctx context.Context, projectID uuid.UUI
 		// Update started_at timestamp
 		now := time.Now()
 		job.StartedAt = &now
-		s.printJobRepo.Update(ctx, &job)
+		s.printJobRepo.Update(ctx, &job) //nolint:errcheck // best-effort timestamp update
 
 		// Mark printer as printing
 		selectedPrinter.Status = model.PrinterStatusPrinting
@@ -610,7 +621,7 @@ func (s *DesignService) Create(ctx context.Context, partID uuid.UUID, filename s
 	if existingFile != nil {
 		fileID = existingFile.ID
 		// Remove duplicate file from storage
-		s.storage.Delete(storagePath)
+		s.storage.Delete(storagePath) //nolint:errcheck // best-effort duplicate cleanup
 		storagePath = existingFile.StoragePath
 	} else {
 		// Create new file record
@@ -1335,6 +1346,11 @@ func (s *SpoolService) List(ctx context.Context) ([]model.MaterialSpool, error) 
 	return s.repo.List(ctx)
 }
 
+// Delete deletes a spool by ID.
+func (s *SpoolService) Delete(ctx context.Context, id uuid.UUID) error {
+	return s.repo.Delete(ctx, id)
+}
+
 // PrintJobService handles print job business logic.
 // Jobs are immutable once created - state changes are recorded as events.
 type PrintJobService struct {
@@ -1482,7 +1498,7 @@ func (s *PrintJobService) Start(ctx context.Context, id uuid.UUID) error {
 	// Update started_at timestamp and material snapshot
 	now := time.Now()
 	job.StartedAt = &now
-	s.repo.Update(ctx, job)
+	s.repo.Update(ctx, job) //nolint:errcheck // best-effort timestamp update
 
 	// Broadcast update
 	s.hub.Broadcast(realtime.Event{
@@ -1626,7 +1642,7 @@ func (s *PrintJobService) PreflightCheck(ctx context.Context, jobID uuid.UUID) (
 	if err != nil || printerData == nil {
 		result.Ready = false
 		result.Errors = append(result.Errors, "printer not found")
-		return result, nil
+		return result, nil //nolint:nilerr // Validation result, not an error
 	}
 
 	// Get printer state including AMS
@@ -1736,7 +1752,7 @@ func (s *PrintJobService) RecordPrintingStarted(ctx context.Context, id uuid.UUI
 	if job.StartedAt == nil {
 		now := time.Now()
 		job.StartedAt = &now
-		s.repo.Update(ctx, job)
+		s.repo.Update(ctx, job) //nolint:errcheck // best-effort timestamp update
 	}
 
 	s.hub.Broadcast(realtime.Event{
@@ -1852,7 +1868,7 @@ func (s *PrintJobService) Cancel(ctx context.Context, id uuid.UUID) error {
 
 	// Try to cancel on printer (may fail if not connected, but we still record cancellation)
 	if job.PrinterID != nil {
-		s.printerMgr.CancelJob(*job.PrinterID)
+		s.printerMgr.CancelJob(*job.PrinterID) //nolint:errcheck // best-effort printer cancel
 	}
 
 	// Record cancelled event
@@ -1872,7 +1888,7 @@ func (s *PrintJobService) Cancel(ctx context.Context, id uuid.UUID) error {
 	job.CompletedAt = &now
 	failureCategory := model.FailureUserCancelled
 	job.FailureCategory = &failureCategory
-	s.repo.Update(ctx, job)
+	s.repo.Update(ctx, job) //nolint:errcheck // best-effort cancellation update
 
 	s.hub.Broadcast(realtime.Event{
 		Type: "job_cancelled",
@@ -1931,11 +1947,12 @@ func (s *PrintJobService) RecordOutcome(ctx context.Context, id uuid.UUID, outco
 		printerObj, _ := s.printerRepo.GetByID(ctx, *job.PrinterID)
 		if printerObj != nil && printerObj.CostPerHourCents > 0 {
 			var durationSeconds int
-			if outcome.ActualTime != nil && *outcome.ActualTime > 0 {
+			switch {
+			case outcome.ActualTime != nil && *outcome.ActualTime > 0:
 				durationSeconds = *outcome.ActualTime
-			} else if job.ActualSeconds != nil && *job.ActualSeconds > 0 {
+			case job.ActualSeconds != nil && *job.ActualSeconds > 0:
 				durationSeconds = *job.ActualSeconds
-			} else if job.StartedAt != nil {
+			case job.StartedAt != nil:
 				durationSeconds = int(time.Since(*job.StartedAt).Seconds())
 			}
 			if durationSeconds > 0 {
@@ -2064,7 +2081,7 @@ func (s *PrintJobService) Retry(ctx context.Context, id uuid.UUID, req *RetryReq
 	// Update the original job's failure category if provided
 	if req != nil && req.FailureCategory != nil {
 		originalJob.FailureCategory = req.FailureCategory
-		s.repo.Update(ctx, originalJob)
+		s.repo.Update(ctx, originalJob) //nolint:errcheck // best-effort failure category update
 	}
 
 	// Create new job as retry
@@ -2145,7 +2162,7 @@ func (s *PrintJobService) RecordFailure(ctx context.Context, id uuid.UUID, categ
 	now := time.Now()
 	job.CompletedAt = &now
 	job.FailureCategory = &category
-	s.repo.Update(ctx, job)
+	s.repo.Update(ctx, job) //nolint:errcheck // best-effort failure update
 
 	s.hub.Broadcast(realtime.Event{
 		Type: "job_failed",
@@ -2270,7 +2287,7 @@ func (s *PrintJobService) MarkAsScrap(ctx context.Context, id uuid.UUID, req *Sc
 		}
 	} else {
 		if job.Notes != "" {
-			job.Notes = job.Notes + "\n[Marked as Scrap]"
+			job.Notes += "\n[Marked as Scrap]"
 		} else {
 			job.Notes = "[Marked as Scrap]"
 		}
@@ -2408,7 +2425,7 @@ func (s *ExpenseService) UploadReceipt(ctx context.Context, filename string, dat
 }
 
 // parseReceiptAsync parses a receipt and updates the expense record.
-func (s *ExpenseService) parseReceiptAsync(ctx context.Context, expenseID uuid.UUID, filePath string, data []byte) {
+func (s *ExpenseService) parseReceiptAsync(ctx context.Context, expenseID uuid.UUID, _ string, data []byte) {
 	slog.Info("starting receipt parsing", "expense_id", expenseID)
 
 	// Detect content type
@@ -2658,11 +2675,6 @@ func (s *ExpenseService) findOrCreateMaterial(ctx context.Context, fm *model.Fil
 		weightKg = 1.0
 	}
 	costPerKg := float64(unitPriceCents) / 100.0 / weightKg
-
-	diameterMM := fm.DiameterMM
-	if diameterMM == 0 {
-		diameterMM = 1.75
-	}
 
 	// Resolve color hex: use AI-provided value, then fallback to color name lookup
 	colorHex := fm.ColorHex

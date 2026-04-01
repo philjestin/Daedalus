@@ -487,6 +487,40 @@ func TestSpoolRepository_CreateAndGetByID(t *testing.T) {
 	}
 }
 
+func TestSpoolRepository_Delete(t *testing.T) {
+	db := openTestDB(t)
+	materialRepo := &MaterialRepository{db: db}
+	spoolRepo := &SpoolRepository{db: db}
+	ctx := context.Background()
+
+	material := &model.Material{Name: "PLA", Type: "pla"}
+	if err := materialRepo.Create(ctx, material); err != nil {
+		t.Fatalf("Create material failed: %v", err)
+	}
+
+	spool := &model.MaterialSpool{
+		MaterialID:      material.ID,
+		InitialWeight:   1000,
+		RemainingWeight: 1000,
+		Status:          model.SpoolStatusNew,
+	}
+	if err := spoolRepo.Create(ctx, spool); err != nil {
+		t.Fatalf("Create spool failed: %v", err)
+	}
+
+	if err := spoolRepo.Delete(ctx, spool.ID); err != nil {
+		t.Fatalf("Delete spool failed: %v", err)
+	}
+
+	got, err := spoolRepo.GetByID(ctx, spool.ID)
+	if err != nil {
+		t.Fatalf("GetByID after delete failed: %v", err)
+	}
+	if got != nil {
+		t.Error("expected nil after delete, got spool")
+	}
+}
+
 // --- Print Job Repository Tests ---
 
 // setupPrintJobTestData creates the necessary project, part, file, and design for print job tests.

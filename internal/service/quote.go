@@ -307,7 +307,7 @@ func (s *QuoteService) Accept(ctx context.Context, quoteID uuid.UUID, optionID u
 			if orderItem.Quantity < 1 {
 				orderItem.Quantity = 1
 			}
-			s.orderRepo.AddItem(ctx, orderItem)
+			s.orderRepo.AddItem(ctx, orderItem) //nolint:errcheck // best-effort item copy during conversion
 		}
 	}
 

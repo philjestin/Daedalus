@@ -21,12 +21,10 @@ func openEtsyTestDB(t *testing.T) *sql.DB {
 
 func TestEtsyService_Configure_valid(t *testing.T) {
 	db := openEtsyTestDB(t)
-	etsyRepo := &repository.EtsyRepository{}
-	settingsRepo := &repository.SettingsRepository{}
 	// Use exported field via repository.NewRepositories to get properly wired repos
 	repos := repository.NewRepositories(db)
-	etsyRepo = repos.Etsy
-	settingsRepo = repos.Settings
+	etsyRepo := repos.Etsy
+	settingsRepo := repos.Settings
 
 	settingsSvc := &SettingsService{repo: settingsRepo}
 	svc := NewEtsyService(etsyRepo, "", "", settingsSvc)

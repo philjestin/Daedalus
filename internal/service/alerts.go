@@ -152,16 +152,17 @@ func (s *AlertService) GetOrderDueAlerts(ctx context.Context) ([]model.Alert, er
 		var severity model.AlertSeverity
 		var message string
 
-		if hoursUntilDue < 0 {
+		switch {
+		case hoursUntilDue < 0:
 			severity = model.AlertSeverityCritical
 			message = fmt.Sprintf("Order for %s is overdue", order.CustomerName)
-		} else if hoursUntilDue <= 24 {
+		case hoursUntilDue <= 24:
 			severity = model.AlertSeverityCritical
 			message = fmt.Sprintf("Order for %s is due today", order.CustomerName)
-		} else if hoursUntilDue <= 72 {
+		case hoursUntilDue <= 72:
 			severity = model.AlertSeverityWarning
 			message = fmt.Sprintf("Order for %s is due in %.0f hours", order.CustomerName, hoursUntilDue)
-		} else {
+		default:
 			continue // Not urgent enough to alert
 		}
 

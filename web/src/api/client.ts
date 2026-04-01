@@ -377,11 +377,14 @@ export const spoolsApi = {
   get: (id: string) => 
     fetchApi<import('../types').MaterialSpool>(`/spools/${id}`),
   
-  create: (data: Partial<import('../types').MaterialSpool>) => 
+  create: (data: Partial<import('../types').MaterialSpool>) =>
     fetchApi<import('../types').MaterialSpool>('/spools', {
       method: 'POST',
       body: JSON.stringify(data),
     }),
+
+  delete: (id: string) =>
+    fetchApi<void>(`/spools/${id}`, { method: 'DELETE' }),
 }
 
 // Print Jobs API

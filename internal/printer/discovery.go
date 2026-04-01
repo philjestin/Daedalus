@@ -298,7 +298,7 @@ func (d *Discovery) checkChiTu(ctx context.Context, host string, port int) *Disc
 			strings.Contains(bodyLower, "msla")
 
 		if isChiTu {
-			name := "Resin Printer"
+			var name string
 			manufacturer := "Unknown"
 
 			// Try to identify manufacturer
@@ -368,7 +368,7 @@ func (d *Discovery) probeBambuUDPUnicast(host string) *bambuUDPInfo {
 	}
 	defer conn.Close()
 
-	conn.SetDeadline(time.Now().Add(3 * time.Second))
+	conn.SetDeadline(time.Now().Add(3 * time.Second)) //nolint:errcheck // best-effort deadline
 
 	if _, err := conn.Write([]byte("M99999")); err != nil {
 		slog.Debug("Bambu UDP unicast write failed", "host", host, "error", err)
@@ -398,7 +398,7 @@ func (d *Discovery) probeBambuUDPBroadcast(targetHost string) *bambuUDPInfo {
 	}
 	defer conn.Close()
 
-	conn.SetDeadline(time.Now().Add(4 * time.Second))
+	conn.SetDeadline(time.Now().Add(4 * time.Second)) //nolint:errcheck // best-effort deadline
 
 	// Send broadcast discovery
 	for i := 0; i < 2; i++ {
@@ -543,7 +543,7 @@ func (d *Discovery) ScanSSDPBambu(ctx context.Context) ([]DiscoveredPrinter, err
 }
 
 // sendSSDPSearch sends an SSDP M-SEARCH and collects Bambu responses.
-func (d *Discovery) sendSSDPSearch(ctx context.Context, searchTarget string) ([]DiscoveredPrinter, error) {
+func (d *Discovery) sendSSDPSearch(_ context.Context, searchTarget string) ([]DiscoveredPrinter, error) {
 	var printers []DiscoveredPrinter
 
 	// SSDP M-SEARCH request
@@ -574,7 +574,7 @@ func (d *Discovery) sendSSDPSearch(ctx context.Context, searchTarget string) ([]
 	}
 
 	// Set read deadline
-	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	conn.SetReadDeadline(time.Now().Add(5 * time.Second)) //nolint:errcheck // best-effort deadline
 
 	// Read responses
 	buffer := make([]byte, 4096)
@@ -705,7 +705,7 @@ func (d *Discovery) ScanBambuUDP(ctx context.Context) ([]DiscoveredPrinter, erro
 	}
 
 	// Set timeout
-	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	conn.SetReadDeadline(time.Now().Add(5 * time.Second)) //nolint:errcheck // best-effort deadline
 
 	// Read responses
 	buffer := make([]byte, 4096)
