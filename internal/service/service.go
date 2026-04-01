@@ -76,7 +76,7 @@ func NewServices(repos *repository.Repositories, store storage.Storage, printerM
 	bambuCloudClient := bambu.NewCloudClient()
 
 	services := &Services{
-		Projects:  &ProjectService{repo: repos.Projects, printJobRepo: repos.PrintJobs, printerRepo: repos.Printers, spoolRepo: repos.Spools, templateRepo: repos.Templates, designRepo: repos.Designs, saleRepo: repos.Sales, partRepo: repos.Parts, supplyRepo: repos.ProjectSupplies, printerMgr: printerMgr, hub: hub, storage: store},
+		Projects:  &ProjectService{repo: repos.Projects, printJobRepo: repos.PrintJobs, printerRepo: repos.Printers, spoolRepo: repos.Spools, templateRepo: repos.Templates, designRepo: repos.Designs, saleRepo: repos.Sales, partRepo: repos.Parts, supplyRepo: repos.ProjectSupplies, repos: repos, printerMgr: printerMgr, hub: hub, storage: store},
 		Parts:     &PartService{repo: repos.Parts},
 		Designs:   &DesignService{repo: repos.Designs, fileRepo: repos.Files, storage: store},
 		Printers:  &PrinterService{repo: repos.Printers, printJobRepo: repos.PrintJobs, saleRepo: repos.Sales, manager: printerMgr, hub: hub, discovery: printer.NewDiscovery(), bambuCloudRepo: repos.BambuCloud, bambuCloud: bambuCloudClient},
@@ -163,6 +163,7 @@ type ProjectService struct {
 	saleRepo        *repository.SaleRepository
 	partRepo        *repository.PartRepository
 	supplyRepo      *repository.ProjectSupplyRepository
+	repos           *repository.Repositories // For transaction support
 	printerMgr      *printer.Manager
 	hub             *realtime.Hub
 	storage         storage.Storage
@@ -191,9 +192,24 @@ func (s *ProjectService) Update(ctx context.Context, p *model.Project) error {
 	return s.repo.Update(ctx, p)
 }
 
-// Delete removes a project.
+// Delete removes a project and clears nullable FK references that would block deletion.
 func (s *ProjectService) Delete(ctx context.Context, id uuid.UUID) error {
-	return s.repo.Delete(ctx, id)
+	return s.repos.WithTransaction(ctx, func(tx *sql.Tx) error {
+		// Clear nullable FK references that would block deletion (RESTRICT)
+		for _, stmt := range []string{
+			`UPDATE print_jobs SET project_id = NULL WHERE project_id = ?`,
+			`UPDATE sales SET project_id = NULL WHERE project_id = ?`,
+			`UPDATE etsy_receipts SET project_id = NULL WHERE project_id = ?`,
+			`UPDATE order_items SET project_id = NULL WHERE project_id = ?`,
+		} {
+			if _, err := tx.ExecContext(ctx, stmt, id); err != nil {
+				return err
+			}
+		}
+		// tasks, parts, and project_supplies cascade via FK constraints
+		_, err := tx.ExecContext(ctx, `DELETE FROM projects WHERE id = ?`, id)
+		return err
+	})
 }
 
 // GetJobStats retrieves job statistics for a project.
