@@ -30,7 +30,7 @@ jobs:
         run: mkdir -p web/dist && touch web/dist/.gitkeep
 
       - name: Lint
-        uses: golangci/golangci-lint-action@v7
+        uses: golangci/golangci-lint-action@v9
         with:
           version: v2.10
 
@@ -45,7 +45,7 @@ jobs:
         run: go test -v -race -coverprofile=coverage.out ./internal/...
 
       - name: Upload coverage
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v6
         if: github.event_name == 'push'
         with:
           files: coverage.out
