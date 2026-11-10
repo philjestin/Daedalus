@@ -7,9 +7,9 @@ import { cn } from '../lib/utils'
 
 const statusConfig: Record<TaskStatus, { label: string; color: string; icon: React.ReactNode }> = {
   pending: { label: 'Pending', color: 'bg-surface-700 text-surface-300', icon: <Clock className="w-4 h-4" /> },
-  in_progress: { label: 'In Progress', color: 'bg-blue-500/20 text-blue-400', icon: <Play className="w-4 h-4" /> },
-  completed: { label: 'Completed', color: 'bg-emerald-500/20 text-emerald-400', icon: <CheckCircle className="w-4 h-4" /> },
-  cancelled: { label: 'Cancelled', color: 'bg-red-500/20 text-red-400', icon: <XCircle className="w-4 h-4" /> },
+  in_progress: { label: 'In Progress', color: 'bg-info/20 text-info', icon: <Play className="w-4 h-4" /> },
+  completed: { label: 'Completed', color: 'bg-success/20 text-success', icon: <CheckCircle className="w-4 h-4" /> },
+  cancelled: { label: 'Cancelled', color: 'bg-error/20 text-error', icon: <XCircle className="w-4 h-4" /> },
 }
 
 export function Tasks() {
@@ -55,9 +55,9 @@ export function Tasks() {
   }
 
   const getProgressColor = (progress: number) => {
-    if (progress >= 100) return 'bg-emerald-500'
-    if (progress >= 50) return 'bg-blue-500'
-    if (progress > 0) return 'bg-amber-500'
+    if (progress >= 100) return 'bg-success'
+    if (progress >= 50) return 'bg-info'
+    if (progress > 0) return 'bg-warning'
     return 'bg-surface-600'
   }
 
@@ -65,7 +65,7 @@ export function Tasks() {
     <div className="p-4 sm:p-6 lg:p-8">
       <div className="flex items-center justify-between mb-8">
         <div>
-          <h1 className="text-3xl font-display font-bold text-surface-100">Tasks</h1>
+          <h1 className="text-heading-md font-display font-semibold text-surface-100">Tasks</h1>
           <p className="text-surface-400 mt-1">Work instances for fulfilling orders</p>
         </div>
         <button
@@ -119,7 +119,7 @@ export function Tasks() {
       ) : tasks.length === 0 ? (
         <div className="text-center py-16">
           <ListTodo className="w-16 h-16 mx-auto text-surface-600 mb-4" />
-          <h3 className="text-xl font-semibold text-surface-300 mb-2">No tasks found</h3>
+          <h3 className="text-heading-xs font-display font-semibold text-surface-300 mb-2">No tasks found</h3>
           <p className="text-surface-500 mb-4">Tasks are created when processing order items</p>
         </div>
       ) : (
@@ -134,7 +134,7 @@ export function Tasks() {
                 className="flex items-center justify-between p-4 hover:bg-surface-800/50 transition-colors"
               >
                 <div className="flex items-center gap-4">
-                  <div className={cn('p-2 rounded-lg', config.color)}>
+                  <div className={cn('p-2 rounded-none', config.color)}>
                     {config.icon}
                   </div>
                   <div>
@@ -164,7 +164,7 @@ export function Tasks() {
                       <span className="text-xs text-surface-500 w-8">{Math.round(progress)}%</span>
                     </div>
                   </div>
-                  <span className={cn('px-2.5 py-1 rounded-full text-xs font-medium', config.color)}>
+                  <span className={cn('px-2.5 py-1 rounded-badge text-xs font-medium', config.color)}>
                     {config.label}
                   </span>
                   <ChevronRight className="w-5 h-5 text-surface-600" />
@@ -235,19 +235,19 @@ function CreateTaskModal({ projects, onClose, onCreated }: CreateTaskModalProps)
   }
 
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+    <div className="fixed inset-0 bg-overlay flex items-center justify-center z-50">
       <div className="card w-full max-w-md p-6">
-        <h2 className="text-xl font-semibold text-surface-100 mb-4">Create Task</h2>
+        <h2 className="text-heading-xs font-display font-semibold text-surface-100 mb-4">Create Task</h2>
         <form onSubmit={handleSubmit}>
           {error && (
-            <div className="mb-4 p-3 bg-red-500/20 text-red-400 rounded-lg text-sm">
+            <div className="mb-4 p-3 bg-error/20 text-error rounded-none text-sm">
               {error}
             </div>
           )}
 
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-surface-300 mb-1">
+              <label className="block text-label-sm font-normal text-surface-300 mb-1">
                 Project (Product)
               </label>
               <select
@@ -266,7 +266,7 @@ function CreateTaskModal({ projects, onClose, onCreated }: CreateTaskModalProps)
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-surface-300 mb-1">
+              <label className="block text-label-sm font-normal text-surface-300 mb-1">
                 Task Name
               </label>
               <input
@@ -280,7 +280,7 @@ function CreateTaskModal({ projects, onClose, onCreated }: CreateTaskModalProps)
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-surface-300 mb-1">
+              <label className="block text-label-sm font-normal text-surface-300 mb-1">
                 Quantity
               </label>
               <input
@@ -293,7 +293,7 @@ function CreateTaskModal({ projects, onClose, onCreated }: CreateTaskModalProps)
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-surface-300 mb-1">
+              <label className="block text-label-sm font-normal text-surface-300 mb-1">
                 Pickup / Ship Date (optional)
               </label>
               <input
@@ -305,7 +305,7 @@ function CreateTaskModal({ projects, onClose, onCreated }: CreateTaskModalProps)
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-surface-300 mb-1">
+              <label className="block text-label-sm font-normal text-surface-300 mb-1">
                 Notes (optional)
               </label>
               <textarea

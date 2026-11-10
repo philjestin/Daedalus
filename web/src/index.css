@@ -113,6 +113,10 @@
   --color-primary-500: var(--accent);
   --color-gold: var(--accent-secondary);
   --color-focus: var(--focus-ring);
+  --color-tertiary: var(--text-tertiary);
+  --color-overlay: rgba(10, 15, 21, 0.6);
+  --color-on-color: #ffffff;
+  --default-border-color: var(--border);
 
   --color-success: var(--status-success);
   --color-success-fg: var(--status-success-fg);
@@ -252,6 +256,15 @@
     background-color: color-mix(in srgb, var(--status-error) 86%, #000000);
   }
 
+  .btn-success {
+    background-color: var(--status-success);
+    color: var(--status-success-fg);
+  }
+
+  .btn-success:hover:not(:disabled) {
+    background-color: color-mix(in srgb, var(--status-success) 86%, #000000);
+  }
+
   .btn-sm {
     height: 24px;
     padding: 5px 0;
@@ -306,6 +319,12 @@
     cursor: not-allowed;
     background-color: var(--muted);
     color: var(--text-tertiary);
+  }
+
+  textarea.input {
+    height: auto;
+    min-height: 80px;
+    line-height: 1.5;
   }
 
   select,

@@ -66,12 +66,12 @@ export default function Customers() {
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-display font-bold text-surface-100">Customers</h1>
+          <h1 className="text-heading-sm font-display font-semibold text-surface-100">Customers</h1>
           <p className="text-sm text-surface-400 mt-1">{customers.length} customer{customers.length !== 1 ? 's' : ''}</p>
         </div>
         <button
           onClick={() => setShowCreateModal(true)}
-          className="inline-flex items-center gap-2 px-4 py-2 bg-accent-500 text-white rounded-lg hover:bg-accent-600 transition-colors text-sm font-medium"
+          className="btn btn-primary inline-flex items-center gap-2 px-4 py-2 text-sm"
         >
           <Plus className="h-4 w-4" />
           New Customer
@@ -87,7 +87,7 @@ export default function Customers() {
             placeholder="Search customers..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 bg-surface-800 border border-surface-700 rounded-lg text-surface-100 placeholder-surface-500 text-sm focus:outline-none focus:ring-1 focus:ring-accent-500"
+            className="input pl-10 pr-4"
           />
         </div>
       </div>
@@ -96,18 +96,18 @@ export default function Customers() {
       {customers.length === 0 ? (
         <div className="text-center py-16">
           <Users className="h-12 w-12 text-surface-600 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-surface-300 mb-2">No customers yet</h3>
+          <h3 className="text-heading-xs font-display font-semibold text-surface-300 mb-2">No customers yet</h3>
           <p className="text-surface-500 text-sm mb-4">Create your first customer to start building quotes.</p>
           <button
             onClick={() => setShowCreateModal(true)}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-accent-500 text-white rounded-lg hover:bg-accent-600 transition-colors text-sm"
+            className="btn btn-primary inline-flex items-center gap-2 px-4 py-2 text-sm"
           >
             <Plus className="h-4 w-4" />
             New Customer
           </button>
         </div>
       ) : (
-        <div className="bg-surface-900 border border-surface-800 rounded-lg overflow-hidden">
+        <div className="bg-surface-900 border border-surface-800 rounded-none overflow-hidden">
           <table className="w-full">
             <thead>
               <tr className="border-b border-surface-800">
@@ -145,7 +145,7 @@ export default function Customers() {
                   <td className="px-4 py-3 text-sm text-surface-400">{customer.phone}</td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-1">
-                      <button onClick={() => handleDelete(customer.id)} className="text-surface-600 hover:text-red-400" title="Delete customer">
+                      <button onClick={() => handleDelete(customer.id)} className="text-surface-600 hover:text-error" title="Delete customer">
                         <Trash2 className="h-3.5 w-3.5" />
                       </button>
                       <Link to={`/customers/${customer.id}`} className="text-surface-500 hover:text-surface-300">
@@ -162,29 +162,29 @@ export default function Customers() {
 
       {/* Create Modal */}
       {showCreateModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-surface-900 border border-surface-700 rounded-xl p-6 w-full max-w-md">
-            <h2 className="text-lg font-display font-semibold text-surface-100 mb-4">New Customer</h2>
+        <div className="fixed inset-0 bg-overlay flex items-center justify-center z-50">
+          <div className="card p-6 max-w-md">
+            <h2 className="text-heading-xs font-display font-semibold text-surface-100 mb-4">New Customer</h2>
             <form onSubmit={handleCreate} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-surface-300 mb-1">Name *</label>
-                <input name="name" required className="w-full px-3 py-2 bg-surface-800 border border-surface-700 rounded-lg text-surface-100 text-sm focus:outline-none focus:ring-1 focus:ring-accent-500" />
+                <label className="block text-label-sm font-normal text-surface-300 mb-1">Name *</label>
+                <input name="name" required className="input" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-surface-300 mb-1">Email</label>
-                <input name="email" type="email" className="w-full px-3 py-2 bg-surface-800 border border-surface-700 rounded-lg text-surface-100 text-sm focus:outline-none focus:ring-1 focus:ring-accent-500" />
+                <label className="block text-label-sm font-normal text-surface-300 mb-1">Email</label>
+                <input name="email" type="email" className="input" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-surface-300 mb-1">Company</label>
-                <input name="company" className="w-full px-3 py-2 bg-surface-800 border border-surface-700 rounded-lg text-surface-100 text-sm focus:outline-none focus:ring-1 focus:ring-accent-500" />
+                <label className="block text-label-sm font-normal text-surface-300 mb-1">Company</label>
+                <input name="company" className="input" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-surface-300 mb-1">Phone</label>
-                <input name="phone" className="w-full px-3 py-2 bg-surface-800 border border-surface-700 rounded-lg text-surface-100 text-sm focus:outline-none focus:ring-1 focus:ring-accent-500" />
+                <label className="block text-label-sm font-normal text-surface-300 mb-1">Phone</label>
+                <input name="phone" className="input" />
               </div>
               <div className="flex justify-end gap-3 pt-2">
                 <button type="button" onClick={() => setShowCreateModal(false)} className="px-4 py-2 text-sm text-surface-400 hover:text-surface-200">Cancel</button>
-                <button type="submit" className="px-4 py-2 bg-accent-500 text-white rounded-lg hover:bg-accent-600 text-sm font-medium">Create</button>
+                <button type="submit" className="btn btn-primary px-4 py-2 text-sm">Create</button>
               </div>
             </form>
           </div>

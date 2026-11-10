@@ -151,11 +151,11 @@ export default function TemplateDetail() {
 
   const getMaterialBadge = (type: MaterialType) => {
     const colors: Record<MaterialType, string> = {
-      pla: 'bg-emerald-500/20 text-emerald-400',
-      petg: 'bg-blue-500/20 text-blue-400',
-      abs: 'bg-amber-500/20 text-amber-400',
-      asa: 'bg-orange-500/20 text-orange-400',
-      tpu: 'bg-purple-500/20 text-purple-400',
+      pla: 'bg-success/20 text-success',
+      petg: 'bg-info/20 text-info',
+      abs: 'bg-warning/20 text-warning',
+      asa: 'bg-warning/20 text-warning',
+      tpu: 'bg-info/20 text-info',
       supply: 'bg-surface-500/20 text-surface-400',
     }
     return colors[type] || 'bg-surface-700 text-surface-300'
@@ -196,10 +196,10 @@ export default function TemplateDetail() {
                 type="text"
                 value={editForm.name || ''}
                 onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-                className="input text-2xl font-bold mb-2"
+                className="input text-heading-sm font-display font-semibold mb-2"
               />
             ) : (
-              <h1 className="text-3xl font-display font-bold text-surface-100">
+              <h1 className="text-heading-md font-display font-semibold text-surface-100">
                 {template.name}
               </h1>
             )}
@@ -258,14 +258,14 @@ export default function TemplateDetail() {
 
       {/* Properties Card */}
       <div className="card p-6 mb-6">
-        <h2 className="text-lg font-semibold text-surface-100 mb-4">
+        <h2 className="text-heading-xs font-display font-semibold text-surface-100 mb-4">
           Template Properties
         </h2>
 
         {isEditing ? (
           <div className="grid grid-cols-3 gap-4">
             <div>
-              <label className="block text-sm font-medium text-surface-300 mb-1">
+              <label className="block text-label-sm font-normal text-surface-300 mb-1">
                 SKU
               </label>
               <input
@@ -277,7 +277,7 @@ export default function TemplateDetail() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-surface-300 mb-1">
+              <label className="block text-label-sm font-normal text-surface-300 mb-1">
                 Material Type
               </label>
               <select
@@ -295,7 +295,7 @@ export default function TemplateDetail() {
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-surface-300 mb-1">
+              <label className="block text-label-sm font-normal text-surface-300 mb-1">
                 Quantity per Order
               </label>
               <input
@@ -309,7 +309,7 @@ export default function TemplateDetail() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-surface-300 mb-1">
+              <label className="block text-label-sm font-normal text-surface-300 mb-1">
                 Est. Material (grams)
               </label>
               <input
@@ -327,7 +327,7 @@ export default function TemplateDetail() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-surface-300 mb-1">
+              <label className="block text-label-sm font-normal text-surface-300 mb-1">
                 Print Profile
               </label>
               <select
@@ -345,7 +345,7 @@ export default function TemplateDetail() {
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-surface-300 mb-1">
+              <label className="block text-label-sm font-normal text-surface-300 mb-1">
                 Est. Print Time
               </label>
               <input
@@ -362,7 +362,7 @@ export default function TemplateDetail() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-surface-300 mb-1">
+              <label className="block text-label-sm font-normal text-surface-300 mb-1">
                 Labor Time (minutes)
               </label>
               <input
@@ -380,7 +380,7 @@ export default function TemplateDetail() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-surface-300 mb-1">
+              <label className="block text-label-sm font-normal text-surface-300 mb-1">
                 Sale Price ($)
               </label>
               <input
@@ -481,7 +481,7 @@ export default function TemplateDetail() {
       {/* Designs */}
       <div className="card p-6 mb-6">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-surface-100">
+          <h2 className="text-heading-xs font-display font-semibold text-surface-100">
             Design Files ({template.designs?.length || 0})
           </h2>
           <button
@@ -506,7 +506,7 @@ export default function TemplateDetail() {
             {template.designs.map((td) => (
               <div
                 key={td.id}
-                className="flex items-center justify-between p-4 rounded-lg bg-surface-800/50"
+                className="flex items-center justify-between p-4 rounded-none bg-surface-800/50"
               >
                 <div className="flex items-center gap-4">
                   <FileCode className="h-6 w-6 text-surface-500" />
@@ -539,7 +539,7 @@ export default function TemplateDetail() {
                 <button
                   onClick={() => removeDesign.mutate(td.design_id)}
                   disabled={removeDesign.isPending}
-                  className="btn btn-ghost text-red-400 hover:text-red-300 hover:bg-red-500/10"
+                  className="btn btn-ghost text-error hover:text-error hover:bg-error/10"
                 >
                   <Trash2 className="h-4 w-4" />
                 </button>
@@ -589,7 +589,7 @@ export default function TemplateDetail() {
       <div className="card p-6 mb-6">
         <div className="flex items-center gap-2 mb-4">
           <Printer className="h-5 w-5 text-surface-400" />
-          <h2 className="text-lg font-semibold text-surface-100">
+          <h2 className="text-heading-xs font-display font-semibold text-surface-100">
             Compatible Printers ({compatiblePrinters.length})
           </h2>
         </div>
@@ -604,7 +604,7 @@ export default function TemplateDetail() {
             {compatiblePrinters.map((printer) => (
               <div
                 key={printer.id}
-                className="p-3 rounded-lg bg-surface-800/50 border border-surface-700"
+                className="p-3 rounded-none bg-surface-800/50 border border-surface-700"
               >
                 <div className="font-medium text-surface-100">{printer.name}</div>
                 <div className="text-sm text-surface-500">{printer.model}</div>
@@ -621,7 +621,7 @@ export default function TemplateDetail() {
 
       {/* Post-Process Checklist */}
       <div className="card p-6 mb-6">
-        <h2 className="text-lg font-semibold text-surface-100 mb-4">
+        <h2 className="text-heading-xs font-display font-semibold text-surface-100 mb-4">
           Post-Processing Checklist
         </h2>
 
@@ -635,7 +635,7 @@ export default function TemplateDetail() {
             {template.post_process_checklist.map((item, idx) => (
               <div
                 key={idx}
-                className="flex items-center gap-3 p-3 rounded-lg bg-surface-800/50"
+                className="flex items-center gap-3 p-3 rounded-none bg-surface-800/50"
               >
                 <CheckSquare className="h-4 w-4 text-surface-500" />
                 <span className="text-surface-200">{item}</span>
@@ -646,8 +646,8 @@ export default function TemplateDetail() {
       </div>
 
       {/* Danger Zone */}
-      <div className="card p-6 border-red-500/20">
-        <h2 className="text-lg font-semibold text-red-400 mb-4">Danger Zone</h2>
+      <div className="card p-6 border-error/20">
+        <h2 className="text-heading-xs font-display font-semibold text-error mb-4">Danger Zone</h2>
         <p className="text-surface-400 mb-4">
           Deleting this template will not affect any projects already created from it.
         </p>
@@ -658,7 +658,7 @@ export default function TemplateDetail() {
             }
           }}
           disabled={deleteTemplate.isPending}
-          className="btn bg-red-500/20 text-red-400 hover:bg-red-500/30"
+          className="btn bg-error/20 text-error hover:bg-error/30"
         >
           <Trash2 className="h-4 w-4 mr-2" />
           {deleteTemplate.isPending ? 'Deleting...' : 'Delete Template'}
@@ -746,17 +746,17 @@ function AddDesignModal({
 
   return (
     <div
-      className="fixed inset-0 bg-black/60 flex items-center justify-center z-50"
+      className="fixed inset-0 bg-overlay flex items-center justify-center z-50"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
       <div className="card w-full max-w-lg p-6">
-        <h2 className="text-xl font-semibold text-surface-100 mb-4">
+        <h2 className="text-heading-xs font-display font-semibold text-surface-100 mb-4">
           Add Design to Template
         </h2>
         <form onSubmit={handleSubmit}>
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-surface-300 mb-1">
+              <label className="block text-label-sm font-normal text-surface-300 mb-1">
                 Select Project
               </label>
               <select
@@ -779,7 +779,7 @@ function AddDesignModal({
 
             {selectedProject && (
               <div>
-                <label className="block text-sm font-medium text-surface-300 mb-1">
+                <label className="block text-label-sm font-normal text-surface-300 mb-1">
                   Select Part
                 </label>
                 <select
@@ -802,7 +802,7 @@ function AddDesignModal({
 
             {selectedPart && (
               <div>
-                <label className="block text-sm font-medium text-surface-300 mb-1">
+                <label className="block text-label-sm font-normal text-surface-300 mb-1">
                   Select Design Version
                 </label>
                 <select
@@ -822,7 +822,7 @@ function AddDesignModal({
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-surface-300 mb-1">
+                <label className="block text-label-sm font-normal text-surface-300 mb-1">
                   Quantity per Instance
                 </label>
                 <input
@@ -848,7 +848,7 @@ function AddDesignModal({
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-surface-300 mb-1">
+              <label className="block text-label-sm font-normal text-surface-300 mb-1">
                 Notes (optional)
               </label>
               <input
@@ -907,16 +907,16 @@ function InstantiateModal({
 
   return (
     <div
-      className="fixed inset-0 bg-black/60 flex items-center justify-center z-50"
+      className="fixed inset-0 bg-overlay flex items-center justify-center z-50"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
       <div className="card w-full max-w-md p-6">
-        <h2 className="text-xl font-semibold text-surface-100 mb-4">
+        <h2 className="text-heading-xs font-display font-semibold text-surface-100 mb-4">
           Create Project from Template
         </h2>
         <form onSubmit={handleSubmit}>
           <div className="space-y-4">
-            <div className="p-4 rounded-lg bg-surface-800/50">
+            <div className="p-4 rounded-none bg-surface-800/50">
               <div className="text-sm text-surface-500 mb-1">Template</div>
               <div className="font-medium text-surface-100">{template.name}</div>
               <div className="text-sm text-surface-400 mt-1">
@@ -925,7 +925,7 @@ function InstantiateModal({
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-surface-300 mb-1">
+              <label className="block text-label-sm font-normal text-surface-300 mb-1">
                 Order Quantity
               </label>
               <input
@@ -940,7 +940,7 @@ function InstantiateModal({
               </p>
             </div>
 
-            <div className="p-4 rounded-lg bg-accent-500/10 border border-accent-500/20">
+            <div className="p-4 rounded-none bg-accent-500/10 border border-accent-500/20">
               <div className="flex items-center justify-between text-sm">
                 <span className="text-surface-300">Total Parts:</span>
                 <span className="font-medium text-accent-400">{totalParts}</span>
@@ -954,7 +954,7 @@ function InstantiateModal({
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-surface-300 mb-1">
+              <label className="block text-label-sm font-normal text-surface-300 mb-1">
                 Customer Notes (optional)
               </label>
               <textarea

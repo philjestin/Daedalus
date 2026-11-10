@@ -72,23 +72,23 @@ function CompleteTaskModal({
   const parseDollars = (val: string) => Math.round(parseFloat(val || '0') * 100)
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="bg-surface-800 border border-surface-700 rounded-xl w-full max-w-md mx-4 shadow-2xl">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay backdrop-blur-sm">
+      <div className="card max-w-md mx-4">
         <div className="p-6">
-          <h2 className="text-lg font-semibold text-surface-100 mb-1">Complete Task</h2>
+          <h2 className="text-heading-xs font-display font-semibold text-surface-100 mb-1">Complete Task</h2>
           <p className="text-sm text-surface-400 mb-5">
             {task.name} &times; {task.quantity}
           </p>
 
           {/* Record sale toggle */}
-          <label className="flex items-center gap-3 p-3 bg-surface-900 rounded-lg cursor-pointer mb-4">
+          <label className="flex items-center gap-3 p-3 bg-surface-900 rounded-none cursor-pointer mb-4">
             <input
               type="checkbox"
               checked={recordSale}
               onChange={e => setRecordSale(e.target.checked)}
-              className="w-4 h-4 rounded border-surface-600 text-accent-500 focus:ring-accent-500 bg-surface-700"
+              className="w-4 h-4 rounded-none border-surface-600 text-accent-500 focus:ring-accent-500 bg-surface-700"
             />
-            <DollarSign className="w-4 h-4 text-emerald-400" />
+            <DollarSign className="w-4 h-4 text-success" />
             <span className="text-sm font-medium text-surface-100">Record a sale</span>
           </label>
 
@@ -159,28 +159,28 @@ function CompleteTaskModal({
                   value={saleForm.customer_name}
                   onChange={e => setSaleForm(f => ({ ...f, customer_name: e.target.value }))}
                   placeholder="Optional"
-                  className="w-full px-3 py-2 bg-surface-900 border border-surface-700 rounded-lg text-sm text-surface-100 placeholder:text-surface-600 focus:outline-none focus:border-accent-500"
+                  className="input placeholder:text-surface-600 focus:border-accent-500"
                 />
               </div>
             </div>
           )}
 
           {error && (
-            <p className="text-sm text-red-400 mb-4">{error}</p>
+            <p className="text-sm text-error mb-4">{error}</p>
           )}
 
           <div className="flex gap-3 justify-end">
             <button
               onClick={onClose}
               disabled={submitting}
-              className="px-4 py-2 text-sm text-surface-300 border border-surface-600 rounded-lg hover:bg-surface-700 transition-colors disabled:opacity-50"
+              className="px-4 py-2 text-sm text-surface-300 border border-surface-600 rounded-none hover:bg-surface-700 transition-colors disabled:opacity-50"
             >
               Cancel
             </button>
             <button
               onClick={handleSubmit}
               disabled={submitting}
-              className="inline-flex items-center gap-2 px-4 py-2 text-sm bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors disabled:opacity-50"
+              className="btn btn-success inline-flex items-center gap-2 px-4 py-2 text-sm disabled:opacity-50"
             >
               <CheckCircle className="w-4 h-4" />
               {submitting ? 'Completing...' : 'Complete'}
@@ -194,20 +194,20 @@ function CompleteTaskModal({
 
 const statusConfig: Record<TaskStatus, { label: string; color: string; bgColor: string; icon: React.ReactNode }> = {
   pending: { label: 'Pending', color: 'text-surface-300', bgColor: 'bg-surface-700', icon: <Clock className="w-5 h-5" /> },
-  in_progress: { label: 'In Progress', color: 'text-blue-400', bgColor: 'bg-blue-500/20', icon: <Play className="w-5 h-5" /> },
-  completed: { label: 'Completed', color: 'text-emerald-400', bgColor: 'bg-emerald-500/20', icon: <CheckCircle className="w-5 h-5" /> },
-  cancelled: { label: 'Cancelled', color: 'text-red-400', bgColor: 'bg-red-500/20', icon: <XCircle className="w-5 h-5" /> },
+  in_progress: { label: 'In Progress', color: 'text-info', bgColor: 'bg-info/20', icon: <Play className="w-5 h-5" /> },
+  completed: { label: 'Completed', color: 'text-success', bgColor: 'bg-success/20', icon: <CheckCircle className="w-5 h-5" /> },
+  cancelled: { label: 'Cancelled', color: 'text-error', bgColor: 'bg-error/20', icon: <XCircle className="w-5 h-5" /> },
 }
 
 const jobStatusColors: Record<string, string> = {
   queued: 'bg-surface-700 text-surface-300',
-  assigned: 'bg-amber-500/20 text-amber-400',
-  uploaded: 'bg-blue-500/20 text-blue-400',
-  sending: 'bg-blue-500/20 text-blue-400',
-  printing: 'bg-indigo-500/20 text-indigo-400',
-  paused: 'bg-amber-500/20 text-amber-400',
-  completed: 'bg-emerald-500/20 text-emerald-400',
-  failed: 'bg-red-500/20 text-red-400',
+  assigned: 'bg-warning/20 text-warning',
+  uploaded: 'bg-info/20 text-info',
+  sending: 'bg-info/20 text-info',
+  printing: 'bg-info/20 text-info',
+  paused: 'bg-warning/20 text-warning',
+  completed: 'bg-success/20 text-success',
+  failed: 'bg-error/20 text-error',
   cancelled: 'bg-surface-700 text-surface-400',
 }
 
@@ -306,9 +306,9 @@ export function TaskDetail() {
   }
 
   const getProgressColor = (progress: number) => {
-    if (progress >= 100) return 'bg-emerald-500'
-    if (progress >= 50) return 'bg-blue-500'
-    if (progress > 0) return 'bg-amber-500'
+    if (progress >= 100) return 'bg-success'
+    if (progress >= 50) return 'bg-info'
+    if (progress > 0) return 'bg-warning'
     return 'bg-surface-600'
   }
 
@@ -324,8 +324,8 @@ export function TaskDetail() {
     return (
       <div className="p-4 sm:p-6 lg:p-8">
         <div className="text-center py-16">
-          <AlertCircle className="w-16 h-16 mx-auto text-red-400 mb-4" />
-          <h3 className="text-xl font-semibold text-surface-100 mb-2">Error</h3>
+          <AlertCircle className="w-16 h-16 mx-auto text-error mb-4" />
+          <h3 className="text-heading-xs font-display font-semibold text-surface-100 mb-2">Error</h3>
           <p className="text-surface-500">{error || 'Task not found'}</p>
           <Link to="/tasks" className="mt-4 inline-block text-accent-400 hover:text-accent-300">
             Back to Tasks
@@ -353,12 +353,12 @@ export function TaskDetail() {
         </Link>
         <div className="flex items-start justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-surface-100">{task.name}</h1>
+            <h1 className="text-heading-sm font-display font-semibold text-surface-100">{task.name}</h1>
             <p className="text-surface-400">
               Quantity: {task.quantity} | Created: {formatDate(task.created_at)}
             </p>
           </div>
-          <div className={cn('inline-flex items-center gap-2 px-3 py-1.5 rounded-full', config.bgColor, config.color)}>
+          <div className={cn('inline-flex items-center gap-2 px-3 py-1.5 rounded-badge', config.bgColor, config.color)}>
             {config.icon}
             <span className="font-medium">{config.label}</span>
           </div>
@@ -367,7 +367,7 @@ export function TaskDetail() {
 
       {/* Progress */}
       <div className="card p-6 mb-6">
-        <h2 className="text-lg font-semibold text-surface-100 mb-4">Progress</h2>
+        <h2 className="text-heading-xs font-display font-semibold text-surface-100 mb-4">Progress</h2>
         <div className="mb-4">
           <div className="flex justify-between text-sm mb-1">
             <span className="text-surface-400">Overall Progress</span>
@@ -382,15 +382,15 @@ export function TaskDetail() {
         </div>
         <div className="grid grid-cols-3 gap-4 text-center">
           <div>
-            <div className="text-2xl font-bold text-surface-100">{jobs.length}</div>
+            <div className="text-heading-sm font-display font-semibold text-surface-100">{jobs.length}</div>
             <div className="text-sm text-surface-500">Total Jobs</div>
           </div>
           <div>
-            <div className="text-2xl font-bold text-emerald-400">{completedJobs}</div>
+            <div className="text-heading-sm font-display font-semibold text-success">{completedJobs}</div>
             <div className="text-sm text-surface-500">Completed</div>
           </div>
           <div>
-            <div className="text-2xl font-bold text-red-400">{failedJobs}</div>
+            <div className="text-heading-sm font-display font-semibold text-error">{failedJobs}</div>
             <div className="text-sm text-surface-500">Failed</div>
           </div>
         </div>
@@ -399,7 +399,7 @@ export function TaskDetail() {
       {/* Checklist */}
       <div className="card p-6 mb-6">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-surface-100">Checklist</h2>
+          <h2 className="text-heading-xs font-display font-semibold text-surface-100">Checklist</h2>
           {checklist.length > 0 ? (
             <span className="text-sm text-surface-400">
               {completedChecklist}/{checklist.length} completed
@@ -421,7 +421,7 @@ export function TaskDetail() {
                 <div
                   className={cn(
                     'h-full transition-all',
-                    completedChecklist === checklist.length ? 'bg-emerald-500' : 'bg-accent-500'
+                    completedChecklist === checklist.length ? 'bg-success' : 'bg-accent-500'
                   )}
                   style={{ width: `${(completedChecklist / checklist.length) * 100}%` }}
                 />
@@ -431,14 +431,14 @@ export function TaskDetail() {
               {checklist.map((item) => (
                 <div
                   key={item.id}
-                  className="flex items-center gap-3 p-3 bg-surface-800 rounded-lg hover:bg-surface-700 transition-colors"
+                  className="flex items-center gap-3 p-3 bg-surface-800 rounded-none hover:bg-surface-700 transition-colors"
                 >
                   <button
                     onClick={() => handleToggleChecklist(item)}
                     className="flex items-center gap-3 flex-1 text-left"
                   >
                     {item.completed ? (
-                      <CheckSquare className="w-5 h-5 text-emerald-400 flex-shrink-0" />
+                      <CheckSquare className="w-5 h-5 text-success flex-shrink-0" />
                     ) : (
                       <Square className="w-5 h-5 text-surface-500 flex-shrink-0" />
                     )}
@@ -458,7 +458,7 @@ export function TaskDetail() {
                     <button
                       onClick={() => handlePrintFromChecklist(item.id)}
                       disabled={actionLoading}
-                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-accent-400 border border-accent-500/50 rounded-lg hover:bg-accent-500/10 transition-colors disabled:opacity-50 flex-shrink-0"
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-accent-400 border border-accent-500/50 rounded-none hover:bg-accent-500/10 transition-colors disabled:opacity-50 flex-shrink-0"
                     >
                       <Printer className="w-3.5 h-3.5" />
                       Print
@@ -478,7 +478,7 @@ export function TaskDetail() {
       {/* Actions */}
       {task.status !== 'completed' && task.status !== 'cancelled' && (
         <div className="card p-6 mb-6">
-          <h2 className="text-lg font-semibold text-surface-100 mb-4">Actions</h2>
+          <h2 className="text-heading-xs font-display font-semibold text-surface-100 mb-4">Actions</h2>
           <div className="flex gap-3">
             {task.status === 'pending' && (
               <button
@@ -494,7 +494,7 @@ export function TaskDetail() {
               <button
                 onClick={() => setShowCompleteModal(true)}
                 disabled={actionLoading}
-                className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors disabled:opacity-50"
+                className="btn btn-success inline-flex items-center gap-2 px-4 py-2 disabled:opacity-50"
               >
                 <CheckCircle className="w-4 h-4" />
                 Mark Complete
@@ -503,7 +503,7 @@ export function TaskDetail() {
             <button
               onClick={handleCancel}
               disabled={actionLoading}
-              className="inline-flex items-center gap-2 px-4 py-2 text-red-400 border border-red-500/50 rounded-lg hover:bg-red-500/10 transition-colors disabled:opacity-50"
+              className="inline-flex items-center gap-2 px-4 py-2 text-error border border-error/50 rounded-none hover:bg-error/10 transition-colors disabled:opacity-50"
             >
               <XCircle className="w-4 h-4" />
               Cancel
@@ -515,10 +515,10 @@ export function TaskDetail() {
       {/* Project Info */}
       {task.project && (
         <div className="card p-6 mb-6">
-          <h2 className="text-lg font-semibold text-surface-100 mb-4">Project</h2>
+          <h2 className="text-heading-xs font-display font-semibold text-surface-100 mb-4">Project</h2>
           <Link
             to={`/projects/${task.project.id}`}
-            className="flex items-center gap-3 p-3 bg-surface-800 rounded-lg hover:bg-surface-700 transition-colors"
+            className="flex items-center gap-3 p-3 bg-surface-800 rounded-none hover:bg-surface-700 transition-colors"
           >
             <Package className="w-8 h-8 text-accent-400" />
             <div>
@@ -533,7 +533,7 @@ export function TaskDetail() {
 
       {/* Jobs */}
       <div className="card p-6 mb-6">
-        <h2 className="text-lg font-semibold text-surface-100 mb-4">Print Jobs</h2>
+        <h2 className="text-heading-xs font-display font-semibold text-surface-100 mb-4">Print Jobs</h2>
         {jobs.length === 0 ? (
           <div className="text-center py-8">
             <Printer className="w-10 h-10 mx-auto mb-3 text-surface-600" />
@@ -545,7 +545,7 @@ export function TaskDetail() {
               <Link
                 key={job.id}
                 to={`/print-jobs/${job.id}`}
-                className="flex items-center justify-between p-4 bg-surface-800 rounded-lg hover:bg-surface-700 transition-colors"
+                className="flex items-center justify-between p-4 bg-surface-800 rounded-none hover:bg-surface-700 transition-colors"
               >
                 <div className="flex items-center gap-3">
                   <Printer className="w-5 h-5 text-surface-500" />
@@ -557,7 +557,7 @@ export function TaskDetail() {
                     </div>
                   </div>
                 </div>
-                <span className={cn('px-2.5 py-1 rounded-full text-xs font-medium', jobStatusColors[job.status] || 'bg-surface-700 text-surface-400')}>
+                <span className={cn('px-2.5 py-1 rounded-badge text-xs font-medium', jobStatusColors[job.status] || 'bg-surface-700 text-surface-400')}>
                   {job.status}
                 </span>
               </Link>
@@ -568,7 +568,7 @@ export function TaskDetail() {
 
       {/* Details */}
       <div className="card p-6">
-        <h2 className="text-lg font-semibold text-surface-100 mb-4">Details</h2>
+        <h2 className="text-heading-xs font-display font-semibold text-surface-100 mb-4">Details</h2>
         <dl className="grid grid-cols-2 gap-4">
           <div>
             <dt className="text-sm text-surface-500">Task ID</dt>

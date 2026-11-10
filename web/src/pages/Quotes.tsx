@@ -6,9 +6,9 @@ import type { Quote, QuoteStatus, Customer } from '../types'
 
 const statusConfig: Record<QuoteStatus, { label: string; color: string; icon: typeof Clock }> = {
   draft: { label: 'Draft', color: 'bg-surface-700 text-surface-300', icon: Edit3 },
-  sent: { label: 'Sent', color: 'bg-blue-500/20 text-blue-400', icon: Send },
-  accepted: { label: 'Accepted', color: 'bg-green-500/20 text-green-400', icon: CheckCircle },
-  rejected: { label: 'Rejected', color: 'bg-red-500/20 text-red-400', icon: XCircle },
+  sent: { label: 'Sent', color: 'bg-info/20 text-info', icon: Send },
+  accepted: { label: 'Accepted', color: 'bg-success/20 text-success', icon: CheckCircle },
+  rejected: { label: 'Rejected', color: 'bg-error/20 text-error', icon: XCircle },
   expired: { label: 'Expired', color: 'bg-surface-700 text-surface-400', icon: Clock },
 }
 
@@ -87,12 +87,12 @@ export default function Quotes() {
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-display font-bold text-surface-100">Quotes</h1>
+          <h1 className="text-heading-sm font-display font-semibold text-surface-100">Quotes</h1>
           <p className="text-sm text-surface-400 mt-1">{quotes.length} quote{quotes.length !== 1 ? 's' : ''}</p>
         </div>
         <button
           onClick={() => setShowCreateModal(true)}
-          className="inline-flex items-center gap-2 px-4 py-2 bg-accent-500 text-white rounded-lg hover:bg-accent-600 transition-colors text-sm font-medium"
+          className="btn btn-primary inline-flex items-center gap-2 px-4 py-2 text-sm"
         >
           <Plus className="h-4 w-4" />
           New Quote
@@ -104,7 +104,7 @@ export default function Quotes() {
         <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
-          className="px-3 py-2 bg-surface-800 border border-surface-700 rounded-lg text-surface-200 text-sm focus:outline-none focus:ring-1 focus:ring-accent-500"
+          className="input"
         >
           <option value="">All Statuses</option>
           <option value="draft">Draft</option>
@@ -119,18 +119,18 @@ export default function Quotes() {
       {quotes.length === 0 ? (
         <div className="text-center py-16">
           <FileText className="h-12 w-12 text-surface-600 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-surface-300 mb-2">No quotes yet</h3>
+          <h3 className="text-heading-xs font-display font-semibold text-surface-300 mb-2">No quotes yet</h3>
           <p className="text-surface-500 text-sm mb-4">Create your first quote to start tracking custom jobs.</p>
           <button
             onClick={() => setShowCreateModal(true)}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-accent-500 text-white rounded-lg hover:bg-accent-600 transition-colors text-sm"
+            className="btn btn-primary inline-flex items-center gap-2 px-4 py-2 text-sm"
           >
             <Plus className="h-4 w-4" />
             New Quote
           </button>
         </div>
       ) : (
-        <div className="bg-surface-900 border border-surface-800 rounded-lg overflow-hidden">
+        <div className="bg-surface-900 border border-surface-800 rounded-none overflow-hidden">
           <table className="w-full">
             <thead>
               <tr className="border-b border-surface-800">
@@ -163,7 +163,7 @@ export default function Quotes() {
                       ) : '—'}
                     </td>
                     <td className="px-4 py-3">
-                      <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium ${config.color}`}>
+                      <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-badge text-xs font-medium ${config.color}`}>
                         <StatusIcon className="h-3 w-3" />
                         {config.label}
                       </span>
@@ -177,7 +177,7 @@ export default function Quotes() {
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1">
                         {quote.status === 'draft' && (
-                          <button onClick={() => handleDelete(quote.id)} className="text-surface-600 hover:text-red-400" title="Delete quote">
+                          <button onClick={() => handleDelete(quote.id)} className="text-surface-600 hover:text-error" title="Delete quote">
                             <Trash2 className="h-3.5 w-3.5" />
                           </button>
                         )}
@@ -196,13 +196,13 @@ export default function Quotes() {
 
       {/* Create Modal */}
       {showCreateModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-surface-900 border border-surface-700 rounded-xl p-6 w-full max-w-md">
-            <h2 className="text-lg font-display font-semibold text-surface-100 mb-4">New Quote</h2>
+        <div className="fixed inset-0 bg-overlay flex items-center justify-center z-50">
+          <div className="card p-6 max-w-md">
+            <h2 className="text-heading-xs font-display font-semibold text-surface-100 mb-4">New Quote</h2>
             <form onSubmit={handleCreate} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-surface-300 mb-1">Customer *</label>
-                <select name="customer_id" required className="w-full px-3 py-2 bg-surface-800 border border-surface-700 rounded-lg text-surface-100 text-sm focus:outline-none focus:ring-1 focus:ring-accent-500">
+                <label className="block text-label-sm font-normal text-surface-300 mb-1">Customer *</label>
+                <select name="customer_id" required className="input">
                   <option value="">Select a customer...</option>
                   {customers.map((c) => (
                     <option key={c.id} value={c.id}>{c.name}{c.company ? ` (${c.company})` : ''}</option>
@@ -210,16 +210,16 @@ export default function Quotes() {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-surface-300 mb-1">Title *</label>
-                <input name="title" required className="w-full px-3 py-2 bg-surface-800 border border-surface-700 rounded-lg text-surface-100 text-sm focus:outline-none focus:ring-1 focus:ring-accent-500" placeholder="e.g. Custom enclosure build" />
+                <label className="block text-label-sm font-normal text-surface-300 mb-1">Title *</label>
+                <input name="title" required className="input" placeholder="e.g. Custom enclosure build" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-surface-300 mb-1">Notes</label>
-                <textarea name="notes" rows={3} className="w-full px-3 py-2 bg-surface-800 border border-surface-700 rounded-lg text-surface-100 text-sm focus:outline-none focus:ring-1 focus:ring-accent-500" />
+                <label className="block text-label-sm font-normal text-surface-300 mb-1">Notes</label>
+                <textarea name="notes" rows={3} className="input" />
               </div>
               <div className="flex justify-end gap-3 pt-2">
                 <button type="button" onClick={() => setShowCreateModal(false)} className="px-4 py-2 text-sm text-surface-400 hover:text-surface-200">Cancel</button>
-                <button type="submit" className="px-4 py-2 bg-accent-500 text-white rounded-lg hover:bg-accent-600 text-sm font-medium">Create Quote</button>
+                <button type="submit" className="btn btn-primary px-4 py-2 text-sm">Create Quote</button>
               </div>
             </form>
           </div>

@@ -71,7 +71,7 @@ export default function PrinterConstraintsEditor({
     <div className="card p-6">
       <div className="flex items-center gap-2 mb-4">
         <Settings2 className="h-5 w-5 text-surface-400" />
-        <h2 className="text-lg font-semibold text-surface-100">Printer Constraints</h2>
+        <h2 className="text-heading-xs font-display font-semibold text-surface-100">Printer Constraints</h2>
       </div>
 
       <div className="space-y-6">
@@ -137,7 +137,7 @@ export default function PrinterConstraintsEditor({
                 key={size}
                 onClick={() => toggleNozzle(size)}
                 disabled={disabled}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
                   localConstraints.nozzle_diameters?.includes(size)
                     ? 'bg-accent-500/20 text-accent-400 border border-accent-500/30'
                     : 'bg-surface-800 text-surface-400 border border-surface-700 hover:bg-surface-700'
@@ -166,7 +166,7 @@ export default function PrinterConstraintsEditor({
                 type="checkbox"
                 checked={localConstraints.requires_enclosure}
                 onChange={(e) => updateConstraints({ requires_enclosure: e.target.checked })}
-                className="w-4 h-4 rounded border-surface-600"
+                className="w-4 h-4 rounded-none border-surface-600"
                 disabled={disabled}
               />
               <div className="flex items-center gap-2">
@@ -182,7 +182,7 @@ export default function PrinterConstraintsEditor({
                 type="checkbox"
                 checked={localConstraints.requires_ams}
                 onChange={(e) => updateConstraints({ requires_ams: e.target.checked })}
-                className="w-4 h-4 rounded border-surface-600"
+                className="w-4 h-4 rounded-none border-surface-600"
                 disabled={disabled}
               />
               <div className="flex items-center gap-2">

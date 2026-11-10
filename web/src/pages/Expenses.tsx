@@ -72,7 +72,7 @@ export default function Expenses() {
     <div className="p-4 sm:p-6 lg:p-8">
       <div className="flex items-center justify-between mb-8">
         <div>
-          <h1 className="text-3xl font-display font-bold text-surface-100">
+          <h1 className="text-heading-md font-display font-semibold text-surface-100">
             Expenses
           </h1>
           <p className="text-surface-400 mt-1">
@@ -98,13 +98,13 @@ export default function Expenses() {
         </div>
         <div className="card p-4">
           <div className="text-sm text-surface-500 mb-1">Confirmed</div>
-          <div className="text-2xl font-semibold text-emerald-400">
+          <div className="text-2xl font-semibold text-success">
             {expenses.filter((e) => e.status === 'confirmed').length}
           </div>
         </div>
         <div className="card p-4">
           <div className="text-sm text-surface-500 mb-1">Pending Review</div>
-          <div className="text-2xl font-semibold text-amber-400">
+          <div className="text-2xl font-semibold text-warning">
             {pendingCount}
           </div>
         </div>
@@ -116,7 +116,7 @@ export default function Expenses() {
       ) : expenses.length === 0 ? (
         <div className="card p-8 text-center">
           <Receipt className="h-12 w-12 mx-auto mb-3 text-surface-600" />
-          <h3 className="text-lg font-medium text-surface-300 mb-2">
+          <h3 className="text-heading-xs font-display font-semibold text-surface-300 mb-2">
             No expenses yet
           </h3>
           <p className="text-surface-500 mb-4">
@@ -140,14 +140,14 @@ export default function Expenses() {
               <div className="flex items-center gap-4">
                 <div
                   className={cn(
-                    'w-10 h-10 rounded-lg flex items-center justify-center',
+                    'w-10 h-10 rounded-none flex items-center justify-center',
                     expense.status === 'confirmed'
-                      ? 'bg-emerald-500/20 text-emerald-400'
+                      ? 'bg-success/20 text-success'
                       : expense.status === 'rejected'
-                      ? 'bg-red-500/20 text-red-400'
+                      ? 'bg-error/20 text-error'
                       : expense.vendor
-                      ? 'bg-amber-500/20 text-amber-400'
-                      : 'bg-blue-500/20 text-blue-400'
+                      ? 'bg-warning/20 text-warning'
+                      : 'bg-info/20 text-info'
                   )}
                 >
                   {expense.status === 'confirmed' ? (
@@ -178,10 +178,10 @@ export default function Expenses() {
                         <span
                           className={cn(
                             expense.confidence >= 80
-                              ? 'text-emerald-400'
+                              ? 'text-success'
                               : expense.confidence >= 50
-                              ? 'text-amber-400'
-                              : 'text-red-400'
+                              ? 'text-warning'
+                              : 'text-error'
                           )}
                         >
                           {expense.confidence}% confidence
@@ -190,7 +190,7 @@ export default function Expenses() {
                     )}
                   </div>
                   {expense.status === 'rejected' && expense.notes && (
-                    <div className="text-xs text-red-400 mt-1 max-w-md truncate">
+                    <div className="text-xs text-error mt-1 max-w-md truncate">
                       {expense.notes}
                     </div>
                   )}
@@ -233,7 +233,7 @@ export default function Expenses() {
                   )}
                   <button
                     onClick={() => deleteExpense.mutate(expense.id)}
-                    className="btn btn-ghost text-xs py-1 px-2 text-red-400 hover:text-red-300"
+                    className="btn btn-ghost text-xs py-1 px-2 text-error hover:text-error"
                   >
                     <Trash2 className="h-3 w-3" />
                   </button>
@@ -312,12 +312,12 @@ function ReceiptUploadModal({
 
   return (
     <div
-      className="fixed inset-0 bg-black/60 flex items-center justify-center z-50"
+      className="fixed inset-0 bg-overlay flex items-center justify-center z-50"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
       <div className="card w-full max-w-md p-6">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-semibold text-surface-100">
+          <h2 className="text-heading-xs font-display font-semibold text-surface-100">
             Upload Receipt
           </h2>
           <button onClick={onClose} className="text-surface-400 hover:text-surface-200">
@@ -333,11 +333,11 @@ function ReceiptUploadModal({
           onDragLeave={() => setDragOver(false)}
           onDrop={handleDrop}
           className={cn(
-            'border-2 border-dashed rounded-lg p-8 text-center transition-colors',
+            'border-2 border-dashed rounded-none p-8 text-center transition-colors',
             dragOver
               ? 'border-accent-500 bg-accent-500/10'
               : file
-              ? 'border-emerald-500 bg-emerald-500/5'
+              ? 'border-success bg-success/5'
               : 'border-surface-700 hover:border-surface-600'
           )}
         >
@@ -351,7 +351,7 @@ function ReceiptUploadModal({
           <label htmlFor="receipt-upload" className="cursor-pointer">
             {file ? (
               <div>
-                <Receipt className="h-10 w-10 mx-auto mb-2 text-emerald-500" />
+                <Receipt className="h-10 w-10 mx-auto mb-2 text-success" />
                 <p className="text-surface-100 font-medium">{file.name}</p>
                 <p className="text-surface-500 text-sm">
                   {(file.size / 1024).toFixed(1)} KB
@@ -377,7 +377,7 @@ function ReceiptUploadModal({
         </p>
 
         {uploadError && (
-          <div className="mt-4 p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
+          <div className="mt-4 p-3 rounded-none bg-error/10 border border-error/30 text-error text-sm">
             {uploadError}
           </div>
         )}
@@ -470,7 +470,7 @@ function ExpenseReviewModal({
 
   if (isLoading || !expense) {
     return (
-      <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+      <div className="fixed inset-0 bg-overlay flex items-center justify-center z-50">
         <div className="card p-6">
           <div className="text-surface-400">Loading...</div>
         </div>
@@ -480,12 +480,12 @@ function ExpenseReviewModal({
 
   return (
     <div
-      className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 overflow-y-auto"
+      className="fixed inset-0 bg-overlay flex items-center justify-center z-50 overflow-y-auto"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
       <div className="card w-full max-w-2xl p-6 my-8">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-semibold text-surface-100">
+          <h2 className="text-heading-xs font-display font-semibold text-surface-100">
             Review Expense
           </h2>
           <button onClick={onClose} className="text-surface-400 hover:text-surface-200">
@@ -527,7 +527,7 @@ function ExpenseReviewModal({
           </div>
           <div>
             <div className="text-sm text-surface-500">Total</div>
-            <div className="font-semibold text-emerald-400 text-lg">
+            <div className="font-semibold text-success text-lg">
               {formatCents(expense.total_cents)}
             </div>
           </div>
@@ -544,7 +544,7 @@ function ExpenseReviewModal({
               return (
                 <div
                   key={item.id}
-                  className="p-4 rounded-lg bg-surface-800/50 border border-surface-700"
+                  className="p-4 rounded-none bg-surface-800/50 border border-surface-700"
                 >
                   <div className="flex items-start justify-between mb-2">
                     <div>
@@ -574,7 +574,7 @@ function ExpenseReviewModal({
                         </span>
                       )}
                       {item.metadata.material_type && (
-                        <span className="badge bg-blue-500/20 text-blue-400">
+                        <span className="badge bg-info/20 text-info">
                           {item.metadata.material_type}
                         </span>
                       )}
@@ -610,7 +610,7 @@ function ExpenseReviewModal({
                           type="checkbox"
                           checked={decision.createSpool}
                           onChange={() => toggleCreateSpool(item.id)}
-                          className="w-4 h-4 rounded border-surface-600 bg-surface-800 text-accent-500 focus:ring-accent-500"
+                          className="w-4 h-4 rounded-none border-surface-600 bg-surface-800 text-accent-500 focus:ring-accent-500"
                         />
                         <span className="text-sm text-surface-300">
                           Add to spool inventory

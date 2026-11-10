@@ -28,7 +28,7 @@ export default function AutoDispatchSettings({ printerId }: AutoDispatchSettings
       <div className="card p-6">
         <div className="flex items-center gap-2 mb-4">
           <Zap className="h-5 w-5 text-surface-400" />
-          <h2 className="text-lg font-semibold text-surface-100">Auto-Dispatch</h2>
+          <h2 className="text-heading-xs font-display font-semibold text-surface-100">Auto-Dispatch</h2>
         </div>
         <div className="text-surface-500 text-center py-4">Loading...</div>
       </div>
@@ -51,12 +51,12 @@ export default function AutoDispatchSettings({ printerId }: AutoDispatchSettings
     <div className="card p-6">
       <div className="flex items-center gap-2 mb-4">
         <Zap className="h-5 w-5 text-surface-400" />
-        <h2 className="text-lg font-semibold text-surface-100">Auto-Dispatch</h2>
+        <h2 className="text-heading-xs font-display font-semibold text-surface-100">Auto-Dispatch</h2>
       </div>
 
       <div className="space-y-4">
         {/* Enable toggle */}
-        <div className="flex items-center justify-between p-3 rounded-lg bg-surface-800/50">
+        <div className="flex items-center justify-between p-3 rounded-none bg-surface-800/50">
           <div className="flex items-center gap-3">
             <Settings className="h-4 w-4 text-surface-400" />
             <div>
@@ -76,7 +76,7 @@ export default function AutoDispatchSettings({ printerId }: AutoDispatchSettings
           >
             <span
               className={cn(
-                'inline-block h-4 w-4 transform rounded-full bg-white transition-transform',
+                'inline-block h-4 w-4 transform rounded-full bg-canvas transition-transform',
                 settings.enabled ? 'translate-x-6' : 'translate-x-1'
               )}
             />
@@ -84,7 +84,7 @@ export default function AutoDispatchSettings({ printerId }: AutoDispatchSettings
         </div>
 
         {/* Require confirmation toggle */}
-        <div className="flex items-center justify-between p-3 rounded-lg bg-surface-800/50">
+        <div className="flex items-center justify-between p-3 rounded-none bg-surface-800/50">
           <div className="flex items-center gap-3">
             <Bell className="h-4 w-4 text-surface-400" />
             <div>
@@ -105,7 +105,7 @@ export default function AutoDispatchSettings({ printerId }: AutoDispatchSettings
           >
             <span
               className={cn(
-                'inline-block h-4 w-4 transform rounded-full bg-white transition-transform',
+                'inline-block h-4 w-4 transform rounded-full bg-canvas transition-transform',
                 settings.require_confirmation ? 'translate-x-6' : 'translate-x-1'
               )}
             />
@@ -113,7 +113,7 @@ export default function AutoDispatchSettings({ printerId }: AutoDispatchSettings
         </div>
 
         {/* Auto-start toggle */}
-        <div className="flex items-center justify-between p-3 rounded-lg bg-surface-800/50">
+        <div className="flex items-center justify-between p-3 rounded-none bg-surface-800/50">
           <div className="flex items-center gap-3">
             <Play className="h-4 w-4 text-surface-400" />
             <div>
@@ -134,7 +134,7 @@ export default function AutoDispatchSettings({ printerId }: AutoDispatchSettings
           >
             <span
               className={cn(
-                'inline-block h-4 w-4 transform rounded-full bg-white transition-transform',
+                'inline-block h-4 w-4 transform rounded-full bg-canvas transition-transform',
                 settings.auto_start ? 'translate-x-6' : 'translate-x-1'
               )}
             />
@@ -142,7 +142,7 @@ export default function AutoDispatchSettings({ printerId }: AutoDispatchSettings
         </div>
 
         {/* Timeout setting */}
-        <div className="p-3 rounded-lg bg-surface-800/50">
+        <div className="p-3 rounded-none bg-surface-800/50">
           <div className="flex items-center gap-3 mb-3">
             <Clock className="h-4 w-4 text-surface-400" />
             <div>
@@ -170,7 +170,7 @@ export default function AutoDispatchSettings({ printerId }: AutoDispatchSettings
 
       {/* Status indicator */}
       {settings.enabled && (
-        <div className="mt-4 p-3 rounded-lg bg-accent-500/10 border border-accent-500/20">
+        <div className="mt-4 p-3 rounded-none bg-accent-500/10 border border-accent-500/20">
           <div className="flex items-center gap-2 text-accent-400 text-sm">
             <div className="h-2 w-2 rounded-full bg-accent-500 animate-pulse" />
             Auto-dispatch is active for this printer

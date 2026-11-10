@@ -50,11 +50,11 @@ export default function Templates() {
 
   const getMaterialBadge = (type: MaterialType) => {
     const colors: Record<MaterialType, string> = {
-      pla: 'bg-emerald-500/20 text-emerald-400',
-      petg: 'bg-blue-500/20 text-blue-400',
-      abs: 'bg-amber-500/20 text-amber-400',
-      asa: 'bg-orange-500/20 text-orange-400',
-      tpu: 'bg-purple-500/20 text-purple-400',
+      pla: 'bg-success/20 text-success',
+      petg: 'bg-info/20 text-info',
+      abs: 'bg-warning/20 text-warning',
+      asa: 'bg-warning/20 text-warning',
+      tpu: 'bg-info/20 text-info',
       supply: 'bg-surface-500/20 text-surface-400',
     }
     return colors[type] || 'bg-surface-700 text-surface-300'
@@ -65,7 +65,7 @@ export default function Templates() {
       {/* Header */}
       <div className="flex items-center justify-between mb-8">
         <div>
-          <h1 className="text-3xl font-display font-bold text-surface-100">
+          <h1 className="text-heading-md font-display font-semibold text-surface-100">
             Templates
           </h1>
           <p className="text-surface-400 mt-1">
@@ -86,7 +86,7 @@ export default function Templates() {
         <button
           onClick={() => setShowActive(false)}
           className={cn(
-            'px-3 py-1.5 rounded-lg text-sm font-medium transition-colors',
+            'px-3 py-1.5 rounded-full text-sm font-medium transition-colors',
             !showActive
               ? 'bg-accent-500/20 text-accent-400'
               : 'text-surface-400 hover:text-surface-100 hover:bg-surface-800'
@@ -97,7 +97,7 @@ export default function Templates() {
         <button
           onClick={() => setShowActive(true)}
           className={cn(
-            'px-3 py-1.5 rounded-lg text-sm font-medium transition-colors',
+            'px-3 py-1.5 rounded-full text-sm font-medium transition-colors',
             showActive
               ? 'bg-accent-500/20 text-accent-400'
               : 'text-surface-400 hover:text-surface-100 hover:bg-surface-800'
@@ -113,7 +113,7 @@ export default function Templates() {
       ) : templates.length === 0 ? (
         <div className="text-center py-16">
           <FileStack className="h-16 w-16 mx-auto mb-4 text-surface-600" />
-          <h3 className="text-xl font-semibold text-surface-300 mb-2">
+          <h3 className="text-heading-xs font-display font-semibold text-surface-300 mb-2">
             No templates found
           </h3>
           <p className="text-surface-500 mb-4">
@@ -142,7 +142,7 @@ export default function Templates() {
                 <span className={cn(
                   'badge',
                   template.is_active
-                    ? 'bg-emerald-500/20 text-emerald-400'
+                    ? 'bg-success/20 text-success'
                     : 'bg-surface-700 text-surface-400'
                 )}>
                   {template.is_active ? 'Active' : 'Inactive'}
@@ -190,15 +190,15 @@ export default function Templates() {
 
       {/* Create Modal */}
       {showCreate && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-overlay flex items-center justify-center z-50">
           <div className="card w-full max-w-lg p-6">
-            <h2 className="text-xl font-semibold text-surface-100 mb-4">
+            <h2 className="text-heading-xs font-display font-semibold text-surface-100 mb-4">
               Create Template
             </h2>
             <form onSubmit={handleCreate}>
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-surface-300 mb-1">
+                  <label className="block text-label-sm font-normal text-surface-300 mb-1">
                     Template Name
                   </label>
                   <input
@@ -211,7 +211,7 @@ export default function Templates() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-surface-300 mb-1">
+                  <label className="block text-label-sm font-normal text-surface-300 mb-1">
                     Description
                   </label>
                   <textarea
@@ -223,7 +223,7 @@ export default function Templates() {
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-surface-300 mb-1">
+                    <label className="block text-label-sm font-normal text-surface-300 mb-1">
                       SKU (Optional)
                     </label>
                     <input
@@ -234,7 +234,7 @@ export default function Templates() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-surface-300 mb-1">
+                    <label className="block text-label-sm font-normal text-surface-300 mb-1">
                       Material Type
                     </label>
                     <select name="material_type" className="input" required>
@@ -248,7 +248,7 @@ export default function Templates() {
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-surface-300 mb-1">
+                    <label className="block text-label-sm font-normal text-surface-300 mb-1">
                       Quantity per Order
                     </label>
                     <input
@@ -260,7 +260,7 @@ export default function Templates() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-surface-300 mb-1">
+                    <label className="block text-label-sm font-normal text-surface-300 mb-1">
                       Est. Material (grams)
                     </label>
                     <input

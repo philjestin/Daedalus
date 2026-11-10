@@ -65,11 +65,11 @@ export default function RecipeMaterialEditor({ templateId, materials }: RecipeMa
 
   const getMaterialBadge = (type: MaterialType) => {
     const colors: Record<MaterialType, string> = {
-      pla: 'bg-emerald-500/20 text-emerald-400',
-      petg: 'bg-blue-500/20 text-blue-400',
-      abs: 'bg-amber-500/20 text-amber-400',
-      asa: 'bg-orange-500/20 text-orange-400',
-      tpu: 'bg-purple-500/20 text-purple-400',
+      pla: 'bg-success/20 text-success',
+      petg: 'bg-info/20 text-info',
+      abs: 'bg-warning/20 text-warning',
+      asa: 'bg-warning/20 text-warning',
+      tpu: 'bg-info/20 text-info',
       supply: 'bg-surface-500/20 text-surface-400',
     }
     return colors[type] || 'bg-surface-700 text-surface-300'
@@ -78,7 +78,7 @@ export default function RecipeMaterialEditor({ templateId, materials }: RecipeMa
   return (
     <div className="card p-6">
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-semibold text-surface-100">
+        <h2 className="text-heading-xs font-display font-semibold text-surface-100">
           Material Requirements ({materials.length})
         </h2>
         <button
@@ -103,7 +103,7 @@ export default function RecipeMaterialEditor({ templateId, materials }: RecipeMa
           {materials.map((m, idx) => (
             <div
               key={m.id}
-              className="flex items-center justify-between p-4 rounded-lg bg-surface-800/50"
+              className="flex items-center justify-between p-4 rounded-none bg-surface-800/50"
             >
               <div className="flex items-center gap-4">
                 <GripVertical className="h-4 w-4 text-surface-600 cursor-move" />
@@ -143,7 +143,7 @@ export default function RecipeMaterialEditor({ templateId, materials }: RecipeMa
               <button
                 onClick={() => removeMaterial.mutate(m.id)}
                 disabled={removeMaterial.isPending}
-                className="btn btn-ghost text-red-400 hover:text-red-300 hover:bg-red-500/10"
+                className="btn btn-ghost text-error hover:text-error hover:bg-error/10"
               >
                 <Trash2 className="h-4 w-4" />
               </button>
@@ -154,11 +154,11 @@ export default function RecipeMaterialEditor({ templateId, materials }: RecipeMa
 
       {/* Add Material Form */}
       {showAddForm && (
-        <div className="mt-4 p-4 rounded-lg bg-surface-800 border border-surface-700">
+        <div className="card mt-4 p-4">
           <h3 className="text-sm font-medium text-surface-200 mb-4">Add Material Requirement</h3>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-surface-300 mb-1">
+              <label className="block text-label-sm font-normal text-surface-300 mb-1">
                 Material Type
               </label>
               <select
@@ -176,7 +176,7 @@ export default function RecipeMaterialEditor({ templateId, materials }: RecipeMa
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-surface-300 mb-1">
+              <label className="block text-label-sm font-normal text-surface-300 mb-1">
                 Weight (grams)
               </label>
               <input
@@ -191,7 +191,7 @@ export default function RecipeMaterialEditor({ templateId, materials }: RecipeMa
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-surface-300 mb-1">
+              <label className="block text-label-sm font-normal text-surface-300 mb-1">
                 AMS Position (optional)
               </label>
               <select
@@ -212,7 +212,7 @@ export default function RecipeMaterialEditor({ templateId, materials }: RecipeMa
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-surface-300 mb-1">
+              <label className="block text-label-sm font-normal text-surface-300 mb-1">
                 Color Matching
               </label>
               <select
@@ -235,7 +235,7 @@ export default function RecipeMaterialEditor({ templateId, materials }: RecipeMa
             {newMaterial.color_spec?.mode === 'exact' && (
               <>
                 <div>
-                  <label className="block text-sm font-medium text-surface-300 mb-1">
+                  <label className="block text-label-sm font-normal text-surface-300 mb-1">
                     Color Name
                   </label>
                   <input
@@ -252,7 +252,7 @@ export default function RecipeMaterialEditor({ templateId, materials }: RecipeMa
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-surface-300 mb-1">
+                  <label className="block text-label-sm font-normal text-surface-300 mb-1">
                     Color Hex (optional)
                   </label>
                   <input
@@ -270,7 +270,7 @@ export default function RecipeMaterialEditor({ templateId, materials }: RecipeMa
               </>
             )}
             <div className="col-span-2">
-              <label className="block text-sm font-medium text-surface-300 mb-1">
+              <label className="block text-label-sm font-normal text-surface-300 mb-1">
                 Notes (optional)
               </label>
               <input

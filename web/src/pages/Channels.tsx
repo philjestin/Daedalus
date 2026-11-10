@@ -398,7 +398,7 @@ export default function Channels() {
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-display font-semibold text-surface-100">
+          <h1 className="text-heading-sm font-display font-semibold text-surface-100">
             Sales Channels
           </h1>
           <p className="mt-1 text-sm text-surface-400">
@@ -409,15 +409,15 @@ export default function Channels() {
         {/* Connection Status Pills */}
         <div className="flex items-center gap-2">
           {etsyStatus?.connected && (
-            <div className="flex items-center gap-1.5 px-2 py-1 bg-orange-500/10 border border-orange-500/30 rounded-lg">
-              <Store className="h-3.5 w-3.5 text-orange-400" />
-              <span className="text-xs text-orange-300">{etsyStatus.shop_name}</span>
+            <div className="flex items-center gap-1.5 px-2 py-1 bg-warning/10 border border-warning/30 rounded-none">
+              <Store className="h-3.5 w-3.5 text-warning" />
+              <span className="text-xs text-warning">{etsyStatus.shop_name}</span>
             </div>
           )}
           {squarespaceStatus?.connected && (
-            <div className="flex items-center gap-1.5 px-2 py-1 bg-purple-500/10 border border-purple-500/30 rounded-lg">
-              <ShoppingBag className="h-3.5 w-3.5 text-purple-400" />
-              <span className="text-xs text-purple-300">{squarespaceStatus.site_title}</span>
+            <div className="flex items-center gap-1.5 px-2 py-1 bg-info/10 border border-info/30 rounded-none">
+              <ShoppingBag className="h-3.5 w-3.5 text-info" />
+              <span className="text-xs text-info">{squarespaceStatus.site_title}</span>
             </div>
           )}
           {!hasConnectedChannel && (
@@ -482,9 +482,9 @@ export default function Channels() {
                   key={f}
                   onClick={() => setOrderFilter(f)}
                   className={cn(
-                    'px-3 py-1.5 text-xs rounded-lg transition-colors',
+                    'px-3 py-1.5 text-xs rounded-none transition-colors',
                     orderFilter === f
-                      ? 'bg-accent-600 text-white'
+                      ? 'btn btn-primary'
                       : 'bg-surface-800 text-surface-300 hover:bg-surface-700'
                   )}
                 >
@@ -501,7 +501,7 @@ export default function Channels() {
             <button
               onClick={handleSyncAll}
               disabled={syncing !== null || !hasConnectedChannel}
-              className="flex items-center gap-2 px-4 py-2 bg-accent-600 text-white rounded-lg hover:bg-accent-500 disabled:opacity-50 text-sm"
+              className="btn btn-primary flex items-center gap-2 px-4 py-2 disabled:opacity-50 text-sm"
             >
               <RefreshCw className={cn('h-4 w-4', syncing && 'animate-spin')} />
               {syncing ? 'Syncing...' : 'Sync All'}
@@ -511,8 +511,8 @@ export default function Channels() {
               onClick={() => handleSync(channel)}
               disabled={syncing !== null}
               className={cn(
-                'flex items-center gap-2 px-4 py-2 text-white rounded-lg disabled:opacity-50 text-sm',
-                channel === 'etsy' ? 'bg-orange-500 hover:bg-orange-600' : 'bg-purple-500 hover:bg-purple-600'
+                'flex items-center gap-2 px-4 py-2 text-on-color rounded-none disabled:opacity-50 text-sm',
+                channel === 'etsy' ? 'bg-warning hover:bg-warning' : 'bg-info hover:bg-primary'
               )}
             >
               <RefreshCw className={cn('h-4 w-4', syncing === channel && 'animate-spin')} />
@@ -524,8 +524,8 @@ export default function Channels() {
 
       {/* Sync Result */}
       {syncResult && (
-        <div className="mb-6 p-4 bg-green-500/10 border border-green-500/30 rounded-lg">
-          <p className="text-green-400">
+        <div className="mb-6 p-4 bg-success/10 border border-success/30 rounded-none">
+          <p className="text-success">
             Synced {syncResult.result.total_fetched} {tab}: {syncResult.result.created} new, {syncResult.result.updated} updated
             {syncResult.result.errors > 0 && `, ${syncResult.result.errors} errors`}
           </p>
@@ -534,8 +534,8 @@ export default function Channels() {
 
       {/* Error */}
       {error && (
-        <div className="mb-6 p-4 bg-red-500/10 border border-red-500/30 rounded-lg">
-          <p className="text-red-400">{error}</p>
+        <div className="mb-6 p-4 bg-error/10 border border-error/30 rounded-none">
+          <p className="text-error">{error}</p>
         </div>
       )}
 
@@ -565,30 +565,30 @@ export default function Channels() {
             {orders.map((order) => (
               <div
                 key={`${order.channel}-${order.id}`}
-                className="bg-surface-900 border border-surface-800 rounded-lg p-4"
+                className="bg-surface-900 border border-surface-800 rounded-none p-4"
               >
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
                     <div className="flex items-center gap-3">
                       {/* Channel Icon */}
                       {order.channel === 'etsy' ? (
-                        <Store className="h-4 w-4 text-orange-400" />
+                        <Store className="h-4 w-4 text-warning" />
                       ) : (
-                        <ShoppingBag className="h-4 w-4 text-purple-400" />
+                        <ShoppingBag className="h-4 w-4 text-info" />
                       )}
-                      <h3 className="text-lg font-medium text-surface-100">
+                      <h3 className="text-heading-xs font-display font-semibold text-surface-100">
                         {order.customerName}
                       </h3>
                       <span className="text-sm text-surface-500">
                         #{order.orderNumber}
                       </span>
                       {order.isProcessed ? (
-                        <span className="flex items-center gap-1 text-xs px-2 py-0.5 bg-green-500/20 text-green-400 rounded">
+                        <span className="flex items-center gap-1 text-xs px-2 py-0.5 bg-success/20 text-success rounded-none">
                           <CheckCircle className="h-3 w-3" />
                           Processed
                         </span>
                       ) : (
-                        <span className="flex items-center gap-1 text-xs px-2 py-0.5 bg-yellow-500/20 text-yellow-400 rounded">
+                        <span className="flex items-center gap-1 text-xs px-2 py-0.5 bg-warning/20 text-warning rounded-none">
                           <Clock className="h-3 w-3" />
                           Pending
                         </span>
@@ -638,7 +638,7 @@ export default function Channels() {
                       <button
                         onClick={() => handleProcess(order)}
                         disabled={processingId === order.id}
-                        className="px-3 py-1.5 text-sm bg-accent-600 text-white rounded hover:bg-accent-500 disabled:opacity-50"
+                        className="btn btn-primary px-3 py-1.5 text-sm disabled:opacity-50"
                       >
                         {processingId === order.id ? 'Processing...' : 'Create Project'}
                       </button>
@@ -646,7 +646,7 @@ export default function Channels() {
                     {order.projectId && (
                       <a
                         href={`/projects/${order.projectId}`}
-                        className="px-3 py-1.5 text-sm bg-surface-700 text-surface-200 rounded hover:bg-surface-600 flex items-center gap-1"
+                        className="px-3 py-1.5 text-sm bg-surface-700 text-surface-200 rounded-none hover:bg-surface-600 flex items-center gap-1"
                       >
                         View Project
                         <ExternalLink className="h-3 w-3" />
@@ -670,18 +670,18 @@ export default function Channels() {
             {products.map((product) => (
               <div
                 key={`${product.channel}-${product.id}`}
-                className="bg-surface-900 border border-surface-800 rounded-lg p-4"
+                className="bg-surface-900 border border-surface-800 rounded-none p-4"
               >
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
                     <div className="flex items-center gap-3">
                       {/* Channel Icon */}
                       {product.channel === 'etsy' ? (
-                        <Store className="h-4 w-4 text-orange-400" />
+                        <Store className="h-4 w-4 text-warning" />
                       ) : (
-                        <ShoppingBag className="h-4 w-4 text-purple-400" />
+                        <ShoppingBag className="h-4 w-4 text-info" />
                       )}
-                      <h3 className="text-lg font-medium text-surface-100">
+                      <h3 className="text-heading-xs font-display font-semibold text-surface-100">
                         {product.name}
                       </h3>
                       {product.type && (
@@ -690,12 +690,12 @@ export default function Channels() {
                         </span>
                       )}
                       {!product.isVisible && (
-                        <span className="text-xs px-2 py-0.5 bg-yellow-500/20 text-yellow-400 rounded">
+                        <span className="text-xs px-2 py-0.5 bg-warning/20 text-warning rounded-none">
                           Hidden
                         </span>
                       )}
                       {product.linkedTemplateId && (
-                        <span className="flex items-center gap-1 text-xs px-2 py-0.5 bg-green-500/20 text-green-400 rounded">
+                        <span className="flex items-center gap-1 text-xs px-2 py-0.5 bg-success/20 text-success rounded-none">
                           <Link className="h-3 w-3" />
                           Linked
                         </span>
@@ -739,7 +739,7 @@ export default function Channels() {
                     <button
                       onClick={() => handleLink(product)}
                       disabled={linkingId === product.id || !selectedTemplate[product.id]}
-                      className="flex items-center gap-1 px-3 py-1.5 text-sm bg-accent-600 text-white rounded hover:bg-accent-500 disabled:opacity-50"
+                      className="btn btn-primary flex items-center gap-1 px-3 py-1.5 text-sm disabled:opacity-50"
                     >
                       {linkingId === product.id ? (
                         <RefreshCw className="h-3 w-3 animate-spin" />

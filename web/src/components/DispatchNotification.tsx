@@ -80,7 +80,7 @@ export default function DispatchNotification({ request, onDismiss }: DispatchNot
         {/* Content */}
         <div className="p-4 space-y-3">
           {/* Printer Info */}
-          <div className="flex items-center gap-3 p-3 rounded-lg bg-surface-800/50">
+          <div className="flex items-center gap-3 p-3 rounded-none bg-surface-800/50">
             <Printer className="h-5 w-5 text-surface-400" />
             <div>
               <div className="text-sm text-surface-300">Printer</div>
@@ -91,7 +91,7 @@ export default function DispatchNotification({ request, onDismiss }: DispatchNot
           </div>
 
           {/* Job Info */}
-          <div className="flex items-center gap-3 p-3 rounded-lg bg-surface-800/50">
+          <div className="flex items-center gap-3 p-3 rounded-none bg-surface-800/50">
             <FileText className="h-5 w-5 text-surface-400" />
             <div>
               <div className="text-sm text-surface-300">Job</div>

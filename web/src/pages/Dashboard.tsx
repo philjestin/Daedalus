@@ -29,7 +29,7 @@ import { useProjects } from '../hooks/useProjects'
 import { usePrinters, usePrinterStates } from '../hooks/usePrinters'
 import { statsApi } from '../api/client'
 import { cn, getStatusBadge } from '../lib/utils'
-import { getThemeSnapshot, subscribeTheme, type Theme } from '../lib/theme'
+import { chartPalette, getThemeSnapshot, subscribeTheme, type Theme } from '../lib/theme'
 
 ChartJS.register(
   CategoryScale,
@@ -43,12 +43,16 @@ ChartJS.register(
   ChartLegend,
 )
 
-const CHANNEL_COLORS: Record<string, string> = {
-  marketplace: '#a855f7',
-  etsy: '#f97316',
-  website: '#3b82f6',
-  direct: '#10b981',
-  other: '#6b7280',
+function channelColor(channel: string, theme: Theme) {
+  const palette = chartPalette(theme)
+  const colors: Record<string, string> = {
+    marketplace: palette.gold,
+    etsy: palette.primary,
+    website: palette.info,
+    direct: palette.success,
+    other: palette.neutral,
+  }
+  return colors[channel] || palette.primary
 }
 
 const periodOptions = [
@@ -66,16 +70,16 @@ function withAlpha(hex: string, alpha: number) {
 }
 
 function chartChrome(theme: Theme) {
-  const dark = theme === 'dark'
+  const palette = chartPalette(theme)
   return {
-    tooltipBg: dark ? '#191D23' : '#FFFFFF',
-    tooltipBorder: dark ? '#31353A' : '#E4E4E4',
-    tooltipText: dark ? '#F7FBFF' : '#1A1C1D',
-    tick: dark ? '#9DA1A6' : '#2C2D2E',
-    grid: dark ? '#31353A' : '#E4E4E4',
-    success: dark ? '#6FCB96' : '#1F7A4D',
-    error: dark ? '#F0A0A0' : '#B42318',
-    info: dark ? '#8EBEFF' : '#1A6BB8',
+    tooltipBg: palette.tooltipBg,
+    tooltipBorder: palette.tooltipBorder,
+    tooltipText: palette.tooltipText,
+    tick: palette.tick,
+    grid: palette.grid,
+    success: palette.success,
+    error: palette.error,
+    info: palette.info,
   }
 }
 
@@ -204,10 +208,10 @@ export default function Dashboard() {
     labels: salesByChannel.map(c => c.channel),
     datasets: [{
       data: salesByChannel.map(c => c.total),
-      backgroundColor: salesByChannel.map(c => CHANNEL_COLORS[c.channel] || CHANNEL_COLORS.other),
+      backgroundColor: salesByChannel.map(c => channelColor(c.channel, theme)),
       borderWidth: 0,
     }],
-  }), [salesByChannel])
+  }), [salesByChannel, theme])
 
   const chrome = chartChrome(theme)
   const options = chartDefaults(theme)
@@ -239,7 +243,7 @@ export default function Dashboard() {
     <div className="p-4 sm:p-6 lg:p-8">
       {/* Header */}
       <div className="mb-6 lg:mb-8">
-        <h1 className="text-2xl lg:text-3xl font-display font-bold text-surface-100">
+        <h1 className="text-heading-sm lg:text-heading-md font-display font-semibold text-surface-100">
           Dashboard
         </h1>
         <p className="text-surface-400 mt-1">
@@ -253,13 +257,13 @@ export default function Dashboard() {
           icon={FolderKanban}
           label="Active Projects"
           value={activeProjects.length}
-          color="text-blue-400"
+          color="text-info"
         />
         <StatCard
           icon={Play}
           label="Printing Now"
           value={printingPrinters.length}
-          color="text-emerald-400"
+          color="text-success"
         />
         <StatCard
           icon={Clock}
@@ -271,7 +275,7 @@ export default function Dashboard() {
           icon={AlertCircle}
           label="Errors"
           value={errorPrinters.length}
-          color="text-red-400"
+          color="text-error"
         />
       </div>
 
@@ -282,7 +286,7 @@ export default function Dashboard() {
             key={opt.value}
             onClick={() => setChartPeriod(opt.value)}
             className={cn(
-              'px-3 py-1.5 rounded-lg text-sm font-medium transition-colors',
+              'px-3 py-1.5 rounded-full text-sm font-medium transition-colors',
               chartPeriod === opt.value
                 ? 'bg-accent-500/20 text-accent-400'
                 : 'text-surface-400 hover:text-surface-200 hover:bg-surface-800'
@@ -297,7 +301,7 @@ export default function Dashboard() {
       {financials && (
         <div className="card p-6 mb-8">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold text-surface-100">
+            <h2 className="text-heading-xs font-display font-semibold text-surface-100">
               Financial Overview
             </h2>
             <Link
@@ -314,7 +318,7 @@ export default function Dashboard() {
                 <DollarSign className="h-4 w-4" />
                 Total Revenue
               </div>
-              <div className="text-2xl font-bold text-emerald-400">
+              <div className="text-heading-sm font-display font-semibold text-success">
                 {formatCents(financials.total_sales_gross_cents)}
               </div>
               <div className="text-xs text-surface-500 mt-1">
@@ -327,13 +331,13 @@ export default function Dashboard() {
                 <Receipt className="h-4 w-4" />
                 Total Expenses
               </div>
-              <div className="text-2xl font-bold text-red-400">
+              <div className="text-heading-sm font-display font-semibold text-error">
                 {formatCents(financials.total_expenses_cents)}
               </div>
               <div className="text-xs text-surface-500 mt-1">
                 {financials.confirmed_expense_count} confirmed
                 {financials.pending_expense_count > 0 && (
-                  <span className="text-amber-400 ml-1">
+                  <span className="text-warning ml-1">
                     ({financials.pending_expense_count} pending)
                   </span>
                 )}
@@ -345,7 +349,7 @@ export default function Dashboard() {
                 <Play className="h-4 w-4" />
                 Material Used
               </div>
-              <div className="text-2xl font-bold text-blue-400">
+              <div className="text-heading-sm font-display font-semibold text-info">
                 {(financials.total_material_used_grams / 1000).toFixed(2)} kg
               </div>
               <div className="text-xs text-surface-500 mt-1">
@@ -356,18 +360,18 @@ export default function Dashboard() {
             <div>
               <div className="flex items-center gap-2 text-sm text-surface-500 mb-1">
                 {financials.net_profit_cents >= 0 ? (
-                  <TrendingUp className="h-4 w-4 text-emerald-400" />
+                  <TrendingUp className="h-4 w-4 text-success" />
                 ) : (
-                  <TrendingDown className="h-4 w-4 text-red-400" />
+                  <TrendingDown className="h-4 w-4 text-error" />
                 )}
                 Net Profit
               </div>
               <div
                 className={cn(
-                  'text-2xl font-bold',
+                  'text-heading-sm font-display font-semibold',
                   financials.net_profit_cents >= 0
-                    ? 'text-emerald-400'
-                    : 'text-red-400'
+                    ? 'text-success'
+                    : 'text-error'
                 )}
               >
                 {formatCents(financials.net_profit_cents)}
@@ -383,7 +387,7 @@ export default function Dashboard() {
       {/* Revenue & Profit Chart */}
       {lineChartData.labels.length > 0 && (
         <div className="card p-6 mb-6">
-          <h2 className="text-lg font-semibold text-surface-100 mb-4">
+          <h2 className="text-heading-xs font-display font-semibold text-surface-100 mb-4">
             Revenue & Profit
           </h2>
           <div className="h-[300px]">
@@ -398,7 +402,7 @@ export default function Dashboard() {
           {/* Expenses by Category */}
           {expensesByCategory.length > 0 && (
             <div className="card p-6">
-              <h2 className="text-lg font-semibold text-surface-100 mb-4">
+              <h2 className="text-heading-xs font-display font-semibold text-surface-100 mb-4">
                 Expenses by Category
               </h2>
               <div className="h-[250px]">
@@ -410,7 +414,7 @@ export default function Dashboard() {
           {/* Sales by Channel */}
           {salesByChannel.length > 0 && (
             <div className="card p-6">
-              <h2 className="text-lg font-semibold text-surface-100 mb-4">
+              <h2 className="text-heading-xs font-display font-semibold text-surface-100 mb-4">
                 Sales by Channel
               </h2>
               <div className="h-[250px]">
@@ -425,7 +429,7 @@ export default function Dashboard() {
         {/* Printer Status */}
         <div className="card p-6">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold text-surface-100">
+            <h2 className="text-heading-xs font-display font-semibold text-surface-100">
               Printer Fleet
             </h2>
             <Link
@@ -456,14 +460,14 @@ export default function Dashboard() {
                 return (
                   <div
                     key={printer.id}
-                    className="flex items-center justify-between p-3 rounded-lg bg-surface-800/50"
+                    className="flex items-center justify-between p-3 rounded-none bg-surface-800/50"
                   >
                     <div className="flex items-center gap-3">
                       <div className={cn(
                         'w-2 h-2 rounded-full',
-                        state?.status === 'printing' ? 'bg-emerald-400 animate-pulse' :
+                        state?.status === 'printing' ? 'bg-success animate-pulse' :
                         state?.status === 'idle' ? 'bg-surface-500' :
-                        state?.status === 'error' ? 'bg-red-400' :
+                        state?.status === 'error' ? 'bg-error' :
                         'bg-surface-600'
                       )} />
                       <div>
@@ -498,7 +502,7 @@ export default function Dashboard() {
         {/* Active Projects */}
         <div className="card p-6">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold text-surface-100">
+            <h2 className="text-heading-xs font-display font-semibold text-surface-100">
               Active Projects
             </h2>
             <Link
@@ -528,7 +532,7 @@ export default function Dashboard() {
                 <Link
                   key={project.id}
                   to={`/projects/${project.id}`}
-                  className="block p-3 rounded-lg bg-surface-800/50 hover:bg-surface-800 transition-colors"
+                  className="block p-3 rounded-none bg-surface-800/50 hover:bg-surface-800 transition-colors"
                 >
                   <div className="flex items-center justify-between">
                     <div className="font-medium text-surface-100">
@@ -564,11 +568,11 @@ function StatCard({
   return (
     <div className="card p-4">
       <div className="flex items-center gap-3">
-        <div className={cn('p-2 rounded-lg bg-surface-800', color)}>
+        <div className={cn('p-2 rounded-none bg-surface-800', color)}>
           <Icon className="h-5 w-5" />
         </div>
         <div>
-          <div className="text-2xl font-bold text-surface-100">{value}</div>
+          <div className="text-heading-sm font-display font-semibold text-surface-100">{value}</div>
           <div className="text-sm text-surface-500">{label}</div>
         </div>
       </div>

@@ -298,18 +298,18 @@ export default function Settings() {
   return (
     <div className="p-6">
       <div className="max-w-2xl">
-        <h1 className="text-2xl font-display font-semibold text-surface-100 mb-6">
+        <h1 className="text-heading-sm font-display font-semibold text-surface-100 mb-6">
           Settings
         </h1>
 
         {/* Success Message */}
         {successMessage && (
-          <div className="mb-6 p-4 bg-green-500/10 border border-green-500/30 rounded-lg flex items-center gap-3">
-            <CheckCircle2 className="h-5 w-5 text-green-400 flex-shrink-0" />
-            <p className="text-green-300">{successMessage}</p>
+          <div className="mb-6 p-4 bg-success/10 border border-success/30 rounded-none flex items-center gap-3">
+            <CheckCircle2 className="h-5 w-5 text-success flex-shrink-0" />
+            <p className="text-success">{successMessage}</p>
             <button
               onClick={() => setSuccessMessage(null)}
-              className="ml-auto text-green-400 hover:text-green-300"
+              className="ml-auto text-success hover:text-success"
             >
               &times;
             </button>
@@ -318,12 +318,12 @@ export default function Settings() {
 
         {/* Error Message */}
         {error && (
-          <div className="mb-6 p-4 bg-red-500/10 border border-red-500/30 rounded-lg flex items-center gap-3">
-            <AlertCircle className="h-5 w-5 text-red-400 flex-shrink-0" />
-            <p className="text-red-300">{error}</p>
+          <div className="mb-6 p-4 bg-error/10 border border-error/30 rounded-none flex items-center gap-3">
+            <AlertCircle className="h-5 w-5 text-error flex-shrink-0" />
+            <p className="text-error">{error}</p>
             <button
               onClick={() => setError(null)}
-              className="ml-auto text-red-400 hover:text-red-300"
+              className="ml-auto text-error hover:text-error"
             >
               &times;
             </button>
@@ -331,14 +331,14 @@ export default function Settings() {
         )}
 
         {/* Database Backups Card */}
-        <div className="bg-surface-900/50 border border-surface-800 rounded-xl p-6 mb-6">
+        <div className="bg-surface-900/50 border border-surface-800 rounded-none p-6 mb-6">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-3">
-              <div className="p-2 bg-blue-500/10 rounded-lg">
-                <Database className="h-6 w-6 text-blue-400" />
+              <div className="p-2 bg-info/10 rounded-none">
+                <Database className="h-6 w-6 text-info" />
               </div>
               <div>
-                <h2 className="text-lg font-semibold text-surface-100">Database Backups</h2>
+                <h2 className="text-heading-xs font-display font-semibold text-surface-100">Database Backups</h2>
                 <p className="text-sm text-surface-400">
                   Create and restore database backups
                 </p>
@@ -347,7 +347,7 @@ export default function Settings() {
             <button
               onClick={handleCreateBackup}
               disabled={creatingBackup}
-              className="flex items-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors disabled:opacity-50 text-sm"
+              className="btn btn-primary flex items-center gap-2 px-3 py-2 disabled:opacity-50 text-sm"
             >
               {creatingBackup ? (
                 <RefreshCw className="h-4 w-4 animate-spin" />
@@ -363,7 +363,7 @@ export default function Settings() {
               <RefreshCw className="h-6 w-6 text-surface-400 animate-spin" />
             </div>
           ) : backups.length === 0 ? (
-            <div className="bg-surface-800/50 rounded-lg p-4 text-center">
+            <div className="bg-surface-800/50 rounded-none p-4 text-center">
               <p className="text-surface-400">No backups yet. Create your first backup to protect your data.</p>
             </div>
           ) : (
@@ -371,7 +371,7 @@ export default function Settings() {
               {backups.map((backup) => (
                 <div
                   key={backup.name}
-                  className="flex items-center justify-between bg-surface-800/50 rounded-lg p-3"
+                  className="flex items-center justify-between bg-surface-800/50 rounded-none p-3"
                 >
                   <div className="flex items-center gap-3">
                     <Download className="h-4 w-4 text-surface-400" />
@@ -386,7 +386,7 @@ export default function Settings() {
                     <button
                       onClick={() => handleRestoreBackup(backup.name)}
                       disabled={restoringBackup === backup.name}
-                      className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-amber-400 hover:text-amber-300 hover:bg-amber-500/10 rounded transition-colors disabled:opacity-50"
+                      className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-warning hover:text-warning hover:bg-warning/10 rounded-none transition-colors disabled:opacity-50"
                       title="Restore this backup"
                     >
                       {restoringBackup === backup.name ? (
@@ -399,7 +399,7 @@ export default function Settings() {
                     <button
                       onClick={() => handleDeleteBackup(backup.name)}
                       disabled={deletingBackup === backup.name}
-                      className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded transition-colors disabled:opacity-50"
+                      className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-error hover:text-error hover:bg-error/10 rounded-none transition-colors disabled:opacity-50"
                       title="Delete this backup"
                     >
                       {deletingBackup === backup.name ? (
@@ -427,13 +427,13 @@ export default function Settings() {
         <AutoDispatchGlobalSettings />
 
         {/* API Keys Card */}
-        <div className="bg-surface-900/50 border border-surface-800 rounded-xl p-6 mb-6">
+        <div className="bg-surface-900/50 border border-surface-800 rounded-none p-6 mb-6">
           <div className="flex items-center gap-3 mb-4">
-            <div className="p-2 bg-purple-500/10 rounded-lg">
-              <Key className="h-6 w-6 text-purple-400" />
+            <div className="p-2 bg-info/10 rounded-none">
+              <Key className="h-6 w-6 text-info" />
             </div>
             <div>
-              <h2 className="text-lg font-semibold text-surface-100">API Keys</h2>
+              <h2 className="text-heading-xs font-display font-semibold text-surface-100">API Keys</h2>
               <p className="text-sm text-surface-400">
                 Configure API keys for AI-powered features
               </p>
@@ -460,8 +460,8 @@ export default function Settings() {
 
               {keyLoaded && anthropicKeyMasked && !anthropicKey && (
                 <div className="flex items-center gap-2 mb-2">
-                  <CheckCircle2 className="h-4 w-4 text-green-400" />
-                  <span className="text-sm text-green-300">Key configured: {anthropicKeyMasked}</span>
+                  <CheckCircle2 className="h-4 w-4 text-success" />
+                  <span className="text-sm text-success">Key configured: {anthropicKeyMasked}</span>
                 </div>
               )}
 
@@ -472,7 +472,7 @@ export default function Settings() {
                     value={anthropicKey}
                     onChange={(e) => setAnthropicKey(e.target.value)}
                     placeholder={anthropicKeyMasked ? 'Enter new key to update...' : 'sk-ant-...'}
-                    className="w-full bg-surface-800 border border-surface-700 rounded-lg px-3 py-2 text-sm text-surface-100 placeholder-surface-500 focus:outline-none focus:ring-2 focus:ring-accent-500 focus:border-transparent pr-10"
+                    className="input pr-10"
                   />
                   <button
                     type="button"
@@ -485,7 +485,7 @@ export default function Settings() {
                 <button
                   onClick={handleSaveAnthropicKey}
                   disabled={!anthropicKey.trim() || savingKey}
-                  className="flex items-center gap-2 px-4 py-2 bg-accent-600 hover:bg-accent-700 text-white font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                  className="btn btn-primary flex items-center gap-2 px-4 py-2 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
                 >
                   {savingKey ? (
                     <RefreshCw className="h-4 w-4 animate-spin" />
@@ -500,13 +500,13 @@ export default function Settings() {
         </div>
 
         {/* Etsy Integration Card */}
-        <div className="bg-surface-900/50 border border-surface-800 rounded-xl p-6">
+        <div className="bg-surface-900/50 border border-surface-800 rounded-none p-6">
           <div className="flex items-center gap-3 mb-4">
-            <div className="p-2 bg-orange-500/10 rounded-lg">
-              <Store className="h-6 w-6 text-orange-400" />
+            <div className="p-2 bg-warning/10 rounded-none">
+              <Store className="h-6 w-6 text-warning" />
             </div>
             <div>
-              <h2 className="text-lg font-semibold text-surface-100">Etsy Integration</h2>
+              <h2 className="text-heading-xs font-display font-semibold text-surface-100">Etsy Integration</h2>
               <p className="text-sm text-surface-400">
                 Connect your Etsy shop to sync orders automatically
               </p>
@@ -518,7 +518,7 @@ export default function Settings() {
               <RefreshCw className="h-6 w-6 text-surface-400 animate-spin" />
             </div>
           ) : !etsyStatus?.configured ? (
-            <div className="bg-surface-800/50 rounded-lg p-4">
+            <div className="bg-surface-800/50 rounded-none p-4">
               <p className="text-surface-300 mb-3">
                 Connect your Etsy shop to sync orders and listings.
               </p>
@@ -548,10 +548,10 @@ export default function Settings() {
           ) : etsyStatus.connected ? (
             <div className="space-y-4">
               {/* Connected Shop Info */}
-              <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-4">
+              <div className="bg-success/10 border border-success/30 rounded-none p-4">
                 <div className="flex items-center gap-2 mb-2">
-                  <CheckCircle2 className="h-4 w-4 text-green-400" />
-                  <span className="text-green-300 font-medium">Connected</span>
+                  <CheckCircle2 className="h-4 w-4 text-success" />
+                  <span className="text-success font-medium">Connected</span>
                 </div>
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   <div>
@@ -575,9 +575,9 @@ export default function Settings() {
 
               {/* Token Expiry Warning */}
               {isTokenExpiringSoon() && (
-                <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-3 flex items-center gap-2">
-                  <AlertCircle className="h-4 w-4 text-yellow-400" />
-                  <span className="text-sm text-yellow-300">
+                <div className="bg-warning/10 border border-warning/30 rounded-none p-3 flex items-center gap-2">
+                  <AlertCircle className="h-4 w-4 text-warning" />
+                  <span className="text-sm text-warning">
                     Token expires soon. It will be automatically refreshed on next API call.
                   </span>
                 </div>
@@ -602,7 +602,7 @@ export default function Settings() {
               <button
                 onClick={handleDisconnectEtsy}
                 disabled={disconnecting}
-                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg transition-colors disabled:opacity-50"
+                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-error hover:text-error hover:bg-error/10 rounded-none transition-colors disabled:opacity-50"
               >
                 {disconnecting ? (
                   <RefreshCw className="h-4 w-4 animate-spin" />
@@ -620,7 +620,7 @@ export default function Settings() {
               <button
                 onClick={handleConnectEtsy}
                 disabled={connecting}
-                className="flex items-center gap-2 px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white font-medium rounded-lg transition-colors disabled:opacity-50"
+                className="btn btn-secondary flex items-center gap-2 px-4 py-2 disabled:opacity-50"
               >
                 {connecting ? (
                   <RefreshCw className="h-4 w-4 animate-spin" />
@@ -634,13 +634,13 @@ export default function Settings() {
         </div>
 
         {/* Squarespace Integration Card */}
-        <div className="bg-surface-900/50 border border-surface-800 rounded-xl p-6">
+        <div className="bg-surface-900/50 border border-surface-800 rounded-none p-6">
           <div className="flex items-center gap-3 mb-4">
-            <div className="p-2 bg-purple-500/10 rounded-lg">
-              <ShoppingBag className="h-6 w-6 text-purple-400" />
+            <div className="p-2 bg-info/10 rounded-none">
+              <ShoppingBag className="h-6 w-6 text-info" />
             </div>
             <div>
-              <h2 className="text-lg font-semibold text-surface-100">Squarespace Integration</h2>
+              <h2 className="text-heading-xs font-display font-semibold text-surface-100">Squarespace Integration</h2>
               <p className="text-sm text-surface-400">
                 Connect your Squarespace store to sync orders automatically
               </p>
@@ -650,10 +650,10 @@ export default function Settings() {
           {squarespaceStatus?.connected ? (
             <div className="space-y-4">
               {/* Connected Store Info */}
-              <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-4">
+              <div className="bg-success/10 border border-success/30 rounded-none p-4">
                 <div className="flex items-center gap-2 mb-2">
-                  <CheckCircle2 className="h-4 w-4 text-green-400" />
-                  <span className="text-green-300 font-medium">Connected</span>
+                  <CheckCircle2 className="h-4 w-4 text-success" />
+                  <span className="text-success font-medium">Connected</span>
                 </div>
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   <div>
@@ -679,7 +679,7 @@ export default function Settings() {
               <button
                 onClick={handleDisconnectSquarespace}
                 disabled={disconnectingSquarespace}
-                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg transition-colors disabled:opacity-50"
+                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-error hover:text-error hover:bg-error/10 rounded-none transition-colors disabled:opacity-50"
               >
                 {disconnectingSquarespace ? (
                   <RefreshCw className="h-4 w-4 animate-spin" />
@@ -715,7 +715,7 @@ export default function Settings() {
                     value={squarespaceKey}
                     onChange={(e) => setSquarespaceKey(e.target.value)}
                     placeholder="Enter your Squarespace API key..."
-                    className="w-full bg-surface-800 border border-surface-700 rounded-lg px-3 py-2 text-sm text-surface-100 placeholder-surface-500 focus:outline-none focus:ring-2 focus:ring-accent-500 focus:border-transparent pr-10"
+                    className="input pr-10"
                   />
                   <button
                     type="button"
@@ -728,7 +728,7 @@ export default function Settings() {
                 <button
                   onClick={handleConnectSquarespace}
                   disabled={!squarespaceKey.trim() || connectingSquarespace}
-                  className="flex items-center gap-2 px-4 py-2 bg-purple-500 hover:bg-purple-600 text-white font-medium rounded-lg transition-colors disabled:opacity-50"
+                  className="btn btn-secondary flex items-center gap-2 px-4 py-2 disabled:opacity-50"
                 >
                   {connectingSquarespace ? (
                     <RefreshCw className="h-4 w-4 animate-spin" />
@@ -803,13 +803,13 @@ function BusinessInfoSettings() {
   if (!loaded) return null
 
   return (
-    <div className="bg-surface-900/50 border border-surface-800 rounded-xl p-6 mb-6">
+    <div className="bg-surface-900/50 border border-surface-800 rounded-none p-6 mb-6">
       <div className="flex items-center gap-3 mb-4">
-        <div className="p-2 bg-accent-500/10 rounded-lg">
+        <div className="p-2 bg-accent-500/10 rounded-none">
           <Building className="h-6 w-6 text-accent-400" />
         </div>
         <div>
-          <h2 className="text-lg font-semibold text-surface-100">Business Information</h2>
+          <h2 className="text-heading-xs font-display font-semibold text-surface-100">Business Information</h2>
           <p className="text-sm text-surface-400">Shown on customer-facing quotes</p>
         </div>
       </div>
@@ -817,36 +817,36 @@ function BusinessInfoSettings() {
       <div className="space-y-3">
         <div>
           <label className="block text-xs font-medium text-surface-400 mb-1">Business Name</label>
-          <input value={businessName} onChange={e => setBusinessName(e.target.value)} className="w-full px-3 py-2 bg-surface-800 border border-surface-700 rounded-lg text-surface-100 text-sm focus:outline-none focus:ring-1 focus:ring-accent-500" />
+          <input value={businessName} onChange={e => setBusinessName(e.target.value)} className="input" />
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="block text-xs font-medium text-surface-400 mb-1">Phone</label>
-            <input value={phone} onChange={e => setPhone(e.target.value)} className="w-full px-3 py-2 bg-surface-800 border border-surface-700 rounded-lg text-surface-100 text-sm focus:outline-none focus:ring-1 focus:ring-accent-500" />
+            <input value={phone} onChange={e => setPhone(e.target.value)} className="input" />
           </div>
           <div>
             <label className="block text-xs font-medium text-surface-400 mb-1">Email</label>
-            <input value={email} onChange={e => setEmail(e.target.value)} type="email" className="w-full px-3 py-2 bg-surface-800 border border-surface-700 rounded-lg text-surface-100 text-sm focus:outline-none focus:ring-1 focus:ring-accent-500" />
+            <input value={email} onChange={e => setEmail(e.target.value)} type="email" className="input" />
           </div>
         </div>
         <div>
           <label className="block text-xs font-medium text-surface-400 mb-1">Website</label>
-          <input value={website} onChange={e => setWebsite(e.target.value)} className="w-full px-3 py-2 bg-surface-800 border border-surface-700 rounded-lg text-surface-100 text-sm focus:outline-none focus:ring-1 focus:ring-accent-500" />
+          <input value={website} onChange={e => setWebsite(e.target.value)} className="input" />
         </div>
         <div>
           <label className="block text-xs font-medium text-surface-400 mb-1">Address</label>
           <div className="space-y-1.5">
-            <input value={address.line1} onChange={e => setAddress(a => ({ ...a, line1: e.target.value }))} placeholder="Address line 1" className="w-full px-3 py-1.5 bg-surface-800 border border-surface-700 rounded-lg text-surface-100 text-sm focus:outline-none focus:ring-1 focus:ring-accent-500" />
-            <input value={address.line2} onChange={e => setAddress(a => ({ ...a, line2: e.target.value }))} placeholder="Address line 2" className="w-full px-3 py-1.5 bg-surface-800 border border-surface-700 rounded-lg text-surface-100 text-sm focus:outline-none focus:ring-1 focus:ring-accent-500" />
+            <input value={address.line1} onChange={e => setAddress(a => ({ ...a, line1: e.target.value }))} placeholder="Address line 1" className="input" />
+            <input value={address.line2} onChange={e => setAddress(a => ({ ...a, line2: e.target.value }))} placeholder="Address line 2" className="input" />
             <div className="grid grid-cols-3 gap-1.5">
-              <input value={address.city} onChange={e => setAddress(a => ({ ...a, city: e.target.value }))} placeholder="City" className="px-3 py-1.5 bg-surface-800 border border-surface-700 rounded-lg text-surface-100 text-sm focus:outline-none focus:ring-1 focus:ring-accent-500" />
-              <input value={address.state} onChange={e => setAddress(a => ({ ...a, state: e.target.value }))} placeholder="State" className="px-3 py-1.5 bg-surface-800 border border-surface-700 rounded-lg text-surface-100 text-sm focus:outline-none focus:ring-1 focus:ring-accent-500" />
-              <input value={address.zip} onChange={e => setAddress(a => ({ ...a, zip: e.target.value }))} placeholder="Zip" className="px-3 py-1.5 bg-surface-800 border border-surface-700 rounded-lg text-surface-100 text-sm focus:outline-none focus:ring-1 focus:ring-accent-500" />
+              <input value={address.city} onChange={e => setAddress(a => ({ ...a, city: e.target.value }))} placeholder="City" className="input" />
+              <input value={address.state} onChange={e => setAddress(a => ({ ...a, state: e.target.value }))} placeholder="State" className="input" />
+              <input value={address.zip} onChange={e => setAddress(a => ({ ...a, zip: e.target.value }))} placeholder="Zip" className="input" />
             </div>
-            <input value={address.country} onChange={e => setAddress(a => ({ ...a, country: e.target.value }))} placeholder="Country" className="w-full px-3 py-1.5 bg-surface-800 border border-surface-700 rounded-lg text-surface-100 text-sm focus:outline-none focus:ring-1 focus:ring-accent-500" />
+            <input value={address.country} onChange={e => setAddress(a => ({ ...a, country: e.target.value }))} placeholder="Country" className="input" />
           </div>
         </div>
-        <button onClick={handleSave} disabled={saving} className="flex items-center gap-2 px-4 py-2 bg-accent-500 text-white rounded-lg hover:bg-accent-600 text-sm font-medium disabled:opacity-50">
+        <button onClick={handleSave} disabled={saving} className="btn btn-primary flex items-center gap-2 px-4 py-2 text-sm disabled:opacity-50">
           {saving ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
           {saved ? 'Saved!' : 'Save Business Info'}
         </button>
@@ -871,14 +871,14 @@ function AutoDispatchGlobalSettings() {
   })
 
   return (
-    <div className="bg-surface-900/50 border border-surface-800 rounded-xl p-6 mb-6">
+    <div className="bg-surface-900/50 border border-surface-800 rounded-none p-6 mb-6">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="p-2 bg-accent-500/10 rounded-lg">
+          <div className="p-2 bg-accent-500/10 rounded-none">
             <Zap className="h-6 w-6 text-accent-400" />
           </div>
           <div>
-            <h2 className="text-lg font-semibold text-surface-100">Auto-Dispatch</h2>
+            <h2 className="text-heading-xs font-display font-semibold text-surface-100">Auto-Dispatch</h2>
             <p className="text-sm text-surface-400">
               Automatically queue jobs to idle printers
             </p>
@@ -898,7 +898,7 @@ function AutoDispatchGlobalSettings() {
           >
             <span
               className={cn(
-                'inline-block h-4 w-4 transform rounded-full bg-white transition-transform',
+                'inline-block h-4 w-4 transform rounded-full bg-canvas transition-transform',
                 settings?.enabled ? 'translate-x-6' : 'translate-x-1'
               )}
             />
@@ -913,7 +913,7 @@ function AutoDispatchGlobalSettings() {
       </p>
 
       {settings?.enabled && (
-        <div className="mt-3 p-3 rounded-lg bg-accent-500/10 border border-accent-500/20">
+        <div className="mt-3 p-3 rounded-none bg-accent-500/10 border border-accent-500/20">
           <div className="flex items-center gap-2 text-accent-400 text-sm">
             <div className="h-2 w-2 rounded-full bg-accent-500 animate-pulse" />
             Auto-dispatch is globally active
@@ -974,12 +974,12 @@ function BackupSettings() {
             disabled={updateMutation.isPending}
             className={cn(
               'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
-              config.auto_on_startup ? 'bg-blue-500' : 'bg-surface-600'
+              config.auto_on_startup ? 'bg-info' : 'bg-surface-600'
             )}
           >
             <span
               className={cn(
-                'inline-block h-4 w-4 transform rounded-full bg-white transition-transform',
+                'inline-block h-4 w-4 transform rounded-full bg-canvas transition-transform',
                 config.auto_on_startup ? 'translate-x-6' : 'translate-x-1'
               )}
             />
@@ -997,12 +997,12 @@ function BackupSettings() {
             disabled={updateMutation.isPending}
             className={cn(
               'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
-              config.schedule_enabled ? 'bg-blue-500' : 'bg-surface-600'
+              config.schedule_enabled ? 'bg-info' : 'bg-surface-600'
             )}
           >
             <span
               className={cn(
-                'inline-block h-4 w-4 transform rounded-full bg-white transition-transform',
+                'inline-block h-4 w-4 transform rounded-full bg-canvas transition-transform',
                 config.schedule_enabled ? 'translate-x-6' : 'translate-x-1'
               )}
             />

@@ -34,7 +34,7 @@ export default function RecipeCostCard({ templateId }: RecipeCostCardProps) {
       <div className="card p-6">
         <div className="flex items-center gap-2 mb-4">
           <DollarSign className="h-5 w-5 text-surface-400" />
-          <h2 className="text-lg font-semibold text-surface-100">Cost Estimate</h2>
+          <h2 className="text-heading-xs font-display font-semibold text-surface-100">Cost Estimate</h2>
         </div>
         <div className="text-surface-500 text-center py-4">Loading...</div>
       </div>
@@ -46,7 +46,7 @@ export default function RecipeCostCard({ templateId }: RecipeCostCardProps) {
       <div className="card p-6">
         <div className="flex items-center gap-2 mb-4">
           <DollarSign className="h-5 w-5 text-surface-400" />
-          <h2 className="text-lg font-semibold text-surface-100">Cost Estimate</h2>
+          <h2 className="text-heading-xs font-display font-semibold text-surface-100">Cost Estimate</h2>
         </div>
         <div className="text-surface-500 text-center py-4">
           Unable to calculate cost estimate
@@ -60,7 +60,7 @@ export default function RecipeCostCard({ templateId }: RecipeCostCardProps) {
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <DollarSign className="h-5 w-5 text-surface-400" />
-          <h2 className="text-lg font-semibold text-surface-100">Cost Estimate</h2>
+          <h2 className="text-heading-xs font-display font-semibold text-surface-100">Cost Estimate</h2>
         </div>
         <button
           onClick={() => refetch()}
@@ -72,7 +72,7 @@ export default function RecipeCostCard({ templateId }: RecipeCostCardProps) {
       </div>
 
       {/* Total Cost */}
-      <div className="mb-6 p-4 rounded-lg bg-accent-500/10 border border-accent-500/20">
+      <div className="mb-6 p-4 rounded-none bg-accent-500/10 border border-accent-500/20">
         <div className="text-sm text-surface-400 mb-1">Total Cost</div>
         <div className="text-3xl font-bold text-accent-400">
           {formatCents(estimate.total_cost_cents)}
@@ -81,7 +81,7 @@ export default function RecipeCostCard({ templateId }: RecipeCostCardProps) {
 
       {/* Cost Breakdown */}
       <div className="space-y-2">
-        <div className="flex items-center justify-between p-3 rounded-lg bg-surface-800/50">
+        <div className="flex items-center justify-between p-3 rounded-none bg-surface-800/50">
           <div className="flex items-center gap-3">
             <Package className="h-4 w-4 text-surface-400" />
             <span className="text-surface-200">Material Cost</span>
@@ -91,7 +91,7 @@ export default function RecipeCostCard({ templateId }: RecipeCostCardProps) {
           </span>
         </div>
 
-        <div className="flex items-center justify-between p-3 rounded-lg bg-surface-800/50">
+        <div className="flex items-center justify-between p-3 rounded-none bg-surface-800/50">
           <div className="flex items-center gap-3">
             <Clock className="h-4 w-4 text-surface-400" />
             <div>
@@ -107,7 +107,7 @@ export default function RecipeCostCard({ templateId }: RecipeCostCardProps) {
         </div>
 
         {estimate.labor_minutes > 0 && (
-          <div className="flex items-center justify-between p-3 rounded-lg bg-surface-800/50">
+          <div className="flex items-center justify-between p-3 rounded-none bg-surface-800/50">
             <div className="flex items-center gap-3">
               <Wrench className="h-4 w-4 text-surface-400" />
               <div>
@@ -124,7 +124,7 @@ export default function RecipeCostCard({ templateId }: RecipeCostCardProps) {
         )}
 
         {estimate.supply_cost_cents > 0 && (
-          <div className="flex items-center justify-between p-3 rounded-lg bg-surface-800/50">
+          <div className="flex items-center justify-between p-3 rounded-none bg-surface-800/50">
             <div className="flex items-center gap-3">
               <ShoppingCart className="h-4 w-4 text-surface-400" />
               <span className="text-surface-200">Supplies</span>
@@ -138,7 +138,7 @@ export default function RecipeCostCard({ templateId }: RecipeCostCardProps) {
 
       {/* Margin Section */}
       {estimate.sale_price_cents > 0 && (
-        <div className="mt-4 p-4 rounded-lg bg-surface-800/50 border border-surface-700">
+        <div className="mt-4 p-4 rounded-none bg-surface-800/50 border border-surface-700">
           <div className="flex items-center gap-2 mb-3">
             <TrendingUp className="h-4 w-4 text-surface-400" />
             <span className="text-sm font-medium text-surface-300">Margin Analysis</span>
@@ -158,13 +158,13 @@ export default function RecipeCostCard({ templateId }: RecipeCostCardProps) {
               <div className="text-right">
                 <span className={cn(
                   'font-bold',
-                  estimate.gross_margin_cents >= 0 ? 'text-emerald-400' : 'text-red-400'
+                  estimate.gross_margin_cents >= 0 ? 'text-success' : 'text-error'
                 )}>
                   {formatCents(estimate.gross_margin_cents)}
                 </span>
                 <span className={cn(
                   'text-sm ml-2',
-                  estimate.gross_margin_percent >= 0 ? 'text-emerald-500' : 'text-red-500'
+                  estimate.gross_margin_percent >= 0 ? 'text-success' : 'text-error'
                 )}>
                   ({estimate.gross_margin_percent.toFixed(1)}%)
                 </span>
@@ -175,7 +175,7 @@ export default function RecipeCostCard({ templateId }: RecipeCostCardProps) {
                 <span className="text-surface-400">Profit/Hour</span>
                 <span className={cn(
                   'font-medium',
-                  estimate.profit_per_hour_cents >= 0 ? 'text-emerald-400' : 'text-red-400'
+                  estimate.profit_per_hour_cents >= 0 ? 'text-success' : 'text-error'
                 )}>
                   {formatCents(estimate.profit_per_hour_cents)}/hr
                 </span>
@@ -193,7 +193,7 @@ export default function RecipeCostCard({ templateId }: RecipeCostCardProps) {
             {estimate.material_breakdown.map((item, idx) => (
               <div
                 key={idx}
-                className="flex items-center justify-between text-sm p-2 rounded bg-surface-800/30"
+                className="flex items-center justify-between text-sm p-2 rounded-none bg-surface-800/30"
               >
                 <div className="flex items-center gap-2">
                   <span className="text-surface-300">{item.material_type.toUpperCase()}</span>
@@ -217,7 +217,7 @@ export default function RecipeCostCard({ templateId }: RecipeCostCardProps) {
             {estimate.supply_breakdown.map((item, idx) => (
               <div
                 key={idx}
-                className="flex items-center justify-between text-sm p-2 rounded bg-surface-800/30"
+                className="flex items-center justify-between text-sm p-2 rounded-none bg-surface-800/30"
               >
                 <div className="flex items-center gap-2">
                   <span className="text-surface-300">{item.name}</span>

@@ -32,7 +32,7 @@ function FanBar({ label, percent }: { label: string; percent: number }) {
       </div>
       <div className="h-2 bg-surface-800 rounded-full overflow-hidden">
         <div
-          className="h-full bg-blue-500 transition-all"
+          className="h-full bg-info transition-all"
           style={{ width: `${percent}%` }}
         />
       </div>
@@ -59,8 +59,8 @@ function TempRow({ label, current, target }: { label: string; current?: number; 
         <div
           className={cn(
             'h-full transition-all',
-            cur > 0 && tgt > 0 && cur >= tgt - 2 ? 'bg-emerald-500' :
-            cur > 50 ? 'bg-amber-500' :
+            cur > 0 && tgt > 0 && cur >= tgt - 2 ? 'bg-success' :
+            cur > 50 ? 'bg-warning' :
             'bg-surface-600'
           )}
           style={{ width: `${pct}%` }}
@@ -115,7 +115,7 @@ export default function PrinterDetail() {
         <div className="flex items-start justify-between">
           <div>
             <div className="flex items-center gap-3">
-              <h1 className="text-2xl font-display font-bold text-surface-100">
+              <h1 className="text-heading-sm font-display font-semibold text-surface-100">
                 {printer.name}
               </h1>
               <span className={cn('badge', getStatusBadge(status))}>
@@ -150,7 +150,7 @@ export default function PrinterDetail() {
                 </div>
                 <div className="h-3 bg-surface-800 rounded-full overflow-hidden">
                   <div
-                    className="h-full bg-emerald-500 transition-all"
+                    className="h-full bg-success transition-all"
                     style={{ width: `${state!.progress}%` }}
                   />
                 </div>
@@ -325,10 +325,10 @@ export default function PrinterDetail() {
                             <div className="w-16 h-1.5 bg-surface-800 rounded-full overflow-hidden">
                               <div
                                 className={cn(
-                                  'h-full rounded-full',
-                                  tray.remain > 50 ? 'bg-emerald-500' :
-                                  tray.remain > 20 ? 'bg-amber-500' :
-                                  'bg-red-500'
+                                  'h-full rounded-badge',
+                                  tray.remain > 50 ? 'bg-success' :
+                                  tray.remain > 20 ? 'bg-warning' :
+                                  'bg-error'
                                 )}
                                 style={{ width: `${tray.remain}%` }}
                               />
@@ -376,9 +376,9 @@ export default function PrinterDetail() {
                   <div className="text-surface-400 mb-1">HMS Errors</div>
                   {state!.hms_errors!.map((err, i) => (
                     <div key={i} className={cn(
-                      'px-2 py-1 rounded text-xs mb-1',
-                      err.severity >= 3 ? 'bg-red-500/10 text-red-400' :
-                      err.severity >= 2 ? 'bg-amber-500/10 text-amber-400' :
+                      'px-2 py-1 rounded-none text-xs mb-1',
+                      err.severity >= 3 ? 'bg-error/10 text-error' :
+                      err.severity >= 2 ? 'bg-warning/10 text-warning' :
                       'bg-surface-800 text-surface-300'
                     )}>
                       Module {err.module} / Code {err.code} (severity {err.severity})
@@ -387,7 +387,7 @@ export default function PrinterDetail() {
                 </div>
               ) : (
                 <div className="flex items-center gap-2 text-surface-400">
-                  <span className="text-emerald-400">&#10003;</span> No active HMS errors
+                  <Check className="inline h-4 w-4 text-success" /> No active HMS errors
                 </div>
               )}
               {hasLights && (
@@ -414,7 +414,7 @@ export default function PrinterDetail() {
               Alerts
             </h2>
             <div className="flex items-center gap-2 text-surface-400 text-sm">
-              <span className="text-emerald-400">&#10003;</span> No active HMS errors
+              <Check className="inline h-4 w-4 text-success" /> No active HMS errors
             </div>
           </div>
         )}
@@ -423,7 +423,7 @@ export default function PrinterDetail() {
       {/* Analytics Section */}
       {analytics && (
         <div className="mt-6">
-          <h2 className="text-lg font-semibold text-surface-100 flex items-center gap-2 mb-4">
+          <h2 className="text-heading-xs font-display font-semibold text-surface-100 flex items-center gap-2 mb-4">
             <TrendingUp className="h-5 w-5 text-surface-400" />
             Analytics
           </h2>
@@ -508,13 +508,13 @@ function PrinterCostSetting({ printerId, costPerHourCents, printerModel }: { pri
               <button
                 onClick={handleSave}
                 disabled={updatePrinter.isPending}
-                className="p-1 rounded text-emerald-400 hover:bg-emerald-500/10"
+                className="p-1 rounded-none text-success hover:bg-success/10"
               >
                 <Check className="h-4 w-4" />
               </button>
               <button
                 onClick={handleCancel}
-                className="p-1 rounded text-surface-400 hover:bg-surface-700"
+                className="p-1 rounded-none text-surface-400 hover:bg-surface-700"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -529,8 +529,8 @@ function PrinterCostSetting({ printerId, costPerHourCents, printerModel }: { pri
 
         {/* Suggested defaults */}
         {costPerHourCents === 0 && (
-          <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
-            <div className="text-sm text-amber-300 font-medium mb-2">No cost set</div>
+          <div className="p-3 rounded-none bg-warning/10 border border-warning/20">
+            <div className="text-sm text-warning font-medium mb-2">No cost set</div>
             <p className="text-xs text-surface-400 mb-3">
               Set an hourly rate so project analytics can calculate printer time costs accurately.
             </p>
@@ -571,7 +571,7 @@ function PrinterCostSetting({ printerId, costPerHourCents, printerModel }: { pri
             {showBreakdown ? 'Hide' : 'How is this cost calculated?'}
           </button>
           {showBreakdown && (
-            <div className="mt-3 p-3 rounded-lg bg-surface-800/50 border border-surface-700 text-xs text-surface-400 space-y-3">
+            <div className="mt-3 p-3 rounded-none bg-surface-800/50 border border-surface-700 text-xs text-surface-400 space-y-3">
               <p>
                 Hourly cost covers everything except filament (which is tracked separately per job). It includes:
               </p>
@@ -655,9 +655,9 @@ function PrinterUtilizationCard({ utilization }: { utilization: PrinterUtilizati
               key={period}
               onClick={() => setSelectedPeriod(period)}
               className={cn(
-                'px-2 py-0.5 text-xs rounded transition-colors',
+                'px-2 py-0.5 text-xs rounded-none transition-colors',
                 selectedPeriod === period
-                  ? 'bg-accent-500 text-white'
+                  ? 'btn btn-primary'
                   : 'bg-surface-700 text-surface-400 hover:bg-surface-600'
               )}
             >
@@ -669,14 +669,14 @@ function PrinterUtilizationCard({ utilization }: { utilization: PrinterUtilizati
 
       {/* Donut-style breakdown bar */}
       <div className="mb-4">
-        <div className="h-4 flex rounded-full overflow-hidden">
+        <div className="h-4 flex rounded-badge overflow-hidden">
           <div
-            className="bg-emerald-500 transition-all"
+            className="bg-success transition-all"
             style={{ width: `${printingPercent}%` }}
             title={`Printing: ${data.printing_hours.toFixed(1)}h`}
           />
           <div
-            className="bg-red-500 transition-all"
+            className="bg-error transition-all"
             style={{ width: `${failedPercent}%` }}
             title={`Failed: ${data.failed_hours.toFixed(1)}h`}
           />
@@ -688,11 +688,11 @@ function PrinterUtilizationCard({ utilization }: { utilization: PrinterUtilizati
         </div>
         <div className="flex justify-between mt-2 text-xs">
           <div className="flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full bg-emerald-500" />
+            <span className="w-2 h-2 rounded-full bg-success" />
             <span className="text-surface-400">Printing</span>
           </div>
           <div className="flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full bg-red-500" />
+            <span className="w-2 h-2 rounded-full bg-error" />
             <span className="text-surface-400">Failed</span>
           </div>
           <div className="flex items-center gap-1">
@@ -708,8 +708,8 @@ function PrinterUtilizationCard({ utilization }: { utilization: PrinterUtilizati
           <span className="text-surface-400">Utilization</span>
           <span className={cn(
             'font-medium',
-            data.utilization_percent >= 50 ? 'text-emerald-400' :
-            data.utilization_percent >= 25 ? 'text-amber-400' :
+            data.utilization_percent >= 50 ? 'text-success' :
+            data.utilization_percent >= 25 ? 'text-warning' :
             'text-surface-300'
           )}>
             {data.utilization_percent.toFixed(1)}%
@@ -721,7 +721,7 @@ function PrinterUtilizationCard({ utilization }: { utilization: PrinterUtilizati
         </div>
         <div className="flex justify-between">
           <span className="text-surface-400">Failed Hours</span>
-          <span className="text-red-400">{data.failed_hours.toFixed(1)}h</span>
+          <span className="text-error">{data.failed_hours.toFixed(1)}h</span>
         </div>
         <div className="flex justify-between">
           <span className="text-surface-400">Idle Hours</span>
@@ -736,7 +736,7 @@ function PrinterUtilizationCard({ utilization }: { utilization: PrinterUtilizati
             <span className="text-surface-400">Actual Revenue/hr</span>
             <span className={cn(
               data.actual_revenue_per_hour_cents > data.configured_cost_per_hour_cents
-                ? 'text-emerald-400'
+                ? 'text-success'
                 : 'text-surface-300'
             )}>
               ${(data.actual_revenue_per_hour_cents / 100).toFixed(2)}/hr
@@ -777,8 +777,8 @@ function PrinterROICard({ roi, printerId, purchasePriceCents }: { roi: PrinterRO
       </h3>
 
       {purchasePriceCents === 0 ? (
-        <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
-          <div className="text-sm text-amber-300 font-medium mb-2">Set Purchase Price</div>
+        <div className="p-3 rounded-none bg-warning/10 border border-warning/20">
+          <div className="text-sm text-warning font-medium mb-2">Set Purchase Price</div>
           <p className="text-xs text-surface-400 mb-3">
             Enter the purchase price to track ROI and break-even.
           </p>
@@ -814,7 +814,7 @@ function PrinterROICard({ roi, printerId, purchasePriceCents }: { roi: PrinterRO
               <span className="text-surface-400">Break-even Progress</span>
               <span className={cn(
                 'font-medium',
-                roi.break_even_reached ? 'text-emerald-400' : 'text-surface-200'
+                roi.break_even_reached ? 'text-success' : 'text-surface-200'
               )}>
                 {roi.break_even_reached ? 'Reached!' : `${breakEvenProgress.toFixed(0)}%`}
               </span>
@@ -823,7 +823,7 @@ function PrinterROICard({ roi, printerId, purchasePriceCents }: { roi: PrinterRO
               <div
                 className={cn(
                   'h-full transition-all',
-                  roi.break_even_reached ? 'bg-emerald-500' : 'bg-accent-500'
+                  roi.break_even_reached ? 'bg-success' : 'bg-accent-500'
                 )}
                 style={{ width: `${breakEvenProgress}%` }}
               />
@@ -856,10 +856,10 @@ function PrinterROICard({ roi, printerId, purchasePriceCents }: { roi: PrinterRO
                         if (e.key === 'Escape') handleCancel()
                       }}
                     />
-                    <button onClick={handleSave} className="p-0.5 rounded text-emerald-400 hover:bg-emerald-500/10">
+                    <button onClick={handleSave} className="p-0.5 rounded-none text-success hover:bg-success/10">
                       <Check className="h-3 w-3" />
                     </button>
-                    <button onClick={handleCancel} className="p-0.5 rounded text-surface-400 hover:bg-surface-700">
+                    <button onClick={handleCancel} className="p-0.5 rounded-none text-surface-400 hover:bg-surface-700">
                       <X className="h-3 w-3" />
                     </button>
                   </>
@@ -880,7 +880,7 @@ function PrinterROICard({ roi, printerId, purchasePriceCents }: { roi: PrinterRO
               <span className="text-surface-400">Lifetime Profit</span>
               <span className={cn(
                 'font-medium',
-                roi.lifetime_profit_cents >= 0 ? 'text-emerald-400' : 'text-red-400'
+                roi.lifetime_profit_cents >= 0 ? 'text-success' : 'text-error'
               )}>
                 {roi.lifetime_profit_cents >= 0 ? '' : '-'}${Math.abs(roi.lifetime_profit_cents / 100).toFixed(2)}
               </span>
@@ -892,7 +892,7 @@ function PrinterROICard({ roi, printerId, purchasePriceCents }: { roi: PrinterRO
             <div className="flex justify-between">
               <span className="text-surface-400">Net/Hour</span>
               <span className={cn(
-                roi.net_per_hour_cents >= 0 ? 'text-emerald-400' : 'text-red-400'
+                roi.net_per_hour_cents >= 0 ? 'text-success' : 'text-error'
               )}>
                 ${(roi.net_per_hour_cents / 100).toFixed(2)}
               </span>
@@ -939,32 +939,32 @@ function PrinterHealthCard({ health }: { health: PrinterHealth }) {
 
       {/* Stats grid */}
       <div className="grid grid-cols-2 gap-3 mb-4">
-        <div className="p-2 rounded bg-surface-800/50">
+        <div className="p-2 rounded-none bg-surface-800/50">
           <div className="text-xs text-surface-500">Failure Rate</div>
           <div className={cn(
-            'text-lg font-semibold',
-            health.failure_rate < 10 ? 'text-emerald-400' :
-            health.failure_rate < 25 ? 'text-amber-400' :
-            'text-red-400'
+            'text-heading-xs font-display font-semibold',
+            health.failure_rate < 10 ? 'text-success' :
+            health.failure_rate < 25 ? 'text-warning' :
+            'text-error'
           )}>
             {health.failure_rate.toFixed(1)}%
           </div>
         </div>
-        <div className="p-2 rounded bg-surface-800/50">
+        <div className="p-2 rounded-none bg-surface-800/50">
           <div className="text-xs text-surface-500">Avg Duration</div>
-          <div className="text-lg font-semibold text-surface-200">
+          <div className="text-heading-xs font-display font-semibold text-surface-200">
             {formatDuration(health.avg_job_duration_sec)}
           </div>
         </div>
-        <div className="p-2 rounded bg-surface-800/50">
+        <div className="p-2 rounded-none bg-surface-800/50">
           <div className="text-xs text-surface-500">Avg Cost/Job</div>
-          <div className="text-lg font-semibold text-surface-200">
+          <div className="text-heading-xs font-display font-semibold text-surface-200">
             ${(health.avg_cost_cents / 100).toFixed(2)}
           </div>
         </div>
-        <div className="p-2 rounded bg-surface-800/50">
+        <div className="p-2 rounded-none bg-surface-800/50">
           <div className="text-xs text-surface-500">Revenue</div>
-          <div className="text-lg font-semibold text-emerald-400">
+          <div className="text-heading-xs font-display font-semibold text-success">
             ${(health.total_revenue_cents / 100).toFixed(2)}
           </div>
         </div>
@@ -982,7 +982,7 @@ function PrinterHealthCard({ health }: { health: PrinterHealth }) {
                 </span>
                 <div className="flex-1 h-2 bg-surface-800 rounded-full overflow-hidden">
                   <div
-                    className="h-full bg-red-500/70 transition-all"
+                    className="h-full bg-error/70 transition-all"
                     style={{ width: `${maxFailures > 0 ? (count / maxFailures) * 100 : 0}%` }}
                   />
                 </div>
@@ -993,7 +993,7 @@ function PrinterHealthCard({ health }: { health: PrinterHealth }) {
         </div>
       ) : (
         <div className="flex items-center gap-2 text-surface-400 text-sm">
-          <span className="text-emerald-400">&#10003;</span> No failures recorded
+          <Check className="inline h-4 w-4 text-success" /> No failures recorded
         </div>
       )}
 
@@ -1037,7 +1037,7 @@ function PrinterHistory({ printerId }: { printerId: string }) {
 
   return (
     <div className="mt-6">
-      <h2 className="text-lg font-semibold text-surface-100 flex items-center gap-2 mb-4">
+      <h2 className="text-heading-xs font-display font-semibold text-surface-100 flex items-center gap-2 mb-4">
         <History className="h-5 w-5 text-surface-400" />
         Print History
       </h2>
@@ -1053,7 +1053,7 @@ function PrinterHistory({ printerId }: { printerId: string }) {
           </div>
           <div className="card p-4">
             <div className="text-sm text-surface-500 mb-1">Success Rate</div>
-            <div className="text-2xl font-semibold text-emerald-400">
+            <div className="text-2xl font-semibold text-success">
               {(stats.completed + stats.failed) > 0
                 ? Math.round((stats.completed / (stats.completed + stats.failed)) * 100)
                 : 0}%
@@ -1067,7 +1067,7 @@ function PrinterHistory({ printerId }: { printerId: string }) {
           </div>
           <div className="card p-4">
             <div className="text-sm text-surface-500 mb-1">Total Cost</div>
-            <div className="text-2xl font-semibold text-emerald-400">
+            <div className="text-2xl font-semibold text-success">
               ${(totalCost / 100).toFixed(2)}
             </div>
           </div>
@@ -1080,7 +1080,7 @@ function PrinterHistory({ printerId }: { printerId: string }) {
       ) : sortedJobs.length === 0 ? (
         <div className="card p-8 text-center">
           <History className="h-12 w-12 mx-auto mb-3 text-surface-600" />
-          <h3 className="text-lg font-medium text-surface-300 mb-2">
+          <h3 className="text-heading-xs font-display font-semibold text-surface-300 mb-2">
             No print history
           </h3>
           <p className="text-surface-500">
@@ -1111,13 +1111,13 @@ function PrinterJobRow({
         <div className="flex items-center gap-4">
           <div
             className={cn(
-              'w-10 h-10 rounded-lg flex items-center justify-center',
+              'w-10 h-10 rounded-none flex items-center justify-center',
               job.status === 'completed' && job.outcome?.success
-                ? 'bg-emerald-500/20 text-emerald-400'
+                ? 'bg-success/20 text-success'
                 : job.status === 'failed' || (job.outcome && !job.outcome.success)
-                ? 'bg-red-500/20 text-red-400'
+                ? 'bg-error/20 text-error'
                 : job.status === 'printing'
-                ? 'bg-blue-500/20 text-blue-400'
+                ? 'bg-info/20 text-info'
                 : 'bg-surface-700 text-surface-400'
             )}
           >
@@ -1147,7 +1147,7 @@ function PrinterJobRow({
               {job.attempt_number > 1 && (
                 <>
                   <span>·</span>
-                  <span className="text-amber-400">Attempt #{job.attempt_number}</span>
+                  <span className="text-warning">Attempt #{job.attempt_number}</span>
                 </>
               )}
             </div>
@@ -1161,7 +1161,7 @@ function PrinterJobRow({
             </span>
           )}
           {job.cost_cents != null && job.cost_cents > 0 && (
-            <span className="text-sm text-emerald-400">
+            <span className="text-sm text-success">
               ${(job.cost_cents / 100).toFixed(2)}
             </span>
           )}

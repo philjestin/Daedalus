@@ -82,7 +82,7 @@ export function AlertBanner({ className = '' }: AlertBannerProps) {
               <button
                 onClick={() => handleDismiss(alert, '1h')}
                 disabled={dismissingId === alert.id}
-                className="p-1.5 rounded hover:bg-black/10 transition-colors"
+                className="p-1.5 rounded-none hover:bg-ink/10 transition-colors"
                 title="Snooze for 1 hour"
               >
                 <Clock className="w-4 h-4" />
@@ -121,7 +121,7 @@ export function AlertBanner({ className = '' }: AlertBannerProps) {
             <button
               onClick={() => handleDismiss(alert, '1h')}
               disabled={dismissingId === alert.id}
-              className="p-1.5 rounded hover:bg-black/10 transition-colors"
+              className="p-1.5 rounded-none hover:bg-ink/10 transition-colors"
               title="Dismiss"
             >
               <X className="w-4 h-4" />

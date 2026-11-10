@@ -7,14 +7,14 @@ import { cn } from '../lib/utils'
 
 const statusColors: Record<string, { bar: string; text: string }> = {
   pending:     { bar: 'bg-surface-600',   text: 'text-surface-400' },
-  in_progress: { bar: 'bg-blue-500',      text: 'text-blue-400' },
-  printing:    { bar: 'bg-blue-500',      text: 'text-blue-400' },
-  completed:   { bar: 'bg-emerald-500',   text: 'text-emerald-400' },
-  shipped:     { bar: 'bg-purple-500',    text: 'text-purple-400' },
-  cancelled:   { bar: 'bg-red-500/60',    text: 'text-red-400' },
-  failed:      { bar: 'bg-red-500',       text: 'text-red-400' },
+  in_progress: { bar: 'bg-info',      text: 'text-info' },
+  printing:    { bar: 'bg-info',      text: 'text-info' },
+  completed:   { bar: 'bg-success',   text: 'text-success' },
+  shipped:     { bar: 'bg-info',    text: 'text-info' },
+  cancelled:   { bar: 'bg-error/60',    text: 'text-error' },
+  failed:      { bar: 'bg-error',       text: 'text-error' },
   queued:      { bar: 'bg-surface-500',   text: 'text-surface-400' },
-  paused:      { bar: 'bg-amber-500',     text: 'text-amber-400' },
+  paused:      { bar: 'bg-warning',     text: 'text-warning' },
 }
 
 const typeIcons: Record<string, React.ReactNode> = {
@@ -116,7 +116,7 @@ export function Timeline() {
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-display font-bold text-surface-100">Timeline</h1>
+          <h1 className="text-heading-sm font-display font-semibold text-surface-100">Timeline</h1>
           <p className="text-surface-400 text-sm mt-1">Gantt view of orders and print jobs</p>
         </div>
         <div className="flex items-center gap-3">
@@ -129,7 +129,7 @@ export function Timeline() {
             <option value={14}>2 weeks</option>
             <option value={30}>1 month</option>
           </select>
-          <div className="flex items-center gap-0.5 bg-surface-800 rounded-lg p-0.5">
+          <div className="flex items-center gap-0.5 bg-surface-800 rounded-none p-0.5">
             <button
               onClick={() => navigateDays(-daysToShow)}
               className="p-1.5 hover:bg-surface-700 rounded-md transition-colors text-surface-400 hover:text-surface-100"
@@ -138,7 +138,7 @@ export function Timeline() {
             </button>
             <button
               onClick={goToToday}
-              className="px-3 py-1.5 text-xs font-medium text-accent-400 hover:bg-surface-700 rounded-md transition-colors"
+              className="px-3 py-1.5 text-xs font-medium text-accent-400 hover:bg-surface-700 rounded-none transition-colors"
             >
               Today
             </button>
@@ -153,7 +153,7 @@ export function Timeline() {
       </div>
 
       {/* Gantt chart */}
-      <div className="rounded-xl border border-surface-800 bg-surface-900/50 overflow-hidden">
+      <div className="rounded-none border border-surface-800 bg-surface-900/50 overflow-hidden">
         {/* Date header */}
         <div className="flex border-b border-surface-800">
           <div className="w-56 flex-shrink-0 px-4 py-2.5 bg-surface-900 border-r border-surface-800 text-xs font-medium text-surface-400 uppercase tracking-wider">
@@ -252,7 +252,7 @@ function TimelineRow({ item, dateRange, getPosition, todayPct, depth = 0 }: Time
           {hasChildren ? (
             <button
               onClick={() => setExpanded(!expanded)}
-              className="p-0.5 hover:bg-surface-700 rounded transition-colors flex-shrink-0"
+              className="p-0.5 hover:bg-surface-700 rounded-none transition-colors flex-shrink-0"
             >
               <ChevronRight
                 className={cn('w-3.5 h-3.5 text-surface-500 transition-transform', expanded && 'rotate-90')}
@@ -301,7 +301,7 @@ function TimelineRow({ item, dateRange, getPosition, todayPct, depth = 0 }: Time
               {/* Progress fill */}
               {item.progress > 0 && item.progress < 100 && (
                 <div
-                  className="absolute inset-y-0 left-0 bg-white/20 rounded-l-sm"
+                  className="absolute inset-y-0 left-0 bg-canvas/20 rounded-l-sm"
                   style={{ width: `${item.progress}%` }}
                 />
               )}
@@ -317,7 +317,7 @@ function TimelineRow({ item, dateRange, getPosition, todayPct, depth = 0 }: Time
             if (pct >= 0 && pct <= 100) {
               return (
                 <div
-                  className="absolute top-1 bottom-1 w-0.5 bg-red-500/70 z-10 pointer-events-none"
+                  className="absolute top-1 bottom-1 w-0.5 bg-error/70 z-10 pointer-events-none"
                   style={{ left: `${pct}%` }}
                   title={`Due: ${new Date(item.due_date).toLocaleDateString()}`}
                 />
