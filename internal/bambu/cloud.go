@@ -3,21 +3,33 @@ package bambu
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 )
 
 const (
 	bambuAPIBase = "https://api.bambulab.com"
-	bambuUserAgent = "bambu_network_agent/01.09.05.01"
+	// bambuUserAgent is the Bambu network-agent identifier documented by
+	// OpenBambuAPI and used by Bambu Studio. It is not a browser User-Agent.
+	bambuUserAgent    = "bambu_network_agent/01.09.05.01"
 	cloudMQTTBrokerUS = "us.mqtt.bambulab.com"
+
+	// cloudBlockedMessage is shown when Bambu's edge returns an HTML page
+	// (Cloudflare block) or any other non-JSON body, instead of the API.
+	cloudBlockedMessage = "Bambu Cloud rejected the request (blocked by Bambu's Cloudflare). Use LAN mode with IP, serial and Access Code."
 )
 
 // CloudClient handles communication with the Bambu Cloud API.
 type CloudClient struct {
 	httpClient *http.Client
+	// baseURL is the API origin. Production uses bambuAPIBase; tests point it
+	// at an httptest server.
+	baseURL string
 }
 
 // NewCloudClient creates a new Bambu Cloud API client.
@@ -26,6 +38,7 @@ func NewCloudClient() *CloudClient {
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
 		},
+		baseURL: bambuAPIBase,
 	}
 }
 
@@ -68,7 +81,7 @@ func (c *CloudClient) Login(email, password string) (*LoginResponse, error) {
 		return nil, fmt.Errorf("marshal login request: %w", err)
 	}
 
-	req, err := http.NewRequest("POST", bambuAPIBase+"/v1/user-service/user/login", bytes.NewReader(data))
+	req, err := http.NewRequest("POST", c.baseURL+"/v1/user-service/user/login", bytes.NewReader(data))
 	if err != nil {
 		return nil, fmt.Errorf("create login request: %w", err)
 	}
@@ -78,15 +91,9 @@ func (c *CloudClient) Login(email, password string) (*LoginResponse, error) {
 	if err != nil {
 		return nil, fmt.Errorf("login request failed: %w", err)
 	}
-	defer resp.Body.Close()
-
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := readAPI("login", resp)
 	if err != nil {
-		return nil, fmt.Errorf("read login response: %w", err)
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("login failed (status %d): %s", resp.StatusCode, string(respBody))
+		return nil, err
 	}
 
 	var loginResp LoginResponse
@@ -108,7 +115,7 @@ func (c *CloudClient) RequestVerifyCode(email string) error {
 		return fmt.Errorf("marshal verify request: %w", err)
 	}
 
-	req, err := http.NewRequest("POST", bambuAPIBase+"/v1/user-service/user/sendemail/code", bytes.NewReader(data))
+	req, err := http.NewRequest("POST", c.baseURL+"/v1/user-service/user/sendemail/code", bytes.NewReader(data))
 	if err != nil {
 		return fmt.Errorf("create verify request: %w", err)
 	}
@@ -118,11 +125,8 @@ func (c *CloudClient) RequestVerifyCode(email string) error {
 	if err != nil {
 		return fmt.Errorf("verify code request failed: %w", err)
 	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		respBody, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("verify code request failed (status %d): %s", resp.StatusCode, string(respBody))
+	if _, err := readAPI("verify code request", resp); err != nil {
+		return err
 	}
 
 	return nil
@@ -139,7 +143,7 @@ func (c *CloudClient) LoginWithCode(email, code string) (*LoginResponse, error) 
 		return nil, fmt.Errorf("marshal code login request: %w", err)
 	}
 
-	req, err := http.NewRequest("POST", bambuAPIBase+"/v1/user-service/user/login", bytes.NewReader(data))
+	req, err := http.NewRequest("POST", c.baseURL+"/v1/user-service/user/login", bytes.NewReader(data))
 	if err != nil {
 		return nil, fmt.Errorf("create code login request: %w", err)
 	}
@@ -149,15 +153,9 @@ func (c *CloudClient) LoginWithCode(email, code string) (*LoginResponse, error) 
 	if err != nil {
 		return nil, fmt.Errorf("code login request failed: %w", err)
 	}
-	defer resp.Body.Close()
-
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := readAPI("code login", resp)
 	if err != nil {
-		return nil, fmt.Errorf("read code login response: %w", err)
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("code login failed (status %d): %s", resp.StatusCode, string(respBody))
+		return nil, err
 	}
 
 	var loginResp LoginResponse
@@ -171,7 +169,7 @@ func (c *CloudClient) LoginWithCode(email, code string) (*LoginResponse, error) 
 // GetUsername fetches the MQTT username (uid) from user preferences.
 // Returns the username in format "u_{uid}".
 func (c *CloudClient) GetUsername(token string) (string, error) {
-	req, err := http.NewRequest("GET", bambuAPIBase+"/v1/design-user-service/my/preference", nil)
+	req, err := http.NewRequest("GET", c.baseURL+"/v1/design-user-service/my/preference", nil)
 	if err != nil {
 		return "", fmt.Errorf("create preference request: %w", err)
 	}
@@ -182,15 +180,9 @@ func (c *CloudClient) GetUsername(token string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("preference request failed: %w", err)
 	}
-	defer resp.Body.Close()
-
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := readAPI("preference request", resp)
 	if err != nil {
-		return "", fmt.Errorf("read preference response: %w", err)
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("preference request failed (status %d): %s", resp.StatusCode, string(respBody))
+		return "", err
 	}
 
 	var pref UserPreference
@@ -207,7 +199,7 @@ func (c *CloudClient) GetUsername(token string) (string, error) {
 
 // GetDevices fetches the list of printers bound to the account.
 func (c *CloudClient) GetDevices(token string) ([]CloudDevice, error) {
-	req, err := http.NewRequest("GET", bambuAPIBase+"/v1/iot-service/api/user/bind", nil)
+	req, err := http.NewRequest("GET", c.baseURL+"/v1/iot-service/api/user/bind", nil)
 	if err != nil {
 		return nil, fmt.Errorf("create devices request: %w", err)
 	}
@@ -218,15 +210,9 @@ func (c *CloudClient) GetDevices(token string) ([]CloudDevice, error) {
 	if err != nil {
 		return nil, fmt.Errorf("devices request failed: %w", err)
 	}
-	defer resp.Body.Close()
-
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := readAPI("devices request", resp)
 	if err != nil {
-		return nil, fmt.Errorf("read devices response: %w", err)
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("devices request failed (status %d): %s", resp.StatusCode, string(respBody))
+		return nil, err
 	}
 
 	// The response wraps devices in a "devices" field
@@ -255,7 +241,7 @@ func (c *CloudClient) RefreshToken(refreshToken string) (*LoginResponse, error) 
 		return nil, fmt.Errorf("marshal refresh request: %w", err)
 	}
 
-	req, err := http.NewRequest("POST", bambuAPIBase+"/v1/user-service/user/refreshtoken", bytes.NewReader(data))
+	req, err := http.NewRequest("POST", c.baseURL+"/v1/user-service/user/refreshtoken", bytes.NewReader(data))
 	if err != nil {
 		return nil, fmt.Errorf("create refresh request: %w", err)
 	}
@@ -265,15 +251,9 @@ func (c *CloudClient) RefreshToken(refreshToken string) (*LoginResponse, error) 
 	if err != nil {
 		return nil, fmt.Errorf("refresh request failed: %w", err)
 	}
-	defer resp.Body.Close()
-
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := readAPI("refresh", resp)
 	if err != nil {
-		return nil, fmt.Errorf("read refresh response: %w", err)
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("refresh failed (status %d): %s", resp.StatusCode, string(respBody))
+		return nil, err
 	}
 
 	var loginResp LoginResponse
@@ -294,4 +274,75 @@ func (c *CloudClient) setHeaders(req *http.Request) {
 	req.Header.Set("User-Agent", bambuUserAgent)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
+}
+
+// readAPI reads a Bambu HTTP response. HTML and other non-JSON bodies — the
+// Cloudflare block page in particular — become a short error. JSON error
+// bodies keep Bambu's message and never include the raw document when it
+// is not JSON.
+func readAPI(action string, resp *http.Response) ([]byte, error) {
+	defer resp.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return nil, fmt.Errorf("read %s response: %w", action, err)
+	}
+	if nonJSONBody(body) {
+		slog.Warn("bambu cloud returned a non-json response",
+			"action", action,
+			"status", resp.StatusCode,
+			"content_type", resp.Header.Get("Content-Type"),
+		)
+		// User-facing copy shown in the printer UI. A trailing period is intentional.
+		return nil, errors.New(cloudBlockedMessage) //nolint:staticcheck // ST1005: sentence is shown to the user as-is
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("%s failed (status %d): %s", action, resp.StatusCode, jsonAPIMessage(body))
+	}
+	return body, nil
+}
+
+func nonJSONBody(body []byte) bool {
+	b := bytes.TrimSpace(body)
+	if len(b) == 0 {
+		return false
+	}
+	if (b[0] == '{' || b[0] == '[') && json.Valid(b) {
+		return false
+	}
+	return true
+}
+
+func jsonAPIMessage(body []byte) string {
+	var probe struct {
+		Message string `json:"message"`
+		Error   string `json:"error"`
+	}
+	if err := json.Unmarshal(body, &probe); err == nil {
+		msg := strings.TrimSpace(probe.Message)
+		if msg == "" {
+			msg = strings.TrimSpace(probe.Error)
+		}
+		if msg != "" && !looksLikeMarkup(msg) {
+			return truncateOneLine(msg, 200)
+		}
+	}
+	fallback := truncateOneLine(string(bytes.TrimSpace(body)), 200)
+	if looksLikeMarkup(fallback) {
+		return cloudBlockedMessage
+	}
+	return fallback
+}
+
+func looksLikeMarkup(s string) bool {
+	trimmed := strings.TrimSpace(s)
+	lower := strings.ToLower(trimmed)
+	return strings.HasPrefix(trimmed, "<") || strings.Contains(lower, "<html") || strings.Contains(lower, "<!doctype")
+}
+
+func truncateOneLine(s string, n int) string {
+	s = strings.Join(strings.Fields(s), " ")
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + "..."
 }
