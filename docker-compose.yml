@@ -9,6 +9,7 @@ services:
       PORT: "8190"
       DATABASE_PATH: /app/data/rankos.db
       UPLOAD_DIR: /app/uploads
+      ETSY_REDIRECT_URI: ${ETSY_REDIRECT_URI:-}
     volumes:
       - rankos-data:/app/data
       - rankos-uploads:/app/uploads

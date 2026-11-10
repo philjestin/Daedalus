@@ -285,6 +285,8 @@ docker run -p 8080:8080 -v rankos-data:/app/data rankos
 
 The service uses `network_mode: host` so LAN printer discovery scans the host network. It publishes no ports and joins no Compose network. The app listens on port **8190** (`PORT=8190`); route Traefik on the host to that port.
 
+`ETSY_REDIRECT_URI` is interpolated from the deploy environment (`${ETSY_REDIRECT_URI:-}`; an empty value keeps the app default). Set it in Dokploy's Environment tab for the Compose service to the public callback, for example `https://your-domain.example/api/integrations/etsy/callback`, and register that same URL as a Callback URL in the Etsy developer app.
+
 Database and uploads use named volumes that already exist on the server. Both are declared `external: true` and must keep these names:
 
 | Volume | Mount | Contents |
