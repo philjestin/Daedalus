@@ -4,12 +4,12 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/philjestin/daedalus/internal/database"
-	"github.com/philjestin/daedalus/internal/printer"
-	"github.com/philjestin/daedalus/internal/realtime"
-	"github.com/philjestin/daedalus/internal/repository"
-	"github.com/philjestin/daedalus/internal/service"
-	"github.com/philjestin/daedalus/internal/storage"
+	"github.com/cadimartech/rankos/internal/database"
+	"github.com/cadimartech/rankos/internal/printer"
+	"github.com/cadimartech/rankos/internal/realtime"
+	"github.com/cadimartech/rankos/internal/repository"
+	"github.com/cadimartech/rankos/internal/service"
+	"github.com/cadimartech/rankos/internal/storage"
 )
 
 // testEnv bundles everything needed for handler integration tests.

@@ -14,20 +14,20 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: macos-latest
+          - os: macos-15
             platform: darwin/universal
-            artifact_name: Daedalus.app
-            asset_name: Daedalus-macos-universal
+            artifact_name: RankOS.app
+            asset_name: RankOS-macos-universal
             wails_flags: ""
           - os: windows-latest
             platform: windows/amd64
-            artifact_name: Daedalus.exe
-            asset_name: Daedalus-windows-amd64
+            artifact_name: RankOS.exe
+            asset_name: RankOS-windows-amd64
             wails_flags: ""
           - os: ubuntu-latest
             platform: linux/amd64
-            artifact_name: Daedalus
-            asset_name: Daedalus-linux-amd64
+            artifact_name: RankOS
+            asset_name: RankOS-linux-amd64
             wails_flags: "-tags webkit2_41"
     runs-on: ${{ matrix.os }}
     steps:
@@ -54,7 +54,9 @@ jobs:
           cache-dependency-path: web/package-lock.json
 
       - name: Install Wails
-        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+        # Pin to the library version in go.mod. @latest is v2.17.1, which
+        # requires Go 1.26, while this repo and setup-go stay on Go 1.24.
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
 
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
@@ -72,25 +74,25 @@ jobs:
         shell: bash
         run: |
           wails build -platform ${{ matrix.platform }} ${{ matrix.wails_flags }} \
-            -ldflags "-X github.com/philjestin/daedalus/internal/version.Version=${{ env.VERSION }} -X github.com/philjestin/daedalus/internal/version.Commit=${{ env.COMMIT }} -X github.com/philjestin/daedalus/internal/version.Date=${{ env.DATE }} -X github.com/philjestin/daedalus/internal/version.BuiltBy=ci"
+            -ldflags "-X github.com/cadimartech/rankos/internal/version.Version=${{ env.VERSION }} -X github.com/cadimartech/rankos/internal/version.Commit=${{ env.COMMIT }} -X github.com/cadimartech/rankos/internal/version.Date=${{ env.DATE }} -X github.com/cadimartech/rankos/internal/version.BuiltBy=ci"
 
       - name: Package macOS app
         if: runner.os == 'macOS'
         run: |
           cd build/bin
-          zip -r ${{ matrix.asset_name }}.zip Daedalus.app
+          zip -r ${{ matrix.asset_name }}.zip RankOS.app
 
       - name: Package Windows app
         if: runner.os == 'Windows'
         run: |
           cd build/bin
-          Compress-Archive -Path Daedalus.exe -DestinationPath ${{ matrix.asset_name }}.zip
+          Compress-Archive -Path RankOS.exe -DestinationPath ${{ matrix.asset_name }}.zip
 
       - name: Package Linux app
         if: runner.os == 'Linux'
         run: |
           cd build/bin
-          tar -czvf ${{ matrix.asset_name }}.tar.gz Daedalus
+          tar -czvf ${{ matrix.asset_name }}.tar.gz RankOS
 
       - name: Upload artifact
         uses: actions/upload-artifact@v7

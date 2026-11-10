@@ -11,7 +11,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
-	"github.com/philjestin/daedalus/internal/model"
+	"github.com/cadimartech/rankos/internal/model"
 )
 
 // MockSquarespaceService is a mock implementation for testing.

@@ -11,8 +11,8 @@ import (
 	"strconv"
 
 	"github.com/google/uuid"
-	"github.com/philjestin/daedalus/internal/model"
-	"github.com/philjestin/daedalus/internal/service"
+	"github.com/cadimartech/rankos/internal/model"
+	"github.com/cadimartech/rankos/internal/service"
 )
 
 // EtsyHandler handles Etsy integration endpoints.

@@ -1,6 +1,6 @@
 export const metadata = {
-  title: "Orders - Daedalus Docs",
-  description: "Create and manage orders in Daedalus: manual orders, channel imports, status pipeline, and task processing.",
+  title: "Orders - RankOS Docs",
+  description: "Create and manage orders in RankOS: manual orders, channel imports, status pipeline, and task processing.",
 };
 
 export default function OrdersDocs() {
@@ -13,7 +13,7 @@ export default function OrdersDocs() {
       </p>
 
       <div className="docs-screenshot">
-        <img src="/screenshots/orders.png" alt="Daedalus order management showing orders from multiple sales channels" />
+        <img src="/screenshots/orders.png" alt="RankOS order management showing orders from multiple sales channels" />
       </div>
 
       <h2>Overview</h2>
@@ -36,7 +36,7 @@ export default function OrdersDocs() {
 
       <h3>From Accepted Quotes</h3>
       <p>
-        When a <a href="/docs/quotes">quote</a> is accepted, Daedalus automatically
+        When a <a href="/docs/quotes">quote</a> is accepted, RankOS automatically
         creates an order from the winning option&apos;s line items. Project links carry
         through so each order item references the correct product in your catalog.
       </p>
@@ -96,7 +96,7 @@ export default function OrdersDocs() {
       <h2>Processing Orders into Tasks</h2>
       <ol>
         <li>Open an order and click <strong>Process</strong></li>
-        <li>Daedalus creates a task for each line item</li>
+        <li>RankOS creates a task for each line item</li>
         <li>Each task generates a checklist based on the project&apos;s parts</li>
         <li>Tasks can then be dispatched as print jobs to your printers</li>
       </ol>

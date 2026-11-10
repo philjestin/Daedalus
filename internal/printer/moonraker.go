@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/philjestin/daedalus/internal/model"
+	"github.com/cadimartech/rankos/internal/model"
 )
 
 // MoonrakerClient implements Client for Moonraker API (Klipper).

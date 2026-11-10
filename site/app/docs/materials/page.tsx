@@ -1,5 +1,5 @@
 export const metadata = {
-  title: "Materials & Inventory - Daedalus Docs",
+  title: "Materials & Inventory - RankOS Docs",
   description: "Track filament spools, manage supplies, integrate with Bambu Lab AMS, and set up low-stock alerts.",
 };
 
@@ -13,7 +13,7 @@ export default function MaterialsDocs() {
       </p>
 
       <div className="docs-screenshot">
-        <img src="/screenshots/materials.png" alt="Daedalus material inventory showing spool tracking with weight and color" />
+        <img src="/screenshots/materials.png" alt="RankOS material inventory showing spool tracking with weight and color" />
       </div>
 
       <h2>Overview</h2>
@@ -61,7 +61,7 @@ export default function MaterialsDocs() {
 
       <h3>Bambu Lab AMS Integration</h3>
       <p>
-        If you use Bambu Lab printers with AMS units, Daedalus syncs automatically:
+        If you use Bambu Lab printers with AMS units, RankOS syncs automatically:
       </p>
       <ul>
         <li>Detects loaded spools and tray positions</li>
@@ -91,7 +91,7 @@ export default function MaterialsDocs() {
 
       <div className="docs-callout">
         <strong>Tip:</strong> When you record an expense for filament via the Expenses page,
-        Daedalus can automatically create spool entries from the parsed receipt items.
+        RankOS can automatically create spool entries from the parsed receipt items.
         See <a href="/docs/expenses">Expenses &amp; OCR</a>.
       </div>
     </div>

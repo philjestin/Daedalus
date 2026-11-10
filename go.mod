@@ -1,4 +1,4 @@
-module github.com/philjestin/daedalus
+module github.com/cadimartech/rankos
 
 go 1.24.0
 

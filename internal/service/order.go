@@ -7,9 +7,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/philjestin/daedalus/internal/model"
-	"github.com/philjestin/daedalus/internal/realtime"
-	"github.com/philjestin/daedalus/internal/repository"
+	"github.com/cadimartech/rankos/internal/model"
+	"github.com/cadimartech/rankos/internal/realtime"
+	"github.com/cadimartech/rankos/internal/repository"
 )
 
 // OrderService handles unified order business logic.

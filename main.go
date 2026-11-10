@@ -19,7 +19,7 @@ func main() {
 
 	// Create application with options
 	err := wails.Run(&options.App{
-		Title:     "Daedalus",
+		Title:     "RankOS",
 		Width:     1400,
 		Height:    900,
 		MinWidth:  1024,

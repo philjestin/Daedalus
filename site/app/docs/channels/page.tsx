@@ -1,6 +1,6 @@
 export const metadata = {
-  title: "Sales Channels - Daedalus Docs",
-  description: "Connect Etsy, Shopify, and Squarespace to Daedalus for automatic order import and product linking.",
+  title: "Sales Channels - RankOS Docs",
+  description: "Connect Etsy, Shopify, and Squarespace to RankOS for automatic order import and product linking.",
 };
 
 export default function ChannelsDocs() {
@@ -9,16 +9,16 @@ export default function ChannelsDocs() {
       <h1>Sales Channels</h1>
       <p className="text-lg !text-surface-300">
         Connect your online stores to automatically import orders, sync inventory,
-        and link marketplace listings to your Daedalus product catalog.
+        and link marketplace listings to your RankOS product catalog.
       </p>
 
       <div className="docs-screenshot">
-        <img src="/screenshots/channels.png" alt="Daedalus sales channels showing Etsy, Shopify, and Squarespace integrations" />
+        <img src="/screenshots/channels.png" alt="RankOS sales channels showing Etsy, Shopify, and Squarespace integrations" />
       </div>
 
       <h2>Overview</h2>
       <p>
-        Sales channels connect Daedalus to the marketplaces where you sell. Once connected,
+        Sales channels connect RankOS to the marketplaces where you sell. Once connected,
         orders are imported automatically, products can be linked between systems, and
         you can manage fulfillment from a single interface.
       </p>
@@ -32,13 +32,13 @@ export default function ChannelsDocs() {
       <ol>
         <li>Go to <strong>Settings &gt; Integrations &gt; Etsy</strong></li>
         <li>Click <strong>Connect Etsy</strong> to start the OAuth flow</li>
-        <li>Authorize Daedalus in your Etsy account</li>
+        <li>Authorize RankOS in your Etsy account</li>
         <li>Orders are synced automatically via webhooks</li>
       </ol>
       <p>Etsy integration features:</p>
       <ul>
         <li>Real-time order import via webhooks</li>
-        <li>Listing sync to link Etsy products to Daedalus projects</li>
+        <li>Listing sync to link Etsy products to RankOS projects</li>
         <li>Transaction fee tracking for accurate profitability</li>
         <li>Automatic token refresh for uninterrupted access</li>
       </ul>
@@ -56,7 +56,7 @@ export default function ChannelsDocs() {
       <p>Shopify integration features:</p>
       <ul>
         <li>Automatic order import with customer details</li>
-        <li>Product linking between Shopify and Daedalus</li>
+        <li>Product linking between Shopify and RankOS</li>
         <li>Inventory level sync</li>
         <li>Fulfillment status updates back to Shopify</li>
       </ul>
@@ -68,24 +68,24 @@ export default function ChannelsDocs() {
       <ol>
         <li>Go to <strong>Settings &gt; Integrations &gt; Squarespace</strong></li>
         <li>Generate an API key in your Squarespace admin panel</li>
-        <li>Paste the API key into Daedalus and click <strong>Connect</strong></li>
+        <li>Paste the API key into RankOS and click <strong>Connect</strong></li>
         <li>Orders are polled on a configurable interval</li>
       </ol>
       <p>Squarespace integration features:</p>
       <ul>
         <li>Order import with line items and customer info</li>
-        <li>Product linking to Daedalus projects</li>
+        <li>Product linking to RankOS projects</li>
         <li>Configurable sync interval</li>
       </ul>
 
       <h2>Linking Products</h2>
       <p>
-        After connecting a channel, link your marketplace listings to Daedalus projects:
+        After connecting a channel, link your marketplace listings to RankOS projects:
       </p>
       <ol>
         <li>Open a project and go to the <strong>Channels</strong> tab</li>
         <li>Click <strong>Link Product</strong> and select the matching listing from each channel</li>
-        <li>When an order comes in for that listing, Daedalus knows which project to fulfill</li>
+        <li>When an order comes in for that listing, RankOS knows which project to fulfill</li>
       </ol>
 
       <h2>Processing Imported Orders</h2>

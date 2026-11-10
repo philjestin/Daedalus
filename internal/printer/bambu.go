@@ -16,7 +16,7 @@ import (
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/google/uuid"
-	"github.com/philjestin/daedalus/internal/model"
+	"github.com/cadimartech/rankos/internal/model"
 	"github.com/jlaffaye/ftp"
 )
 

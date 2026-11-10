@@ -5,7 +5,7 @@ import (
 	"database/sql"
 
 	"github.com/google/uuid"
-	"github.com/philjestin/daedalus/internal/model"
+	"github.com/cadimartech/rankos/internal/model"
 )
 
 // FeedbackRepository handles feedback database operations.

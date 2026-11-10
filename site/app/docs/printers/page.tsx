@@ -1,6 +1,6 @@
 export const metadata = {
-  title: "Printers - Daedalus Docs",
-  description: "Add and manage printers in Daedalus: Bambu Lab, OctoPrint, Klipper, manual printers, and network scanning.",
+  title: "Printers - RankOS Docs",
+  description: "Add and manage printers in RankOS: Bambu Lab, OctoPrint, Klipper, manual printers, and network scanning.",
 };
 
 export default function PrintersDocs() {
@@ -8,12 +8,12 @@ export default function PrintersDocs() {
     <div className="docs-prose">
       <h1>Printers</h1>
       <p className="text-lg !text-surface-300">
-        Connect your entire fleet regardless of manufacturer. Daedalus speaks every protocol
+        Connect your entire fleet regardless of manufacturer. RankOS speaks every protocol
         so you can manage Bambu Lab, OctoPrint, Klipper, and manual printers from one place.
       </p>
 
       <div className="docs-screenshot">
-        <img src="/screenshots/printers.png" alt="Daedalus printer fleet showing Bambu Lab printers with status and temperature readings" />
+        <img src="/screenshots/printers.png" alt="RankOS printer fleet showing Bambu Lab printers with status and temperature readings" />
       </div>
 
       <h2>Overview</h2>
@@ -29,21 +29,21 @@ export default function PrintersDocs() {
       <ol>
         <li>Click <strong>Add Printer</strong> and select <strong>Bambu Lab</strong></li>
         <li>Enter the printer&apos;s IP address, serial number, and access code</li>
-        <li>Daedalus connects via MQTT for real-time status, temperatures, and HMS error tracking</li>
+        <li>RankOS connects via MQTT for real-time status, temperatures, and HMS error tracking</li>
         <li>AMS spool and tray data is synced automatically</li>
       </ol>
 
       <h3>Network Scan</h3>
       <ol>
         <li>Click <strong>Scan Network</strong> to discover Bambu Lab printers on your local network</li>
-        <li>Daedalus uses SSDP/mDNS to find printers automatically</li>
+        <li>RankOS uses SSDP/mDNS to find printers automatically</li>
         <li>Select a discovered printer and enter its access code to connect</li>
       </ol>
 
       <h3>Bambu Cloud Pairing</h3>
       <ol>
         <li>Click <strong>Cloud Pairing</strong> and sign in with your Bambu Lab account</li>
-        <li>Select printers from your cloud account to pair with Daedalus</li>
+        <li>Select printers from your cloud account to pair with RankOS</li>
         <li>Cloud-paired printers use the Bambu Cloud MQTT broker for remote access</li>
       </ol>
 
@@ -51,14 +51,14 @@ export default function PrintersDocs() {
       <ol>
         <li>Click <strong>Add Printer</strong> and select <strong>OctoPrint</strong></li>
         <li>Enter the OctoPrint server URL and API key</li>
-        <li>Daedalus communicates via the OctoPrint REST API for status, file upload, and job control</li>
+        <li>RankOS communicates via the OctoPrint REST API for status, file upload, and job control</li>
       </ol>
 
       <h3>Klipper / Moonraker</h3>
       <ol>
         <li>Click <strong>Add Printer</strong> and select <strong>Klipper</strong></li>
         <li>Enter the Moonraker API URL</li>
-        <li>Daedalus uses the Moonraker REST API for printer control and status</li>
+        <li>RankOS uses the Moonraker REST API for printer control and status</li>
       </ol>
 
       <h3>Manual Printers</h3>

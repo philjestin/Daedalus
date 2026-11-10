@@ -6,8 +6,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
-	"github.com/philjestin/daedalus/internal/model"
-	"github.com/philjestin/daedalus/internal/service"
+	"github.com/cadimartech/rankos/internal/model"
+	"github.com/cadimartech/rankos/internal/service"
 )
 
 // DispatchHandler handles dispatch-related endpoints.

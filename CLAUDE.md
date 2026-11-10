@@ -1,4 +1,4 @@
-# Daedalus (spacechat/printfarm)
+# RankOS (spacechat/printfarm)
 
 A print farm management platform for makers — product catalogs, multi-channel order tracking, printer fleet control, and profitability analytics.
 
@@ -79,7 +79,7 @@ make migrate          # Apply SQL migrations
 
 ## Database & Migrations
 
-- SQLite with WAL mode, stored at `~/.daedalus/daedalus.db`
+- SQLite with WAL mode, stored at `~/.rankos/rankos.db`
 - Migrations in `migrations/` with sequential numbering (currently 014)
 - Migrations applied automatically on startup
 - When adding migrations: create the next numbered file (e.g., `015_description.sql`)

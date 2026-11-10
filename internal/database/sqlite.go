@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	_ "github.com/glebarez/go-sqlite"
@@ -15,13 +16,108 @@ import (
 //go:embed schema.sql
 var schemaSQL string
 
-// DefaultDBPath returns the default database path (~/.daedalus/daedalus.db).
+const (
+	dataDirName = ".rankos"
+	dbFileName  = "rankos.db"
+
+	// Legacy locations from before the RankOS rebrand. Startup moves this
+	// data when the new database does not already exist. An explicit
+	// DATABASE_PATH is left untouched.
+	legacyDataDirName = ".daedalus"
+	legacyDBFileName  = "daedalus.db"
+)
+
+// DefaultDBPath returns the default database path (~/.rankos/rankos.db).
+// A previous install's data directory is migrated into that location when
+// the RankOS database is not already present.
 func DefaultDBPath() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", fmt.Errorf("get home dir: %w", err)
 	}
-	return filepath.Join(home, ".daedalus", "daedalus.db"), nil
+
+	newPath := filepath.Join(home, dataDirName, dbFileName)
+	legacyPath := filepath.Join(home, legacyDataDirName, legacyDBFileName)
+
+	if err := migrateLegacyDataDir(home); err != nil {
+		slog.Error("failed to migrate legacy data directory", "error", err)
+		if !fileExists(newPath) && fileExists(legacyPath) {
+			return legacyPath, nil
+		}
+		leftover := filepath.Join(home, dataDirName, legacyDBFileName)
+		if !fileExists(newPath) && fileExists(leftover) {
+			return leftover, nil
+		}
+	}
+	return newPath, nil
+}
+
+func fileExists(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && !info.IsDir()
+}
+
+// migrateLegacyDataDir moves the previous data directory to ~/.rankos when
+// rankos.db does not already exist. If ~/.rankos is already present, only
+// the database files (and backups, when that directory is free) are moved.
+func migrateLegacyDataDir(home string) error {
+	legacyDir := filepath.Join(home, legacyDataDirName)
+	newDir := filepath.Join(home, dataDirName)
+	legacyDB := filepath.Join(legacyDir, legacyDBFileName)
+	newDB := filepath.Join(newDir, dbFileName)
+
+	if !fileExists(legacyDB) || fileExists(newDB) {
+		return nil
+	}
+
+	if _, err := os.Stat(newDir); os.IsNotExist(err) {
+		if err := os.Rename(legacyDir, newDir); err != nil {
+			return fmt.Errorf("rename data directory: %w", err)
+		}
+		if err := relocateLegacyDBFiles(newDir, newDir); err != nil {
+			return err
+		}
+		slog.Info("migrated legacy data directory", "from", legacyDir, "to", newDir)
+		return nil
+	} else if err != nil {
+		return fmt.Errorf("stat data directory: %w", err)
+	}
+
+	if err := relocateLegacyDBFiles(legacyDir, newDir); err != nil {
+		return err
+	}
+	legacyBackups := filepath.Join(legacyDir, "backups")
+	newBackups := filepath.Join(newDir, "backups")
+	if info, err := os.Stat(legacyBackups); err == nil && info.IsDir() {
+		if _, err := os.Stat(newBackups); os.IsNotExist(err) {
+			if err := os.Rename(legacyBackups, newBackups); err != nil {
+				return fmt.Errorf("move backups: %w", err)
+			}
+		}
+	}
+	slog.Info("migrated legacy database into existing data directory", "to", newDir)
+	return nil
+}
+
+// relocateLegacyDBFiles renames the legacy database file and its SQLite
+// sidecars (wal, shm, journal) to the RankOS names, moving them when the
+// directories differ.
+func relocateLegacyDBFiles(srcDir, destDir string) error {
+	entries, err := os.ReadDir(srcDir)
+	if err != nil {
+		return fmt.Errorf("read data directory: %w", err)
+	}
+	for _, entry := range entries {
+		name := entry.Name()
+		if name != legacyDBFileName && !strings.HasPrefix(name, legacyDBFileName+"-") {
+			continue
+		}
+		destName := dbFileName + name[len(legacyDBFileName):]
+		if err := os.Rename(filepath.Join(srcDir, name), filepath.Join(destDir, destName)); err != nil {
+			return fmt.Errorf("rename %s: %w", name, err)
+		}
+	}
+	return nil
 }
 
 // Open opens or creates a SQLite database at the given path.

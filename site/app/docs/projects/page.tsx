@@ -1,5 +1,5 @@
 export const metadata = {
-  title: "Projects - Daedalus Docs",
+  title: "Projects - RankOS Docs",
   description: "Manage your product catalog with multi-part designs, 3MF parsing, versioning, and bill of materials.",
 };
 
@@ -13,7 +13,7 @@ export default function ProjectsDocs() {
       </p>
 
       <div className="docs-screenshot">
-        <img src="/screenshots/projects.png" alt="Daedalus project catalog showing maker products with descriptions and dates" />
+        <img src="/screenshots/projects.png" alt="RankOS project catalog showing maker products with descriptions and dates" />
       </div>
 
       <h2>Overview</h2>
@@ -56,7 +56,7 @@ export default function ProjectsDocs() {
 
       <h3>3MF File Parsing</h3>
       <p>
-        Upload a sliced 3MF file and Daedalus automatically extracts:
+        Upload a sliced 3MF file and RankOS automatically extracts:
       </p>
       <ul>
         <li><strong>Print time</strong> &mdash; Estimated duration from slicer</li>

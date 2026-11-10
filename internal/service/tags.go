@@ -5,8 +5,8 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
-	"github.com/philjestin/daedalus/internal/model"
-	"github.com/philjestin/daedalus/internal/repository"
+	"github.com/cadimartech/rankos/internal/model"
+	"github.com/cadimartech/rankos/internal/repository"
 )
 
 // TagService handles tag business logic.

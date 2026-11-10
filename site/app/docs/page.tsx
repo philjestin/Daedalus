@@ -16,8 +16,8 @@ import {
 } from "lucide-react";
 
 export const metadata = {
-  title: "Getting Started - Daedalus Docs",
-  description: "Get up and running with Daedalus, the all-in-one 3D print farm management platform.",
+  title: "Getting Started - RankOS Docs",
+  description: "Get up and running with RankOS, the all-in-one 3D print farm management platform.",
 };
 
 const sections = [
@@ -40,13 +40,13 @@ export default function DocsHome() {
     <div className="docs-prose">
       <h1>Getting Started</h1>
       <p className="text-lg !text-surface-300">
-        Welcome to the Daedalus documentation. This guide will walk you through setting up
+        Welcome to the RankOS documentation. This guide will walk you through setting up
         your print farm and using every feature of the platform.
       </p>
 
-      <h2>What is Daedalus?</h2>
+      <h2>What is RankOS?</h2>
       <p>
-        Daedalus is an all-in-one desktop platform for managing 3D printers, fulfilling orders
+        RankOS is an all-in-one desktop platform for managing 3D printers, fulfilling orders
         from Etsy, Shopify &amp; Squarespace, tracking materials, and growing your maker business.
         It runs as a native desktop app (macOS/Windows) or a Docker container.
       </p>
@@ -61,7 +61,7 @@ export default function DocsHome() {
       <h2>Quick Start</h2>
       <ol>
         <li>
-          <strong>Install Daedalus</strong> &mdash; Download the desktop app or run via Docker.
+          <strong>Install RankOS</strong> &mdash; Download the desktop app or run via Docker.
           See the <Link href="/docs/deployment">Deployment</Link> page for all options.
         </li>
         <li>
@@ -88,7 +88,7 @@ export default function DocsHome() {
 
       <div className="docs-callout">
         <strong>Tip:</strong> If you&apos;re just getting started with a single printer, you can skip
-        the sales channel setup and create orders manually. Daedalus scales from one printer
+        the sales channel setup and create orders manually. RankOS scales from one printer
         to a full farm.
       </div>
 

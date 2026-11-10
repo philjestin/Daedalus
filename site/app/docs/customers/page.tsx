@@ -1,5 +1,5 @@
 export const metadata = {
-  title: "Customers - Daedalus Docs",
+  title: "Customers - RankOS Docs",
   description: "Manage your customer database, track quotes and orders per customer, and link customers to sales.",
 };
 
@@ -61,7 +61,7 @@ export default function CustomersDocs() {
 
       <h2>Customer Links</h2>
       <p>
-        Customers are referenced across several areas of Daedalus:
+        Customers are referenced across several areas of RankOS:
       </p>
       <ul>
         <li>

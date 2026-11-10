@@ -1,4 +1,4 @@
-# Contributing to Daedalus
+# Contributing to RankOS
 
 Thanks for your interest in contributing! Here's how to get started.
 
@@ -6,8 +6,8 @@ Thanks for your interest in contributing! Here's how to get started.
 
 ```bash
 # Clone the repo
-git clone https://github.com/philjestin/daedalus.git
-cd daedalus
+git clone https://github.com/cadimartech/rankos.git
+cd rankos
 
 # Install dependencies
 make deps
@@ -53,7 +53,7 @@ Every change should include tests. Run `make test` before submitting.
 
 ## Reporting Issues
 
-Use [GitHub Issues](https://github.com/philjestin/daedalus/issues). Include:
+Use [GitHub Issues](https://github.com/cadimartech/rankos/issues). Include:
 
 - What you expected vs what happened
 - Steps to reproduce
