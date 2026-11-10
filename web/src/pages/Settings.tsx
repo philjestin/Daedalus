@@ -6,6 +6,26 @@ import { etsyApi, squarespaceApi, settingsApi, backupsApi, dispatchApi } from '.
 import { cn } from '../lib/utils'
 import type { EtsyIntegration, SquarespaceIntegration, BackupInfo, BackupConfig } from '../types'
 
+function EtsyRedirectURINote({ uri }: { uri?: string }) {
+  if (!uri) return null
+  return (
+    <div>
+      <label className="block text-sm text-surface-400 mb-1">Redirect URI</label>
+      <input
+        type="text"
+        readOnly
+        value={uri}
+        onFocus={e => e.currentTarget.select()}
+        className="input w-full font-mono text-xs"
+      />
+      <p className="text-xs text-surface-500 mt-1">
+        Register this exact URL as a redirect URI in the{' '}
+        <a href="https://www.etsy.com/developers/your-apps" target="_blank" rel="noopener noreferrer" className="text-accent-400 hover:underline">Etsy Developer Portal</a>.
+      </p>
+    </div>
+  )
+}
+
 function formatBytes(bytes: number): string {
   if (bytes === 0) return '0 B'
   const k = 1024
@@ -536,6 +556,7 @@ export default function Settings() {
                     Get this from the <a href="https://www.etsy.com/developers/your-apps" target="_blank" rel="noopener noreferrer" className="text-accent-400 hover:underline">Etsy Developer Portal</a>
                   </p>
                 </div>
+                <EtsyRedirectURINote uri={etsyStatus?.redirect_uri} />
                 <button
                   onClick={handleConfigureEtsy}
                   disabled={!etsyClientId.trim() || configuringEtsy}
@@ -598,6 +619,8 @@ export default function Settings() {
                 </div>
               </div>
 
+              <EtsyRedirectURINote uri={etsyStatus.redirect_uri} />
+
               {/* Disconnect Button */}
               <button
                 onClick={handleDisconnectEtsy}
@@ -617,6 +640,7 @@ export default function Settings() {
               <p className="text-surface-300">
                 Connect your Etsy shop to automatically import orders and sync inventory.
               </p>
+              <EtsyRedirectURINote uri={etsyStatus.redirect_uri} />
               <button
                 onClick={handleConnectEtsy}
                 disabled={connecting}

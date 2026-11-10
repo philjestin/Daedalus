@@ -13,15 +13,31 @@ import (
 	"github.com/cadimartech/rankos/internal/repository"
 )
 
+// DefaultEtsyRedirectURI is the OAuth callback used when neither an explicit
+// redirect URI nor ETSY_REDIRECT_URI is set.
+const DefaultEtsyRedirectURI = "http://localhost:8080/api/integrations/etsy/callback"
+
 // EtsyService handles Etsy OAuth and integration business logic.
 type EtsyService struct {
 	repo        *repository.EtsyRepository
 	client      *etsy.Client
 	settingsSvc *SettingsService
+	// redirectURI is the callback the OAuth client sends to Etsy.
+	// NewEtsyService seeds it from the process default (ETSY_REDIRECT_URI
+	// when set, otherwise DefaultEtsyRedirectURI). Configure keeps this
+	// value when the caller omits a redirect URI.
+	redirectURI string
 }
 
 // NewEtsyService creates a new EtsyService.
+// redirectURI is the fallback used when Configure is called without one.
+// Callers should pass the env-derived value (ETSY_REDIRECT_URI, or
+// DefaultEtsyRedirectURI when that variable is unset) so the service does
+// not read the environment itself.
 func NewEtsyService(repo *repository.EtsyRepository, clientID, redirectURI string, settingsSvc *SettingsService) *EtsyService {
+	if redirectURI == "" {
+		redirectURI = DefaultEtsyRedirectURI
+	}
 	var client *etsy.Client
 	if clientID != "" {
 		client = etsy.NewClient(clientID, redirectURI)
@@ -30,17 +46,47 @@ func NewEtsyService(repo *repository.EtsyRepository, clientID, redirectURI strin
 		repo:        repo,
 		client:      client,
 		settingsSvc: settingsSvc,
+		redirectURI: redirectURI,
 	}
 }
 
-// Configure sets the Etsy client ID at runtime and persists it to settings.
+// ResolveStartupRedirectURI chooses the redirect URI when loading stored Etsy
+// settings. A non-empty envRedirect (ETSY_REDIRECT_URI) wins over stored.
+// stored is used only when envRedirect is empty. Both empty yields
+// DefaultEtsyRedirectURI.
+func ResolveStartupRedirectURI(envRedirect, stored string) string {
+	if envRedirect != "" {
+		return envRedirect
+	}
+	if stored != "" {
+		return stored
+	}
+	return DefaultEtsyRedirectURI
+}
+
+// RedirectURI returns the callback URL the OAuth client will send to Etsy.
+func (s *EtsyService) RedirectURI() string {
+	if s == nil || s.redirectURI == "" {
+		return DefaultEtsyRedirectURI
+	}
+	return s.redirectURI
+}
+
+// Configure sets the Etsy client ID and OAuth redirect URI and persists them.
+// A non-empty redirectURI is stored as given. An empty redirectURI keeps the
+// service's current URI, so a save that omits one does not replace an
+// env-derived callback with the localhost default.
 func (s *EtsyService) Configure(ctx context.Context, clientID, redirectURI string) error {
 	if clientID == "" {
 		return fmt.Errorf("client_id is required")
 	}
 	if redirectURI == "" {
-		redirectURI = "http://localhost:8080/api/integrations/etsy/callback"
+		redirectURI = s.redirectURI
 	}
+	if redirectURI == "" {
+		redirectURI = DefaultEtsyRedirectURI
+	}
+	s.redirectURI = redirectURI
 	s.client = etsy.NewClient(clientID, redirectURI)
 
 	if s.settingsSvc != nil {

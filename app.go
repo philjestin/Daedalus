@@ -70,7 +70,7 @@ func (a *App) startup(ctx context.Context) {
 
 	// Etsy OAuth configuration (optional)
 	etsyClientID := os.Getenv("ETSY_CLIENT_ID")
-	etsyRedirectURI := getEnv("ETSY_REDIRECT_URI", "http://localhost:8080/api/integrations/etsy/callback")
+	etsyRedirectURI := getEnv("ETSY_REDIRECT_URI", service.DefaultEtsyRedirectURI)
 
 	// Open SQLite database
 	dbPath := os.Getenv("DATABASE_PATH")
