@@ -86,7 +86,9 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: macos-latest
+          # macos-latest is an arm64 image. Hosted arm64 runners were not
+          # assigned after repeated queue attempts, so use the Intel image.
+          - os: macos-14
             platform: darwin/universal
             wails_flags: ""
           - os: windows-latest
