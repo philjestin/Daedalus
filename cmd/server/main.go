@@ -50,9 +50,15 @@ func main() {
 	port := getEnv("PORT", "8080")
 	uploadDir := getEnv("UPLOAD_DIR", "./uploads")
 
-	// Etsy OAuth configuration (optional)
+	// Etsy OAuth configuration (optional).
+	// A set ETSY_REDIRECT_URI is passed into the service as its default and
+	// wins over a redirect previously stored in the database.
 	etsyClientID := os.Getenv("ETSY_CLIENT_ID")
-	etsyRedirectURI := getEnv("ETSY_REDIRECT_URI", "http://localhost:8080/api/integrations/etsy/callback")
+	envEtsyRedirect := os.Getenv("ETSY_REDIRECT_URI")
+	etsyRedirectURI := envEtsyRedirect
+	if etsyRedirectURI == "" {
+		etsyRedirectURI = service.DefaultEtsyRedirectURI
+	}
 
 	// Open SQLite database
 	dbPath := os.Getenv("DATABASE_PATH")
@@ -112,10 +118,11 @@ func main() {
 	} else {
 		// Try loading Etsy config from database settings
 		if setting, err := services.Settings.Get(context.Background(), "etsy_client_id"); err == nil && setting != nil && setting.Value != "" {
-			redirectURI := etsyRedirectURI
-			if uriSetting, err := services.Settings.Get(context.Background(), "etsy_redirect_uri"); err == nil && uriSetting != nil && uriSetting.Value != "" {
-				redirectURI = uriSetting.Value
+			storedRedirect := ""
+			if uriSetting, err := services.Settings.Get(context.Background(), "etsy_redirect_uri"); err == nil && uriSetting != nil {
+				storedRedirect = uriSetting.Value
 			}
+			redirectURI := service.ResolveStartupRedirectURI(envEtsyRedirect, storedRedirect)
 			if err := services.Etsy.Configure(context.Background(), setting.Value, redirectURI); err != nil {
 				slog.Warn("failed to load Etsy config from database", "error", err)
 			} else {

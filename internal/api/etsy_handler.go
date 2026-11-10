@@ -40,7 +40,9 @@ func (h *EtsyHandler) SetWebhookSecret(secret string) {
 
 // ConfigureEtsyRequest represents the request body for configuring the Etsy integration.
 type ConfigureEtsyRequest struct {
-	ClientID    string `json:"client_id"`
+	ClientID string `json:"client_id"`
+	// RedirectURI is optional. When omitted, the service keeps its current
+	// callback (ETSY_REDIRECT_URI or the localhost default).
 	RedirectURI string `json:"redirect_uri,omitempty"`
 }
 
@@ -127,26 +129,22 @@ func (h *EtsyHandler) GetStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if integration == nil {
-		respondJSON(w, http.StatusOK, map[string]interface{}{
-			"connected":  false,
-			"configured": h.service.IsConfigured(),
-		})
-		return
+	resp := map[string]interface{}{
+		"connected":    integration != nil,
+		"configured":   h.service.IsConfigured(),
+		"redirect_uri": h.service.RedirectURI(),
 	}
-
-	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"connected":        true,
-		"configured":       h.service.IsConfigured(),
-		"shop_id":          integration.ShopID,
-		"shop_name":        integration.ShopName,
-		"token_expires_at": integration.TokenExpiresAt,
-		"scopes":           integration.Scopes,
-		"is_active":        integration.IsActive,
-		"last_sync_at":     integration.LastSyncAt,
-		"created_at":       integration.CreatedAt,
-		"updated_at":       integration.UpdatedAt,
-	})
+	if integration != nil {
+		resp["shop_id"] = integration.ShopID
+		resp["shop_name"] = integration.ShopName
+		resp["token_expires_at"] = integration.TokenExpiresAt
+		resp["scopes"] = integration.Scopes
+		resp["is_active"] = integration.IsActive
+		resp["last_sync_at"] = integration.LastSyncAt
+		resp["created_at"] = integration.CreatedAt
+		resp["updated_at"] = integration.UpdatedAt
+	}
+	respondJSON(w, http.StatusOK, resp)
 }
 
 // Disconnect removes the Etsy integration.
