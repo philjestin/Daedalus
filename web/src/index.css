@@ -22,12 +22,8 @@
   --shadow-2xl: rgba(0, 0, 0, 0.08) 0px 4px 6px 0px;
   --shadow-card: rgba(0, 0, 0, 0.08) 0px 4px 6px 0px;
 
+  /* xs/sm/md/lg/xl are Tailwind container sizes (max-w-md = 28rem). Do not put them on the spacing scale. */
   --spacing-xxs: 4px;
-  --spacing-xs: 12px;
-  --spacing-sm: 16px;
-  --spacing-md: 20px;
-  --spacing-lg: 32px;
-  --spacing-xl: 36px;
   --spacing-xxl: 40px;
   --spacing-xxxl: 52px;
   --spacing-section: 60px;
