@@ -1,6 +1,6 @@
 export const metadata = {
-  title: "Deployment - Daedalus Docs",
-  description: "Deploy Daedalus as a desktop app or Docker container with environment variables.",
+  title: "Deployment - RankOS Docs",
+  description: "Deploy RankOS as a desktop app or Docker container with environment variables.",
 };
 
 export default function DeploymentDocs() {
@@ -8,13 +8,13 @@ export default function DeploymentDocs() {
     <div className="docs-prose">
       <h1>Deployment</h1>
       <p className="text-lg !text-surface-300">
-        Run Daedalus as a native desktop app or a Docker container on your own server.
+        Run RankOS as a native desktop app or a Docker container on your own server.
         Your data, your infrastructure.
       </p>
 
       <h2>Overview</h2>
       <p>
-        Daedalus is designed to run wherever works best for your setup. The desktop app
+        RankOS is designed to run wherever works best for your setup. The desktop app
         is ideal for a single workstation, and Docker works great for a home server or NAS.
       </p>
 
@@ -29,8 +29,8 @@ export default function DeploymentDocs() {
 go install github.com/wailsapp/wails/v2/cmd/wails@latest
 
 # Clone the repository
-git clone https://github.com/philjestin/Daedalus.git
-cd daedalus
+git clone https://github.com/cadimartech/rankos.git
+cd rankos
 
 # Run in development mode
 wails dev
@@ -48,37 +48,37 @@ wails build`}</code></pre>
 
       <h2>Docker</h2>
       <p>
-        Run Daedalus as a containerized web application with Docker:
+        Run RankOS as a containerized web application with Docker:
       </p>
 
       <h3>Docker Compose</h3>
       <pre><code>{`version: "3.8"
 
 services:
-  daedalus:
-    image: daedalus:latest
+  rankos:
+    image: rankos:latest
     build: .
     ports:
       - "8080:8080"
     volumes:
-      - daedalus-data:/app/data
+      - rankos-data:/app/data
     environment:
-      - DAEDALUS_PORT=8080
-      - DAEDALUS_DATA_DIR=/app/data
+      - RANKOS_PORT=8080
+      - RANKOS_DATA_DIR=/app/data
 
 volumes:
-  daedalus-data:`}</code></pre>
+  rankos-data:`}</code></pre>
 
       <h3>Running with Docker</h3>
       <pre><code>{`# Build the image
-docker build -t daedalus .
+docker build -t rankos .
 
 # Run with a named volume for data persistence
 docker run -d \\
-  --name daedalus \\
+  --name rankos \\
   -p 8080:8080 \\
-  -v daedalus-data:/app/data \\
-  daedalus
+  -v rankos-data:/app/data \\
+  rankos
 
 # Or use Docker Compose
 docker compose up -d`}</code></pre>
@@ -102,27 +102,27 @@ docker compose up -d`}</code></pre>
         </thead>
         <tbody>
           <tr>
-            <td><code>DAEDALUS_PORT</code></td>
+            <td><code>RANKOS_PORT</code></td>
             <td><code>8080</code></td>
             <td>HTTP server port</td>
           </tr>
           <tr>
-            <td><code>DAEDALUS_DATA_DIR</code></td>
+            <td><code>RANKOS_DATA_DIR</code></td>
             <td><code>./data</code></td>
             <td>Directory for database and uploads</td>
           </tr>
           <tr>
-            <td><code>DAEDALUS_BACKUP_DIR</code></td>
+            <td><code>RANKOS_BACKUP_DIR</code></td>
             <td><code>./backups</code></td>
             <td>Directory for automatic backups</td>
           </tr>
           <tr>
-            <td><code>DAEDALUS_LOG_LEVEL</code></td>
+            <td><code>RANKOS_LOG_LEVEL</code></td>
             <td><code>info</code></td>
             <td>Logging level (debug, info, warn, error)</td>
           </tr>
           <tr>
-            <td><code>DAEDALUS_CORS_ORIGINS</code></td>
+            <td><code>RANKOS_CORS_ORIGINS</code></td>
             <td><code>*</code></td>
             <td>Allowed CORS origins (comma-separated)</td>
           </tr>

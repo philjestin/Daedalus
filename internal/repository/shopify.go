@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/philjestin/daedalus/internal/crypto"
-	"github.com/philjestin/daedalus/internal/model"
+	"github.com/cadimartech/rankos/internal/crypto"
+	"github.com/cadimartech/rankos/internal/model"
 )
 
 // ShopifyRepository handles Shopify integration database operations.

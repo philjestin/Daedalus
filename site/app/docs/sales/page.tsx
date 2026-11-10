@@ -1,5 +1,5 @@
 export const metadata = {
-  title: "Sales & Analytics - Daedalus Docs",
+  title: "Sales & Analytics - RankOS Docs",
   description: "Record sales, track revenue trends, analyze per-project profitability, and view weekly insights.",
 };
 
@@ -13,7 +13,7 @@ export default function SalesDocs() {
       </p>
 
       <div className="docs-screenshot">
-        <img src="/screenshots/sales.png" alt="Daedalus sales analytics showing revenue by project, profit breakdown, and weekly insights" />
+        <img src="/screenshots/sales.png" alt="RankOS sales analytics showing revenue by project, profit breakdown, and weekly insights" />
       </div>
 
       <h2>Overview</h2>
@@ -49,7 +49,7 @@ export default function SalesDocs() {
 
       <h3>Weekly Insights</h3>
       <p>
-        Daedalus generates weekly insight summaries showing:
+        RankOS generates weekly insight summaries showing:
       </p>
       <ul>
         <li>Total revenue and comparison to previous week</li>
@@ -60,7 +60,7 @@ export default function SalesDocs() {
 
       <h3>Project Profitability</h3>
       <p>
-        For each project, Daedalus calculates:
+        For each project, RankOS calculates:
       </p>
       <ul>
         <li><strong>Revenue</strong> &mdash; Total sales for this project</li>

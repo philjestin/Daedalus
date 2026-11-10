@@ -4,10 +4,10 @@
 VERSION := $(shell cat VERSION | tr -d 'v\n')
 COMMIT  := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 DATE    := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
-LDFLAGS := -X github.com/philjestin/daedalus/internal/version.Version=$(VERSION) \
-           -X github.com/philjestin/daedalus/internal/version.Commit=$(COMMIT) \
-           -X github.com/philjestin/daedalus/internal/version.Date=$(DATE) \
-           -X github.com/philjestin/daedalus/internal/version.BuiltBy=make
+LDFLAGS := -X github.com/cadimartech/rankos/internal/version.Version=$(VERSION) \
+           -X github.com/cadimartech/rankos/internal/version.Commit=$(COMMIT) \
+           -X github.com/cadimartech/rankos/internal/version.Date=$(DATE) \
+           -X github.com/cadimartech/rankos/internal/version.BuiltBy=make
 
 # Etsy OAuth (optional - set these to enable Etsy integration)
 ETSY_CLIENT_ID ?=
@@ -15,7 +15,7 @@ ETSY_REDIRECT_URI ?= http://localhost:8080/api/integrations/etsy/callback
 
 # Default target
 help:
-	@echo "Daedalus - Print Farm Management"
+	@echo "RankOS - Print Farm Management"
 	@echo ""
 	@echo "Usage:"
 	@echo "  make dev        - Run backend and frontend in development mode"

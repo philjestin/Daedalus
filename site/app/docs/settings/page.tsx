@@ -1,6 +1,6 @@
 export const metadata = {
-  title: "Settings - Daedalus Docs",
-  description: "Configure integrations, API keys, backup management, and application preferences in Daedalus.",
+  title: "Settings - RankOS Docs",
+  description: "Configure integrations, API keys, backup management, and application preferences in RankOS.",
 };
 
 export default function SettingsDocs() {
@@ -9,7 +9,7 @@ export default function SettingsDocs() {
       <h1>Settings</h1>
       <p className="text-lg !text-surface-300">
         Configure integrations, manage API keys, set up automated backups, and customize
-        your Daedalus instance.
+        your RankOS instance.
       </p>
 
       <h2>Overview</h2>
@@ -66,7 +66,7 @@ export default function SettingsDocs() {
 
       <h2>Backup Management</h2>
       <p>
-        Daedalus stores all data in a local SQLite database. The backup system protects
+        RankOS stores all data in a local SQLite database. The backup system protects
         your data with scheduled and manual backups:
       </p>
 
@@ -89,7 +89,7 @@ export default function SettingsDocs() {
         <li>Go to <strong>Settings &gt; Backups</strong></li>
         <li>Select a backup from the list</li>
         <li>Click <strong>Restore</strong> and confirm</li>
-        <li>Daedalus restarts with the restored data</li>
+        <li>RankOS restarts with the restored data</li>
       </ol>
 
       <h2>General Preferences</h2>

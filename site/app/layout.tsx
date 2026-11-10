@@ -2,11 +2,11 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Daedalus - Print Farm Management & Order Fulfillment",
+  title: "RankOS - Print Farm Management & Order Fulfillment",
   description:
     "The all-in-one platform for managing your 3D print farm, tracking orders from Etsy & Squarespace, and running your maker business.",
   openGraph: {
-    title: "Daedalus - Print Farm Management & Order Fulfillment",
+    title: "RankOS - Print Farm Management & Order Fulfillment",
     description:
       "The all-in-one platform for managing your 3D print farm, tracking orders from Etsy & Squarespace, and running your maker business.",
     type: "website",

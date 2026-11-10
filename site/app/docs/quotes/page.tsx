@@ -1,5 +1,5 @@
 export const metadata = {
-  title: "Quotes - Daedalus Docs",
+  title: "Quotes - RankOS Docs",
   description: "Create itemized quotes for custom jobs, link line items to projects, and convert accepted quotes into orders.",
 };
 
@@ -119,7 +119,7 @@ export default function QuotesDocs() {
       <h3>Accepting a Quote</h3>
       <p>
         When a customer approves, click <strong>Accept</strong> on the winning option.
-        Daedalus will:
+        RankOS will:
       </p>
       <ol>
         <li>Create a new order linked to the same customer</li>

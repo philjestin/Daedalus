@@ -50,7 +50,7 @@ func (c *Client) do(ctx context.Context, method, path string, query url.Values) 
 
 	req.Header.Set("Authorization", "Bearer "+c.apiKey)
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", "Daedalus/1.0")
+	req.Header.Set("User-Agent", "RankOS/1.0")
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {

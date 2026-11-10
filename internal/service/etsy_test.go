@@ -5,8 +5,8 @@ import (
 	"database/sql"
 	"testing"
 
-	"github.com/philjestin/daedalus/internal/database"
-	"github.com/philjestin/daedalus/internal/repository"
+	"github.com/cadimartech/rankos/internal/database"
+	"github.com/cadimartech/rankos/internal/repository"
 )
 
 func openEtsyTestDB(t *testing.T) *sql.DB {

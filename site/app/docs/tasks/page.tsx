@@ -1,6 +1,6 @@
 export const metadata = {
-  title: "Tasks & Print Jobs - Daedalus Docs",
-  description: "Task lifecycle, print jobs, auto-dispatch, checklists, and job event tracking in Daedalus.",
+  title: "Tasks & Print Jobs - RankOS Docs",
+  description: "Task lifecycle, print jobs, auto-dispatch, checklists, and job event tracking in RankOS.",
 };
 
 export default function TasksDocs() {
@@ -13,12 +13,12 @@ export default function TasksDocs() {
       </p>
 
       <div className="docs-screenshot">
-        <img src="/screenshots/tasks.png" alt="Daedalus task view showing order fulfillment progress with completion tracking" />
+        <img src="/screenshots/tasks.png" alt="RankOS task view showing order fulfillment progress with completion tracking" />
       </div>
 
       <h2>Overview</h2>
       <p>
-        When you process an order, Daedalus creates tasks &mdash; one for each order line item.
+        When you process an order, RankOS creates tasks &mdash; one for each order line item.
         Each task has a checklist of parts that need to be printed. You can then create print
         jobs from checklist items and dispatch them to printers manually or automatically.
       </p>
@@ -125,7 +125,7 @@ export default function TasksDocs() {
         <li><strong>Printer availability</strong> &mdash; The printer must be idle and online</li>
       </ul>
       <p>
-        When a match is found, Daedalus presents a dispatch request with a human-in-the-loop
+        When a match is found, RankOS presents a dispatch request with a human-in-the-loop
         confirmation step. You can <strong>confirm</strong>, <strong>reject</strong>, or
         <strong>skip</strong> each dispatch suggestion.
       </p>
@@ -140,12 +140,12 @@ export default function TasksDocs() {
 
       <h3>Retry on Failure</h3>
       <p>
-        If a print job fails, you can retry it. Daedalus creates a new job linked to the
+        If a print job fails, you can retry it. RankOS creates a new job linked to the
         original via a retry chain, preserving the full history of attempts.
       </p>
 
       <div className="docs-callout">
-        <strong>Tip:</strong> Enable auto-dispatch in Settings to let Daedalus automatically
+        <strong>Tip:</strong> Enable auto-dispatch in Settings to let RankOS automatically
         match jobs to printers. You still get to confirm or reject each suggestion, so you
         stay in control.
       </div>

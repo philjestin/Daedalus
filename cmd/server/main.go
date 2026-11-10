@@ -10,14 +10,14 @@ import (
 	"time"
 
 	"github.com/getsentry/sentry-go"
-	"github.com/philjestin/daedalus/internal/api"
-	"github.com/philjestin/daedalus/internal/database"
-	"github.com/philjestin/daedalus/internal/printer"
-	"github.com/philjestin/daedalus/internal/realtime"
-	"github.com/philjestin/daedalus/internal/repository"
-	"github.com/philjestin/daedalus/internal/service"
-	"github.com/philjestin/daedalus/internal/storage"
-	"github.com/philjestin/daedalus/internal/version"
+	"github.com/cadimartech/rankos/internal/api"
+	"github.com/cadimartech/rankos/internal/database"
+	"github.com/cadimartech/rankos/internal/printer"
+	"github.com/cadimartech/rankos/internal/realtime"
+	"github.com/cadimartech/rankos/internal/repository"
+	"github.com/cadimartech/rankos/internal/service"
+	"github.com/cadimartech/rankos/internal/storage"
+	"github.com/cadimartech/rankos/internal/version"
 	"github.com/joho/godotenv"
 )
 

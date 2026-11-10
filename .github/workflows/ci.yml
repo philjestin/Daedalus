@@ -134,7 +134,7 @@ jobs:
         if: matrix.os == 'macos-latest'
         uses: actions/upload-artifact@v7
         with:
-          name: Daedalus-macos
+          name: RankOS-macos
           path: build/bin/*.app
           retention-days: 7
 
@@ -142,7 +142,7 @@ jobs:
         if: matrix.os == 'windows-latest'
         uses: actions/upload-artifact@v7
         with:
-          name: Daedalus-windows
+          name: RankOS-windows
           path: build/bin/*.exe
           retention-days: 7
 
@@ -150,6 +150,6 @@ jobs:
         if: runner.os == 'Linux'
         uses: actions/upload-artifact@v7
         with:
-          name: Daedalus-linux
-          path: build/bin/Daedalus
+          name: RankOS-linux
+          path: build/bin/RankOS
           retention-days: 7

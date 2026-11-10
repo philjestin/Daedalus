@@ -79,7 +79,7 @@ export default function DocsLayout({
               <Layers className="h-4 w-4 text-accent-500" />
             </div>
             <span className="text-sm font-bold text-surface-50">
-              Daedalus Docs
+              RankOS Docs
             </span>
           </div>
 

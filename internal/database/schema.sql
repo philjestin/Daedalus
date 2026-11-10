@@ -1,4 +1,4 @@
--- Daedalus SQLite Schema
+-- RankOS SQLite Schema
 -- Consolidated from PostgreSQL migrations 001-013
 
 -- Files table (content-addressed storage)

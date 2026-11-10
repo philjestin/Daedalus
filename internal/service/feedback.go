@@ -6,9 +6,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/philjestin/daedalus/internal/model"
-	"github.com/philjestin/daedalus/internal/repository"
-	"github.com/philjestin/daedalus/internal/version"
+	"github.com/cadimartech/rankos/internal/model"
+	"github.com/cadimartech/rankos/internal/repository"
+	"github.com/cadimartech/rankos/internal/version"
 )
 
 // FeedbackService handles feedback business logic.

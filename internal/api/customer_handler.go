@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/philjestin/daedalus/internal/model"
-	"github.com/philjestin/daedalus/internal/service"
+	"github.com/cadimartech/rankos/internal/model"
+	"github.com/cadimartech/rankos/internal/service"
 )
 
 // CustomerHandler handles customer-related HTTP requests.

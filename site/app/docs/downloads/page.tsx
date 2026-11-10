@@ -1,12 +1,12 @@
 import { Apple, Monitor, Terminal } from "lucide-react";
 
 export const metadata = {
-  title: "Downloads - Daedalus Docs",
+  title: "Downloads - RankOS Docs",
   description:
-    "Download the latest Daedalus desktop app for macOS, Windows, or Linux.",
+    "Download the latest RankOS desktop app for macOS, Windows, or Linux.",
 };
 
-const GITHUB_REPO = "https://github.com/philjestin/Daedalus";
+const GITHUB_REPO = "https://github.com/cadimartech/rankos";
 const LATEST_RELEASE = `${GITHUB_REPO}/releases/latest`;
 
 const platforms = [
@@ -14,21 +14,21 @@ const platforms = [
     name: "macOS",
     description: "Universal binary (Apple Silicon & Intel)",
     icon: Apple,
-    asset: "Daedalus-macos-universal.zip",
+    asset: "RankOS-macos-universal.zip",
     requirement: "macOS 11 Big Sur or later",
   },
   {
     name: "Windows",
     description: "64-bit (x86_64)",
     icon: Monitor,
-    asset: "Daedalus-windows-amd64.zip",
+    asset: "RankOS-windows-amd64.zip",
     requirement: "Windows 10 or later",
   },
   {
     name: "Linux",
     description: "64-bit (x86_64)",
     icon: Terminal,
-    asset: "Daedalus-linux-amd64.tar.gz",
+    asset: "RankOS-linux-amd64.tar.gz",
     requirement: "GTK 3 and WebKit2GTK 4.1",
   },
 ];
@@ -38,7 +38,7 @@ export default function DownloadsDocs() {
     <div className="docs-prose">
       <h1>Downloads</h1>
       <p className="text-lg !text-surface-300">
-        Download the latest Daedalus desktop app for your platform. Each release
+        Download the latest RankOS desktop app for your platform. Each release
         includes the full application with an embedded database &mdash; no
         external dependencies required.
       </p>
@@ -89,7 +89,7 @@ export default function DownloadsDocs() {
 go install github.com/wailsapp/wails/v2/cmd/wails@latest
 
 git clone ${GITHUB_REPO}.git
-cd Daedalus
+cd rankos
 
 # Development mode
 wails dev

@@ -1,4 +1,6 @@
-# Daedalus
+# RankOS
+
+RankOS is based on Daedalus by philjestin.
 
 **Print Farm Management + Order Fulfillment Platform**
 
@@ -76,7 +78,7 @@ make frontend  # Vite dev server on :5173
 
 Navigate to `http://localhost:5173`
 
-The SQLite database is created automatically at `~/.daedalus/daedalus.db` with migrations applied on startup.
+The SQLite database is created automatically at `~/.rankos/rankos.db` with migrations applied on startup. If that file is not already present, startup moves a previous install's data directory to `~/.rankos` and renames the database file. Set `DATABASE_PATH` to keep using an explicit path.
 
 ### Desktop App (Wails)
 
@@ -272,15 +274,15 @@ make test
 ### Docker
 
 ```bash
-docker build -t daedalus .
-docker run -p 8080:8080 -v daedalus-data:/app/data daedalus
+docker build -t rankos .
+docker run -p 8080:8080 -v rankos-data:/app/data rankos
 ```
 
 ## Environment Variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `DATABASE_PATH` | `~/.daedalus/daedalus.db` | SQLite database file path |
+| `DATABASE_PATH` | `~/.rankos/rankos.db` | SQLite database file path |
 | `PORT` | `8080` | Backend server port |
 | `UPLOAD_DIR` | `./uploads` | File storage directory |
 | `STATIC_DIR` | `./web/dist` | Frontend static files |

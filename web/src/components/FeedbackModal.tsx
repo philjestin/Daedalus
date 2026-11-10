@@ -57,7 +57,7 @@ export default function FeedbackModal({ onClose }: FeedbackModalProps) {
               </svg>
             </div>
             <h3 className="text-lg font-semibold text-surface-100">Thanks for your feedback!</h3>
-            <p className="text-sm text-surface-400 mt-1">We appreciate you helping improve Daedalus.</p>
+            <p className="text-sm text-surface-400 mt-1">We appreciate you helping improve RankOS.</p>
           </div>
         ) : (
           <>

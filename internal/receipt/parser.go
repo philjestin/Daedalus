@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/philjestin/daedalus/internal/model"
+	"github.com/cadimartech/rankos/internal/model"
 )
 
 // Parser handles receipt parsing using the Anthropic Messages API.

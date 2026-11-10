@@ -62,7 +62,7 @@ export default function Layout() {
               <div className="flex items-center flex-1 pl-3">
                 <Layers className="h-7 w-7 text-accent-500 shrink-0" />
                 <span className="ml-3 text-xl font-display font-semibold text-surface-100 truncate">
-                  Daedalus
+                  RankOS
                 </span>
               </div>
               <button

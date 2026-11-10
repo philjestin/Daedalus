@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/philjestin/daedalus/internal/model"
-	"github.com/philjestin/daedalus/internal/service"
+	"github.com/cadimartech/rankos/internal/model"
+	"github.com/cadimartech/rankos/internal/service"
 )
 
 func TestGetWeeklyInsights_Empty(t *testing.T) {

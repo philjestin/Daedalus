@@ -15,15 +15,15 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/philjestin/daedalus/internal/bambu"
-	"github.com/philjestin/daedalus/internal/crypto"
-	"github.com/philjestin/daedalus/internal/model"
-	"github.com/philjestin/daedalus/internal/printer"
-	"github.com/philjestin/daedalus/internal/realtime"
-	"github.com/philjestin/daedalus/internal/receipt"
-	"github.com/philjestin/daedalus/internal/repository"
-	"github.com/philjestin/daedalus/internal/storage"
-	"github.com/philjestin/daedalus/internal/threemf"
+	"github.com/cadimartech/rankos/internal/bambu"
+	"github.com/cadimartech/rankos/internal/crypto"
+	"github.com/cadimartech/rankos/internal/model"
+	"github.com/cadimartech/rankos/internal/printer"
+	"github.com/cadimartech/rankos/internal/realtime"
+	"github.com/cadimartech/rankos/internal/receipt"
+	"github.com/cadimartech/rankos/internal/repository"
+	"github.com/cadimartech/rankos/internal/storage"
+	"github.com/cadimartech/rankos/internal/threemf"
 )
 
 // Services holds all service instances.
