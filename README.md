@@ -124,6 +124,7 @@ The built app is output to `build/bin/`.
 │       └── lib/          # Utilities
 ├── Makefile              # Build automation
 ├── Dockerfile            # Multi-stage production build
+├── docker-compose.yml    # Dokploy Compose service (host network, port 8190)
 └── wails.json            # Wails desktop app config
 ```
 
@@ -277,6 +278,21 @@ make test
 docker build -t rankos .
 docker run -p 8080:8080 -v rankos-data:/app/data rankos
 ```
+
+### Docker Compose (Dokploy)
+
+`docker-compose.yml` is the Compose service Dokploy deploys from this GitHub repo, with auto-deploy on merge to `main`. It builds the root `Dockerfile` as a single `rankos` service.
+
+The service uses `network_mode: host` so LAN printer discovery scans the host network. It publishes no ports and joins no Compose network. The app listens on port **8190** (`PORT=8190`); route Traefik on the host to that port.
+
+Database and uploads use named volumes that already exist on the server. Both are declared `external: true` and must keep these names:
+
+| Volume | Mount | Contents |
+| --- | --- | --- |
+| `rankos-data` | `/app/data` | SQLite database (`DATABASE_PATH=/app/data/rankos.db`) |
+| `rankos-uploads` | `/app/uploads` | Uploaded files (`UPLOAD_DIR=/app/uploads`) |
+
+The service restarts unless it is stopped. Keep secrets out of this file (the repo is public) and set them in the Dokploy service environment.
 
 ## Environment Variables
 
