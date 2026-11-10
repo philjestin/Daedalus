@@ -54,7 +54,9 @@ jobs:
           cache-dependency-path: web/package-lock.json
 
       - name: Install Wails
-        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+        # Pin to the library version in go.mod. @latest is v2.17.1, which
+        # requires Go 1.26, while this repo and setup-go stay on Go 1.24.
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
 
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
