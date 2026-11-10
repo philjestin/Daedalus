@@ -7,7 +7,7 @@ export default function SalesDocs() {
   return (
     <div className="docs-prose">
       <h1>Sales &amp; Analytics</h1>
-      <p className="text-lg !text-surface-300">
+      <p className="!text-body">
         Understand where your money comes from and where it goes. Built-in analytics show
         revenue trends, per-project profitability, and channel breakdowns.
       </p>

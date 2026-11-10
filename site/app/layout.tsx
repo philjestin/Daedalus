@@ -1,5 +1,20 @@
 import type { Metadata } from "next";
+import { Poppins, Roboto } from "next/font/google";
 import "./globals.css";
+
+const poppins = Poppins({
+  subsets: ["latin"],
+  weight: "600",
+  variable: "--font-poppins",
+  display: "swap",
+});
+
+const roboto = Roboto({
+  subsets: ["latin"],
+  weight: ["400", "500", "700"],
+  variable: "--font-roboto",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: "RankOS - Print Farm Management & Order Fulfillment",
@@ -19,20 +34,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
-      <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link
-          rel="preconnect"
-          href="https://fonts.gstatic.com"
-          crossOrigin="anonymous"
-        />
-        <link
-          href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@400;500;600;700&display=swap"
-          rel="stylesheet"
-        />
-      </head>
-      <body className="bg-surface-950 text-surface-100 antialiased">
+    <html lang="en" className={`${poppins.variable} ${roboto.variable}`}>
+      <body className="bg-canvas font-body text-body antialiased">
         {children}
       </body>
     </html>

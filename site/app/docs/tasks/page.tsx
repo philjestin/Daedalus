@@ -7,7 +7,7 @@ export default function TasksDocs() {
   return (
     <div className="docs-prose">
       <h1>Tasks &amp; Print Jobs</h1>
-      <p className="text-lg !text-surface-300">
+      <p className="!text-body">
         The core production workflow. Tasks track what needs to be printed, print jobs
         execute the work on your printers, and auto-dispatch keeps everything moving.
       </p>

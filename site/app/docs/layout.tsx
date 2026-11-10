@@ -54,13 +54,13 @@ export default function DocsLayout({
   const pathname = usePathname();
 
   return (
-    <div className="min-h-screen bg-surface-950">
+    <div className="min-h-screen bg-canvas">
       {/* Top bar */}
-      <header className="fixed top-0 z-40 w-full border-b border-surface-800/50 bg-surface-950/80 backdrop-blur-xl">
-        <div className="flex h-14 items-center gap-4 px-6">
+      <header className="fixed top-0 z-40 w-full border-b border-border bg-canvas/95 backdrop-blur-xl">
+        <div className="flex h-16 items-center gap-4 px-6">
           <button
             onClick={() => setSidebarOpen(!sidebarOpen)}
-            className="lg:hidden text-surface-400 hover:text-surface-100"
+            className="inline-flex h-11 w-11 items-center justify-center text-body hover:text-primary lg:hidden"
           >
             {sidebarOpen ? (
               <X className="h-5 w-5" />
@@ -69,16 +69,16 @@ export default function DocsLayout({
             )}
           </button>
 
-          <Link href="/" className="flex items-center gap-2 text-surface-400 hover:text-surface-100 transition-colors">
+          <Link href="/" className="type-body-sm flex items-center gap-2 text-body transition-colors hover:text-primary">
             <ArrowLeft className="h-4 w-4" />
-            <span className="text-sm">Back to Home</span>
+            <span>Back to Home</span>
           </Link>
 
           <div className="mx-auto flex items-center gap-2">
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-accent-500/10">
-              <Layers className="h-4 w-4 text-accent-500" />
+            <div className="flex h-7 w-7 items-center justify-center rounded-none border border-border bg-primary/10">
+              <Layers className="h-4 w-4 text-primary" />
             </div>
-            <span className="text-sm font-bold text-surface-50">
+            <span className="type-heading-xs text-ink">
               RankOS Docs
             </span>
           </div>
@@ -87,7 +87,7 @@ export default function DocsLayout({
         </div>
       </header>
 
-      <div className="flex pt-14">
+      <div className="flex pt-16">
         {/* Sidebar overlay on mobile */}
         {sidebarOpen && (
           <div
@@ -98,7 +98,7 @@ export default function DocsLayout({
 
         {/* Sidebar */}
         <aside
-          className={`fixed top-14 bottom-0 z-30 w-56 overflow-y-auto border-r border-surface-800/50 bg-surface-950 px-3 py-4 transition-transform lg:translate-x-0 ${
+          className={`fixed top-16 bottom-0 z-30 w-56 overflow-y-auto border-r border-border bg-canvas px-3 py-4 transition-transform lg:translate-x-0 ${
             sidebarOpen ? "translate-x-0" : "-translate-x-full"
           }`}
         >
@@ -113,10 +113,10 @@ export default function DocsLayout({
                   key={item.href}
                   href={item.href}
                   onClick={() => setSidebarOpen(false)}
-                  className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors ${
+                  className={`type-body-sm flex items-center gap-2.5 rounded-none px-3 py-2 transition-colors ${
                     isActive
-                      ? "bg-accent-500/10 text-accent-400 font-medium"
-                      : "text-surface-400 hover:bg-surface-900 hover:text-surface-200"
+                      ? "bg-primary/10 font-medium text-primary"
+                      : "text-body hover:bg-surface hover:text-ink"
                   }`}
                 >
                   <Icon className="h-4 w-4 shrink-0" />
@@ -129,7 +129,7 @@ export default function DocsLayout({
 
         {/* Main content */}
         <main className="w-full lg:pl-56">
-          <div className="mx-auto max-w-3xl px-6 py-12 lg:px-12">
+          <div className="mx-auto max-w-3xl px-6 py-section lg:px-12">
             {children}
           </div>
         </main>

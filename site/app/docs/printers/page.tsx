@@ -7,7 +7,7 @@ export default function PrintersDocs() {
   return (
     <div className="docs-prose">
       <h1>Printers</h1>
-      <p className="text-lg !text-surface-300">
+      <p className="!text-body">
         Connect your entire fleet regardless of manufacturer. RankOS speaks every protocol
         so you can manage Bambu Lab, OctoPrint, Klipper, and manual printers from one place.
       </p>

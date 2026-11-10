@@ -7,7 +7,7 @@ export default function OrdersDocs() {
   return (
     <div className="docs-prose">
       <h1>Orders</h1>
-      <p className="text-lg !text-surface-300">
+      <p className="!text-body">
         Unified order management for Etsy, Shopify, Squarespace, and direct sales.
         Track every order from receipt through printing to shipment.
       </p>

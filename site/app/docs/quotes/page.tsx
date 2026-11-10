@@ -7,7 +7,7 @@ export default function QuotesDocs() {
   return (
     <div className="docs-prose">
       <h1>Quotes</h1>
-      <p className="text-lg !text-surface-300">
+      <p className="!text-body">
         Build detailed, multi-option quotes for custom jobs. Link line items to your
         product catalog, then convert accepted quotes directly into orders.
       </p>
