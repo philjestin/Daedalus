@@ -1,0 +1,21 @@
+# Dokploy Compose service for RankOS. Host networking lets LAN printer
+# discovery scan the host network. Traefik on the host routes to port 8190.
+# Volumes rankos-data and rankos-uploads already exist on the server.
+services:
+  rankos:
+    build: .
+    network_mode: host
+    environment:
+      PORT: "8190"
+      DATABASE_PATH: /app/data/rankos.db
+      UPLOAD_DIR: /app/uploads
+    volumes:
+      - rankos-data:/app/data
+      - rankos-uploads:/app/uploads
+    restart: unless-stopped
+
+volumes:
+  rankos-data:
+    external: true
+  rankos-uploads:
+    external: true
