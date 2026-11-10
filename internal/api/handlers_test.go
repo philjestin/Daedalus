@@ -8,11 +8,12 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/cadimartech/rankos/internal/model"
+	"github.com/google/uuid"
 )
 
 // --- Part creation (JSON path) ---
@@ -455,8 +456,18 @@ func TestPrinterCreate_AllFields(t *testing.T) {
 	if fetched.ConnectionURI != "u_12345" {
 		t.Errorf("connection_uri: got %q", fetched.ConnectionURI)
 	}
-	if fetched.APIKey != "token_abc" {
-		t.Errorf("api_key: got %q", fetched.APIKey)
+	if fetched.APIKey != model.RedactedSecret {
+		t.Errorf("api_key should be redacted, got %q", fetched.APIKey)
+	}
+	if strings.Contains(rr2.Body.String(), "token_abc") {
+		t.Error("plaintext access code returned by GET")
+	}
+	stored, err := env.services.Printers.GetByID(req2.Context(), fetched.ID)
+	if err != nil || stored == nil {
+		t.Fatalf("reload printer: %v", err)
+	}
+	if stored.APIKey != "token_abc" {
+		t.Errorf("stored api_key: got %q", stored.APIKey)
 	}
 	if fetched.SerialNumber != "00M09A350100123" {
 		t.Errorf("serial_number: got %q", fetched.SerialNumber)
@@ -636,7 +647,17 @@ func TestPrinterCreate_BambuCloudType(t *testing.T) {
 	if printer.SerialNumber != "00W00A350700234" {
 		t.Errorf("serial_number: got %q", printer.SerialNumber)
 	}
-	if printer.APIKey != "eyJhbGciOiJSUzI1NiJ9.fake" {
+	if printer.APIKey != model.RedactedSecret {
+		t.Errorf("api_key should be redacted in the response, got %q", printer.APIKey)
+	}
+	if strings.Contains(rr.Body.String(), "eyJhbGciOiJSUzI1NiJ9.fake") {
+		t.Error("plaintext access token returned by create")
+	}
+	stored, err := env.services.Printers.GetByID(req.Context(), printer.ID)
+	if err != nil || stored == nil {
+		t.Fatalf("reload printer: %v", err)
+	}
+	if stored.APIKey != "eyJhbGciOiJSUzI1NiJ9.fake" {
 		t.Errorf("api_key not persisted correctly")
 	}
 
@@ -657,6 +678,95 @@ func TestPrinterCreate_BambuCloudType(t *testing.T) {
 	}
 	if !found {
 		t.Error("created printer not found in list")
+	}
+	if strings.Contains(rr2.Body.String(), "eyJhbGciOiJSUzI1NiJ9.fake") {
+		t.Error("plaintext access token returned by list")
+	}
+}
+
+// TestPrinterUpdate_ConnectionFields verifies the edit payload persists
+// serial, host, and connection type, and that a blank or redacted access
+// code does not wipe the stored one. Responses never echo the secret.
+func TestPrinterUpdate_ConnectionFields(t *testing.T) {
+	env := newTestEnv(t)
+
+	body, _ := json.Marshal(map[string]interface{}{
+		"name":            "P1S",
+		"connection_type": "manual",
+		"connection_uri":  "192.168.1.20",
+		"api_key":         "12345678",
+		"serial_number":   "WRONGSERIAL",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/printers", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	env.handler.ServeHTTP(rr, req)
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("create: %d %s", rr.Code, rr.Body.String())
+	}
+	var created model.Printer
+	json.NewDecoder(rr.Body).Decode(&created)
+	if strings.Contains(rr.Body.String(), "12345678") {
+		t.Fatal("create response included the access code")
+	}
+
+	patch, _ := json.Marshal(map[string]interface{}{
+		"connection_type": "manual",
+		"connection_uri":  "192.168.1.55",
+		"serial_number":   "22E8AA000000001",
+		"api_key":         "",
+	})
+	req2 := httptest.NewRequest(http.MethodPatch, fmt.Sprintf("/api/printers/%s", created.ID), bytes.NewReader(patch))
+	req2.Header.Set("Content-Type", "application/json")
+	rr2 := httptest.NewRecorder()
+	env.handler.ServeHTTP(rr2, req2)
+	if rr2.Code != http.StatusOK {
+		t.Fatalf("update: %d %s", rr2.Code, rr2.Body.String())
+	}
+	if strings.Contains(rr2.Body.String(), "12345678") {
+		t.Fatal("update response included the access code")
+	}
+
+	req3 := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/printers/%s", created.ID), nil)
+	rr3 := httptest.NewRecorder()
+	env.handler.ServeHTTP(rr3, req3)
+	var fetched model.Printer
+	json.NewDecoder(rr3.Body).Decode(&fetched)
+	if fetched.ConnectionType != "manual" {
+		t.Errorf("connection_type = %q", fetched.ConnectionType)
+	}
+	if fetched.ConnectionURI != "192.168.1.55" {
+		t.Errorf("connection_uri = %q", fetched.ConnectionURI)
+	}
+	if fetched.SerialNumber != "22E8AA000000001" {
+		t.Errorf("serial_number = %q", fetched.SerialNumber)
+	}
+	if fetched.APIKey != model.RedactedSecret {
+		t.Errorf("api_key = %q, want redacted", fetched.APIKey)
+	}
+
+	stored, err := env.services.Printers.GetByID(req3.Context(), created.ID)
+	if err != nil || stored == nil {
+		t.Fatalf("reload: %v", err)
+	}
+	if stored.APIKey != "12345678" {
+		t.Errorf("blank api_key wiped stored code: %q", stored.APIKey)
+	}
+
+	// Echoing the placeholder must not replace the stored code.
+	patch2, _ := json.Marshal(map[string]interface{}{
+		"api_key": model.RedactedSecret,
+	})
+	req4 := httptest.NewRequest(http.MethodPatch, fmt.Sprintf("/api/printers/%s", created.ID), bytes.NewReader(patch2))
+	req4.Header.Set("Content-Type", "application/json")
+	rr4 := httptest.NewRecorder()
+	env.handler.ServeHTTP(rr4, req4)
+	if rr4.Code != http.StatusOK {
+		t.Fatalf("update mask: %d %s", rr4.Code, rr4.Body.String())
+	}
+	stored, _ = env.services.Printers.GetByID(req4.Context(), created.ID)
+	if stored.APIKey != "12345678" {
+		t.Errorf("redacted api_key overwrote stored code: %q", stored.APIKey)
 	}
 }
 
@@ -1004,4 +1114,3 @@ func TestExpenseRetry_InvalidID(t *testing.T) {
 		t.Errorf("expected 400, got %d", rr.Code)
 	}
 }
-

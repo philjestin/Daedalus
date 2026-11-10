@@ -1,12 +1,17 @@
 package printer
 
 import (
+	"bytes"
 	"encoding/json"
+	"log/slog"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/cadimartech/rankos/internal/model"
+	mqtt "github.com/eclipse/paho.mqtt.golang"
+	"github.com/google/uuid"
 )
 
 func TestNewBambuClient(t *testing.T) {
@@ -78,13 +83,13 @@ func TestParsePrintStatus_Printing(t *testing.T) {
 	client := NewBambuClient(uuid.New(), "192.168.1.100", "12345678", "")
 
 	printStatus := &BambuPrintStatus{
-		GcodeState:      "RUNNING",
-		MCPercent:       45,
-		MCRemainingTime: 120, // 120 minutes
-		SubtaskName:     "test_print.3mf",
-		BedTemper:       60.0,
-		BedTargetTemper: 60.0,
-		NozzleTemper:    210.0,
+		GcodeState:         "RUNNING",
+		MCPercent:          45,
+		MCRemainingTime:    120, // 120 minutes
+		SubtaskName:        "test_print.3mf",
+		BedTemper:          60.0,
+		BedTargetTemper:    60.0,
+		NozzleTemper:       210.0,
 		NozzleTargetTemper: 215.0,
 	}
 
@@ -657,6 +662,263 @@ func TestBambuLightsReportParsing(t *testing.T) {
 	}
 	if msg.Print.LightsReport[0].Mode != "on" {
 		t.Errorf("expected mode 'on', got %s", msg.Print.LightsReport[0].Mode)
+	}
+}
+
+type fakeToken struct{ err error }
+
+func (f fakeToken) Wait() bool                     { return true }
+func (f fakeToken) WaitTimeout(time.Duration) bool { return true }
+func (f fakeToken) Error() error                   { return f.err }
+func (f fakeToken) Done() <-chan struct{} {
+	ch := make(chan struct{})
+	close(ch)
+	return ch
+}
+
+type recordedPub struct {
+	topic   string
+	qos     byte
+	payload []byte
+}
+
+// fakeMQTT records subscribe and publish calls from onConnect.
+type fakeMQTT struct {
+	mqtt.Client
+	mu   sync.Mutex
+	subs []string
+	pubs []recordedPub
+}
+
+func (f *fakeMQTT) Subscribe(topic string, _ byte, _ mqtt.MessageHandler) mqtt.Token {
+	f.mu.Lock()
+	f.subs = append(f.subs, topic)
+	f.mu.Unlock()
+	return fakeToken{}
+}
+
+func (f *fakeMQTT) Publish(topic string, qos byte, _ bool, payload interface{}) mqtt.Token {
+	var body []byte
+	switch p := payload.(type) {
+	case []byte:
+		body = append([]byte(nil), p...)
+	case string:
+		body = []byte(p)
+	}
+	f.mu.Lock()
+	f.pubs = append(f.pubs, recordedPub{topic: topic, qos: qos, payload: body})
+	f.mu.Unlock()
+	return fakeToken{}
+}
+
+func (f *fakeMQTT) snapshot() (subs []string, pubs []recordedPub) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	subs = append([]string(nil), f.subs...)
+	pubs = append([]recordedPub(nil), f.pubs...)
+	return subs, pubs
+}
+
+func stopBambuLoops(c *BambuClient) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.mqttClient = nil
+	if c.stopChan != nil {
+		close(c.stopChan)
+		c.stopChan = nil
+	}
+}
+
+// syncBuffer is an io.Writer safe to read while slog writes from another goroutine.
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (s *syncBuffer) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.buf.Write(p)
+}
+
+func (s *syncBuffer) String() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.buf.String()
+}
+
+func captureLogs(t *testing.T) *syncBuffer {
+	t.Helper()
+	buf := &syncBuffer{}
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(buf, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+	return buf
+}
+
+func TestOnConnect_PublishesPushAllAfterSubscribeAndOnReconnect(t *testing.T) {
+	serial := "22E8AA000000001"
+	client := NewBambuClient(uuid.New(), "192.168.1.50", "12345678", serial)
+	client.pushAllInterval = time.Hour
+	client.reportTimeout = time.Hour
+	t.Cleanup(func() { stopBambuLoops(client) })
+
+	fake := &fakeMQTT{}
+	client.onConnect(fake)
+	client.onConnect(fake)
+
+	subs, pubs := fake.snapshot()
+	if len(subs) != 2 || subs[0] != "device/"+serial+"/report" || subs[1] != "device/"+serial+"/report" {
+		t.Fatalf("subscriptions = %#v", subs)
+	}
+	if len(pubs) != 2 {
+		t.Fatalf("expected pushall on connect and reconnect, got %d", len(pubs))
+	}
+	for i, pub := range pubs {
+		if pub.topic != "device/"+serial+"/request" {
+			t.Errorf("pub %d topic = %s", i, pub.topic)
+		}
+		if pub.qos != 0 {
+			t.Errorf("pub %d qos = %d, want 0", i, pub.qos)
+		}
+		var body struct {
+			Pushing struct {
+				Sequence   string `json:"sequence_id"`
+				Command    string `json:"command"`
+				Version    int    `json:"version"`
+				PushTarget int    `json:"push_target"`
+			} `json:"pushing"`
+		}
+		if err := json.Unmarshal(pub.payload, &body); err != nil {
+			t.Fatalf("pub %d: %v (%s)", i, err, pub.payload)
+		}
+		if body.Pushing.Command != "pushall" || body.Pushing.Sequence != "0" {
+			t.Errorf("pub %d payload = %s", i, pub.payload)
+		}
+		if body.Pushing.Version != 1 || body.Pushing.PushTarget != 1 {
+			t.Errorf("pub %d missing P1 pushall fields: %s", i, pub.payload)
+		}
+	}
+}
+
+func TestPushLoop_PublishesAgain(t *testing.T) {
+	client := NewBambuClient(uuid.New(), "192.168.1.50", "12345678", "22E8AA000000001")
+	client.pushAllInterval = 15 * time.Millisecond
+	client.reportTimeout = time.Hour
+	t.Cleanup(func() { stopBambuLoops(client) })
+
+	fake := &fakeMQTT{}
+	client.onConnect(fake)
+
+	deadline := time.Now().Add(500 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		_, pubs := fake.snapshot()
+		if len(pubs) >= 2 {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	_, pubs := fake.snapshot()
+	t.Fatalf("expected a periodic pushall, got %d publishes", len(pubs))
+}
+
+func TestNoReport_WarnsToCheckSerial(t *testing.T) {
+	buf := captureLogs(t)
+	client := NewBambuClient(uuid.New(), "192.168.1.50", "12345678", "22E8AA000000001")
+	client.reportTimeout = 20 * time.Millisecond
+	t.Cleanup(func() { stopBambuLoops(client) })
+
+	client.armNoReportWatch()
+	time.Sleep(60 * time.Millisecond)
+
+	logs := buf.String()
+	if !strings.Contains(logs, "no reports received; check that the serial matches the printer") {
+		t.Fatalf("missing serial warning, logs: %s", logs)
+	}
+	if !strings.Contains(logs, "22E8AA000000001") {
+		t.Fatalf("warning missing serial, logs: %s", logs)
+	}
+}
+
+func TestReport_SuppressesWarningAndLeavesOffline(t *testing.T) {
+	buf := captureLogs(t)
+	client := NewBambuClient(uuid.New(), "192.168.1.50", "12345678", "22E8AA000000001")
+	client.reportTimeout = 40 * time.Millisecond
+	t.Cleanup(func() { stopBambuLoops(client) })
+
+	client.armNoReportWatch()
+	client.ingestReport("device/22E8AA000000001/report", []byte(`{"print":{"bed_temper":21.5}}`))
+	time.Sleep(70 * time.Millisecond)
+
+	logs := buf.String()
+	if strings.Contains(logs, "no reports received") {
+		t.Fatalf("warning fired after a report: %s", logs)
+	}
+	if !strings.Contains(logs, "first Bambu report received") {
+		t.Fatalf("missing debug log for first report: %s", logs)
+	}
+	state, err := client.GetStatus()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.Status == model.PrinterStatusOffline {
+		t.Fatal("status still offline after a report")
+	}
+	if state.Status != model.PrinterStatusIdle {
+		t.Fatalf("status = %s, want idle", state.Status)
+	}
+	if state.BedTemp != 21.5 {
+		t.Fatalf("bed temp = %v", state.BedTemp)
+	}
+}
+
+func TestIngestReport_MergesP1Delta(t *testing.T) {
+	client := NewBambuClient(uuid.New(), "192.168.1.50", "12345678", "22E8AA000000001")
+	client.ingestReport("device/22E8AA000000001/report", []byte(`{
+		"print": {
+			"gcode_state": "RUNNING",
+			"mc_percent": 40,
+			"bed_temper": 60,
+			"nozzle_temper": 200,
+			"subtask_name": "part.3mf"
+		}
+	}`))
+	client.ingestReport("device/22E8AA000000001/report", []byte(`{"print":{"nozzle_temper":210}}`))
+
+	state, _ := client.GetStatus()
+	if state.Status != model.PrinterStatusPrinting {
+		t.Fatalf("status = %s, want printing", state.Status)
+	}
+	if state.Progress != 40 {
+		t.Fatalf("progress = %v", state.Progress)
+	}
+	if state.BedTemp != 60 {
+		t.Fatalf("bed = %v", state.BedTemp)
+	}
+	if state.NozzleTemp != 210 {
+		t.Fatalf("nozzle = %v", state.NozzleTemp)
+	}
+	if state.CurrentFile != "part.3mf" {
+		t.Fatalf("file = %q", state.CurrentFile)
+	}
+
+	// Explicit zeros in a delta must apply without clearing fields that were omitted.
+	client.ingestReport("device/22E8AA000000001/report", []byte(`{"print":{"bed_temper":0,"mc_percent":0}}`))
+	state, _ = client.GetStatus()
+	if state.BedTemp != 0 {
+		t.Fatalf("bed temp not cleared, got %v", state.BedTemp)
+	}
+	if state.Progress != 0 {
+		t.Fatalf("progress not cleared, got %v", state.Progress)
+	}
+	if state.NozzleTemp != 210 {
+		t.Fatalf("nozzle wiped by delta, got %v", state.NozzleTemp)
+	}
+	if state.Status != model.PrinterStatusPrinting {
+		t.Fatalf("status wiped by delta, got %s", state.Status)
+	}
+	if state.CurrentFile != "part.3mf" {
+		t.Fatalf("file wiped by delta, got %q", state.CurrentFile)
 	}
 }
 

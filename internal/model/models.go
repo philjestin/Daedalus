@@ -2,10 +2,21 @@ package model
 
 import (
 	"encoding/json"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
 )
+
+// RedactedSecret is the placeholder substituted for stored credentials in API
+// responses. Clients treat it as "a value is saved"; sending it back, or
+// sending a blank, leaves the stored secret unchanged.
+const RedactedSecret = "********"
+
+// SecretIsBlank reports whether v should not overwrite a stored credential.
+func SecretIsBlank(v string) bool {
+	return strings.TrimSpace(v) == "" || v == RedactedSecret
+}
 
 // Project represents a product in the catalog that tracks lifetime performance.
 // Projects now serve as both the product catalog and the blueprint for tasks.
@@ -1508,4 +1519,3 @@ type QuoteFilters struct {
 	Limit      int          `json:"limit,omitempty"`
 	Offset     int          `json:"offset,omitempty"`
 }
-

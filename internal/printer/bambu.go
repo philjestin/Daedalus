@@ -39,7 +39,29 @@ type BambuClient struct {
 	connected  bool
 	lastState  *model.PrinterState
 	stopChan   chan struct{}
+
+	// pushLoopStarted guards the periodic pushall goroutine.
+	pushLoopStarted bool
+	// pushAllInterval and reportTimeout override the defaults in tests.
+	pushAllInterval time.Duration
+	reportTimeout   time.Duration
+	// reportGen increments on each subscribe. reportGenSeen matches it once
+	// any report arrives for that generation.
+	reportGen      uint64
+	reportGenSeen  uint64
+	receivedReport bool
 }
+
+const (
+	// bambuReportTimeout is how long to wait after subscribe before warning
+	// that the printer never sent a report (often a serial mismatch, or a
+	// P1-series printer that only speaks when asked).
+	bambuReportTimeout = 30 * time.Second
+	// bambuPushAllInterval is how often to re-request a full status dump.
+	// P1-series printers emit deltas only, so a periodic pushall refreshes
+	// fields they never repeat.
+	bambuPushAllInterval = 5 * time.Minute
+)
 
 // BambuMQTTPort is the default MQTT port for Bambu printers.
 const BambuMQTTPort = 8883
@@ -108,25 +130,33 @@ func (c *BambuClient) SetSerialNumber(serial string) {
 
 // Connect establishes MQTT connection to Bambu printer.
 // Connection pattern follows the bambulabs_api community SDK.
+// The mutex is not held across the network handshake: the OnConnect handler
+// runs on another goroutine and must be able to publish pushall immediately.
 func (c *BambuClient) Connect() error {
 	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	if c.connected && c.mqttClient != nil && c.mqttClient.IsConnected() {
+		c.mu.Unlock()
 		return nil
 	}
+	host := c.host
+	accessCode := c.accessCode
+	serial := c.serialNumber
+	cloudMode := c.cloudMode
+	mqttUsername := c.mqttUsername
+	printerID := c.printerID
+	c.mu.Unlock()
 
-	broker := fmt.Sprintf("ssl://%s:%d", c.host, BambuMQTTPort)
+	broker := fmt.Sprintf("ssl://%s:%d", host, BambuMQTTPort)
 
 	// Determine MQTT credentials based on mode
 	username := "bblp"
-	if c.cloudMode && c.mqttUsername != "" {
-		username = c.mqttUsername
+	if cloudMode && mqttUsername != "" {
+		username = mqttUsername
 	}
 
 	// TLS config differs between local and cloud mode
 	var tlsConfig *tls.Config
-	if c.cloudMode {
+	if cloudMode {
 		// Cloud broker has a valid certificate — use system CA pool
 		tlsConfig = &tls.Config{
 			MinVersion: tls.VersionTLS12,
@@ -138,14 +168,15 @@ func (c *BambuClient) Connect() error {
 
 	opts := mqtt.NewClientOptions().
 		AddBroker(broker).
-		SetClientID(fmt.Sprintf("printfarm_%s", c.printerID.String()[:8])).
+		SetClientID(fmt.Sprintf("printfarm_%s", printerID.String()[:8])).
 		SetUsername(username).
-		SetPassword(c.accessCode).
+		SetPassword(accessCode).
 		SetTLSConfig(tlsConfig).
 		SetAutoReconnect(true).
 		SetConnectTimeout(10 * time.Second).
 		SetWriteTimeout(10 * time.Second).
-		SetKeepAlive(30 * time.Second)
+		SetKeepAlive(30 * time.Second).
+		SetOrderMatters(false)
 
 	// Use DefaultPublishHandler for all incoming messages (matches community SDK pattern)
 	opts.SetDefaultPublishHandler(c.handleMessage)
@@ -153,57 +184,86 @@ func (c *BambuClient) Connect() error {
 	opts.SetConnectionLostHandler(c.onConnectionLost)
 	opts.SetReconnectingHandler(c.onReconnecting)
 
-	c.mqttClient = mqtt.NewClient(opts)
+	client := mqtt.NewClient(opts)
 
 	mode := "LAN"
-	if c.cloudMode {
+	if cloudMode {
 		mode = "cloud"
 	}
 	slog.Info("connecting to Bambu printer",
 		"mode", mode,
-		"host", c.host,
-		"printer_id", c.printerID,
-		"serial", c.serialNumber,
+		"host", host,
+		"printer_id", printerID,
+		"serial", serial,
 		"broker", broker,
 		"username", username,
 	)
-	token := c.mqttClient.Connect()
+	token := client.Connect()
 	if token.Wait() && token.Error() != nil {
 		return fmt.Errorf("MQTT connection failed: %w", token.Error())
 	}
 
+	c.mu.Lock()
+	c.mqttClient = client
 	c.connected = true
-	slog.Info("connected to Bambu printer", "mode", mode, "host", c.host, "printer_id", c.printerID)
+	c.mu.Unlock()
+	slog.Info("connected to Bambu printer", "mode", mode, "host", host, "printer_id", printerID)
 
 	return nil
 }
 
-// onConnect is called when MQTT connection is established.
+// onConnect is called when MQTT connection is established (including paho
+// auto-reconnect). It subscribes, immediately requests a full status dump,
+// and arms the silence warning. P1-series printers do not volunteer state;
+// without pushall the connection stays up and status stays offline.
 func (c *BambuClient) onConnect(client mqtt.Client) {
+	c.mu.Lock()
+	c.mqttClient = client
+	c.connected = true
+	c.receivedReport = false
+	c.reportGen++
+	serial := c.serialNumber
+	host := c.host
+	accessLen := len(c.accessCode)
+	hasAccess := c.accessCode != ""
+	c.mu.Unlock()
+
 	slog.Info("Bambu MQTT connected",
 		"printer_id", c.printerID,
-		"host", c.host,
-		"serial", c.serialNumber,
-		"has_access_code", c.accessCode != "",
-		"access_code_len", len(c.accessCode),
+		"host", host,
+		"serial", serial,
+		"has_access_code", hasAccess,
+		"access_code_len", accessLen,
 	)
 
 	// Subscribe to report topic — matches community SDK pattern:
 	// QoS 0, nil handler (messages go through DefaultPublishHandler)
-	topic := fmt.Sprintf("device/%s/report", c.serialNumber)
+	topic := fmt.Sprintf("device/%s/report", serial)
 	token := client.Subscribe(topic, 0, nil)
 	if token.Wait() && token.Error() != nil {
 		slog.Error("failed to subscribe to Bambu report topic",
 			"error", token.Error(),
 			"topic", topic,
-			"serial", c.serialNumber,
+			"serial", serial,
 		)
 		return
 	}
 	slog.Info("subscribed to Bambu report topic", "topic", topic)
 
-	// Request initial status
-	c.requestPushAll()
+	// Arm before pushall so a fast report is attributed to this generation.
+	c.armNoReportWatch()
+
+	// Request initial status right after subscribe. QoS 0: the printer does
+	// not PUBACK, and waiting on QoS 1 stalls the client before any report.
+	if err := c.publishPushAll(client, serial); err != nil {
+		slog.Error("failed to publish Bambu pushall",
+			"error", err,
+			"printer_id", c.printerID,
+			"serial", serial,
+			"topic", fmt.Sprintf("device/%s/request", serial),
+		)
+	}
+	c.ensurePushLoop()
 }
 
 // onConnectionLost is called when MQTT connection is lost.
@@ -235,34 +295,179 @@ func (c *BambuClient) onReconnecting(client mqtt.Client, opts *mqtt.ClientOption
 
 // handleMessage processes incoming MQTT messages from the printer.
 func (c *BambuClient) handleMessage(client mqtt.Client, msg mqtt.Message) {
-	var payload BambuMessage
-	if err := json.Unmarshal(msg.Payload(), &payload); err != nil {
-		slog.Debug("failed to parse Bambu message", "error", err, "payload", string(msg.Payload()))
+	c.ingestReport(msg.Topic(), msg.Payload())
+}
+
+// ingestReport records that the printer spoke, merges a print payload into
+// state, and notifies listeners. Any valid report clears the post-subscribe
+// silence warning.
+func (c *BambuClient) ingestReport(topic string, payload []byte) {
+	var msg BambuMessage
+	if err := json.Unmarshal(payload, &msg); err != nil {
+		slog.Debug("failed to parse Bambu message", "error", err, "payload", string(payload))
 		return
 	}
 
-	// Check for print status in the message
-	if payload.Print != nil {
-		c.mu.Lock()
-		state := c.mergePrintStatus(payload.Print)
+	c.mu.Lock()
+	first := !c.receivedReport
+	c.receivedReport = true
+	c.reportGenSeen = c.reportGen
+	var state *model.PrinterState
+	if msg.Print != nil {
+		state = c.mergePrintStatus(msg.Print)
 		c.lastState = state
-		c.mu.Unlock()
-
-		if c.statusCallback != nil {
-			c.statusCallback(state)
-		}
 	}
+	cb := c.statusCallback
+	c.mu.Unlock()
+
+	if first {
+		slog.Debug("first Bambu report received",
+			"printer_id", c.printerID,
+			"topic", topic,
+			"bytes", len(payload),
+		)
+	}
+
+	if state != nil && cb != nil {
+		cb(state)
+	}
+}
+
+// pushAllCommand is the full-status request P1-series printers require.
+// sequence_id "0" plus version and push_target is what those firmwares answer;
+// a timestamp-only payload is ignored and the printer stays silent.
+func pushAllCommand() BambuCommand {
+	return BambuCommand{
+		Pushing: &BambuPushingCmd{
+			Sequence:   "0",
+			Command:    "pushall",
+			Version:    1,
+			PushTarget: 1,
+		},
+	}
+}
+
+// publishPushAll sends a pushall command to device/<serial>/request.
+// QoS 0 because the printer does not PUBACK.
+func (c *BambuClient) publishPushAll(client mqtt.Client, serial string) error {
+	if client == nil {
+		return fmt.Errorf("not connected")
+	}
+	if serial == "" {
+		serial = "unknown"
+	}
+	data, err := json.Marshal(pushAllCommand())
+	if err != nil {
+		return fmt.Errorf("failed to marshal pushall: %w", err)
+	}
+	topic := fmt.Sprintf("device/%s/request", serial)
+	token := client.Publish(topic, 0, false, data)
+	if !token.WaitTimeout(5 * time.Second) {
+		return fmt.Errorf("pushall publish timeout")
+	}
+	if err := token.Error(); err != nil {
+		return fmt.Errorf("pushall publish failed: %w", err)
+	}
+	slog.Info("published Bambu pushall", "topic", topic, "printer_id", c.printerID, "serial", serial)
+	return nil
 }
 
 // requestPushAll requests the printer to send all current status.
 func (c *BambuClient) requestPushAll() {
-	cmd := BambuCommand{
-		Pushing: &BambuPushingCmd{
-			Sequence: strconv.FormatInt(time.Now().UnixMilli(), 10),
-			Command:  "pushall",
-		},
+	c.mu.RLock()
+	client := c.mqttClient
+	serial := c.serialNumber
+	connected := c.connected && client != nil
+	c.mu.RUnlock()
+	if !connected {
+		slog.Warn("skipped Bambu pushall; client not connected", "printer_id", c.printerID, "serial", serial)
+		return
 	}
-	c.sendCommand(cmd) //nolint:errcheck // fire-and-forget status refresh
+	if err := c.publishPushAll(client, serial); err != nil {
+		slog.Warn("Bambu pushall failed", "error", err, "printer_id", c.printerID, "serial", serial)
+	}
+}
+
+// ensurePushLoop republishes pushall on an interval. onConnect publishes
+// immediately, including after paho auto-reconnect; this covers the gap.
+func (c *BambuClient) ensurePushLoop() {
+	c.mu.Lock()
+	if c.pushLoopStarted {
+		c.mu.Unlock()
+		return
+	}
+	c.pushLoopStarted = true
+	interval := c.pushAllInterval
+	if interval <= 0 {
+		interval = bambuPushAllInterval
+	}
+	stop := c.stopChan
+	c.mu.Unlock()
+
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-stop:
+				return
+			case <-ticker.C:
+				c.mu.RLock()
+				client := c.mqttClient
+				serial := c.serialNumber
+				connected := c.connected && client != nil
+				c.mu.RUnlock()
+				if !connected {
+					continue
+				}
+				if err := c.publishPushAll(client, serial); err != nil {
+					slog.Warn("periodic Bambu pushall failed", "error", err, "printer_id", c.printerID, "serial", serial)
+				}
+			}
+		}
+	}()
+}
+
+// armNoReportWatch logs a warning when the printer accepts the subscription
+// but never sends a report. That is the usual signature of a wrong serial,
+// or of a P1 that ignored pushall.
+func (c *BambuClient) armNoReportWatch() {
+	c.mu.Lock()
+	// onConnect advances reportGen before subscribing. Tests call this
+	// directly and start from zero.
+	if c.reportGen == 0 {
+		c.reportGen = 1
+	}
+	gen := c.reportGen
+	timeout := c.reportTimeout
+	if timeout <= 0 {
+		timeout = bambuReportTimeout
+	}
+	serial := c.serialNumber
+	stop := c.stopChan
+	c.mu.Unlock()
+
+	go func() {
+		timer := time.NewTimer(timeout)
+		defer timer.Stop()
+		select {
+		case <-stop:
+			return
+		case <-timer.C:
+		}
+		c.mu.RLock()
+		current := c.reportGen
+		got := c.reportGenSeen == gen
+		c.mu.RUnlock()
+		if current != gen || got {
+			return
+		}
+		slog.Warn("no reports received; check that the serial matches the printer",
+			"printer_id", c.printerID,
+			"serial", serial,
+			"topic", fmt.Sprintf("device/%s/report", serial),
+		)
+	}()
 }
 
 // sendCommand sends a command to the printer via MQTT.
@@ -511,6 +716,30 @@ func bambuFanToPercent(raw int) int {
 }
 
 func (c *BambuClient) mergePrintStatus(print *BambuPrintStatus) *model.PrinterState {
+	state := c.cloneState()
+	if print != nil && print.present != nil {
+		c.applyPresentPrintStatus(state, print)
+	} else if print != nil {
+		c.applyLegacyPrintStatus(state, print)
+	}
+	// Any report means the printer is on the wire. P1 deltas often omit
+	// gcode_state, which used to leave status stuck at offline.
+	if state.Status == model.PrinterStatusOffline {
+		state.Status = model.PrinterStatusIdle
+	}
+	return state
+}
+
+// cloneState copies the last known state so a partial report can fill in
+// only the fields it actually carries.
+func (c *BambuClient) cloneState() *model.PrinterState {
+	if c.lastState == nil {
+		return &model.PrinterState{
+			PrinterID: c.printerID,
+			Status:    model.PrinterStatusOffline,
+			UpdatedAt: time.Now(),
+		}
+	}
 	// Start from a copy of the existing state
 	state := &model.PrinterState{
 		PrinterID:         c.printerID,
@@ -544,7 +773,12 @@ func (c *BambuClient) mergePrintStatus(print *BambuPrintStatus) *model.PrinterSt
 		TaskID:            c.lastState.TaskID,
 		PrintType:         c.lastState.PrintType,
 	}
+	return state
+}
 
+// applyLegacyPrintStatus updates state using non-zero heuristics. Used when
+// a status struct was built in code (no JSON presence map).
+func (c *BambuClient) applyLegacyPrintStatus(state *model.PrinterState, print *BambuPrintStatus) {
 	// Only update status when gcode_state is actually present
 	if print.GcodeState != "" {
 		switch print.GcodeState {
@@ -701,8 +935,134 @@ func (c *BambuClient) mergePrintStatus(print *BambuPrintStatus) *model.PrinterSt
 	if print.AMS != nil {
 		state.AMS = c.parseAMSState(print.AMS, print.VTTray)
 	}
+}
 
-	return state
+// applyPresentPrintStatus merges a JSON report using only keys that were
+// actually present. P1-series printers send deltas; missing keys must not
+// wipe the last known temperatures, progress, or file name, and explicit
+// zeros (heater off, fan off, progress reset) must still apply.
+func (c *BambuClient) applyPresentPrintStatus(state *model.PrinterState, print *BambuPrintStatus) {
+	if print.has("gcode_state") && print.GcodeState != "" {
+		switch print.GcodeState {
+		case "IDLE", "FINISH":
+			state.Status = model.PrinterStatusIdle
+		case "RUNNING", "PREPARE":
+			state.Status = model.PrinterStatusPrinting
+		case "PAUSE":
+			state.Status = model.PrinterStatusPaused
+		case "FAILED":
+			state.Status = model.PrinterStatusError
+		}
+	} else if print.has("stg_cur") && print.StgCur > 0 && print.StgCur < 255 {
+		state.Status = model.PrinterStatusPrinting
+	}
+
+	if print.has("mc_percent") {
+		state.Progress = float64(print.MCPercent)
+	}
+	if print.has("subtask_name") && print.SubtaskName != "" {
+		state.CurrentFile = print.SubtaskName
+	} else if print.has("gcode_file") && print.GcodeFile != "" {
+		state.CurrentFile = print.GcodeFile
+	}
+	if print.has("mc_remaining_time") {
+		state.TimeLeft = print.MCRemainingTime * 60
+	}
+	if print.has("bed_temper") {
+		state.BedTemp = print.BedTemper
+	}
+	if print.has("nozzle_temper") {
+		state.NozzleTemp = print.NozzleTemper
+	}
+	if print.has("bed_target_temper") {
+		state.BedTargetTemp = print.BedTargetTemper
+	}
+	if print.has("nozzle_target_temper") {
+		state.NozzleTargetTemp = print.NozzleTargetTemper
+	}
+	if print.has("chamber_temper") {
+		state.ChamberTemp = print.ChamberTemper
+	}
+	if print.has("layer_num") {
+		state.LayerNum = print.LayerNum
+	}
+	if print.has("total_layer_num") {
+		state.TotalLayerNum = print.TotalLayerNum
+	}
+	if print.has("cooling_fan_speed") {
+		state.CoolingFanSpeed = bambuFanToPercent(print.CoolingFanSpeed)
+	}
+	if print.has("big_fan1_speed") {
+		state.AuxFanSpeed = bambuFanToPercent(print.BigFan1Speed)
+	}
+	if print.has("big_fan2_speed") {
+		state.ChamberFanSpeed = bambuFanToPercent(print.BigFan2Speed)
+	}
+	if print.has("heatbreak_fan_speed") {
+		state.HeatbreakFanSpeed = bambuFanToPercent(print.HeatbreakFanSpeed)
+	}
+	if print.has("spd_mag") {
+		state.SpeedPercent = print.SpeedMag
+	}
+	if print.has("spd_lvl") {
+		state.SpeedLevel = print.SpeedLevel
+	}
+	if print.has("print_real_speed") {
+		state.PrintRealSpeed = print.PrintRealSpeed
+	}
+	if print.has("wifi_signal") {
+		state.WiFiSignal = print.WiFiSignal
+	}
+	if print.has("nozzle_diameter") {
+		state.NozzleDiameter = print.NozzleDiameter
+	}
+	if print.has("nozzle_type") {
+		state.NozzleType = print.NozzleType
+	}
+	if print.has("hms") {
+		state.HMSErrors = make([]model.HMSError, len(print.HMS))
+		for i, h := range print.HMS {
+			state.HMSErrors[i] = model.HMSError{
+				Attr:     h.Attr,
+				Code:     h.Code,
+				Module:   h.Module,
+				Severity: h.Severity,
+			}
+		}
+	}
+	if print.has("lights_report") {
+		state.Lights = make([]model.LightState, len(print.LightsReport))
+		for i, l := range print.LightsReport {
+			state.Lights[i] = model.LightState{
+				Node: l.Node,
+				Mode: l.Mode,
+			}
+		}
+	}
+	if print.has("gcode_start_time") {
+		state.GcodeStartTime = print.PrintStartTime
+	}
+	if print.has("subtask_id") {
+		state.SubtaskID = print.SubtaskID
+	}
+	if print.has("task_id") {
+		state.TaskID = print.TaskID
+	}
+	if print.has("print_type") {
+		state.PrintType = print.PrintType
+	}
+	if print.has("ams") && print.AMS != nil {
+		state.AMS = c.parseAMSState(print.AMS, print.VTTray)
+	}
+	if print.has("gcode_state") && (print.GcodeState == "IDLE" || print.GcodeState == "FINISH") {
+		state.LayerNum = 0
+		state.TotalLayerNum = 0
+		state.TimeLeft = 0
+		state.Progress = 0
+		if print.has("mc_percent") {
+			state.Progress = float64(print.MCPercent)
+		}
+	}
 }
 
 // parseAMSState converts Bambu AMS data to model.AMSState.
@@ -782,6 +1142,10 @@ type BambuMessage struct {
 
 // BambuPrintStatus contains print job status information.
 type BambuPrintStatus struct {
+	// present records JSON keys from the wire so partial P1 deltas do not
+	// look like explicit zeros. Nil when the struct was built in code.
+	present map[string]json.RawMessage `json:"-"`
+
 	// Print state
 	GcodeState    string `json:"gcode_state"`
 	StgCur        int    `json:"stg_cur"`
@@ -838,6 +1202,31 @@ type BambuPrintStatus struct {
 	PrintFinishAction   string `json:"print_finish_action"`
 	HomeFlag            int    `json:"home_flag"`
 	HWSwitch            int    `json:"hw_switch_state"`
+}
+
+// UnmarshalJSON captures which keys the printer actually sent.
+func (p *BambuPrintStatus) UnmarshalJSON(data []byte) error {
+	type plain BambuPrintStatus
+	var decoded plain
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	var keys map[string]json.RawMessage
+	if err := json.Unmarshal(data, &keys); err != nil {
+		return err
+	}
+	*p = BambuPrintStatus(decoded)
+	p.present = keys
+	return nil
+}
+
+// has reports whether key was present in the JSON payload.
+func (p *BambuPrintStatus) has(key string) bool {
+	if p == nil || p.present == nil {
+		return false
+	}
+	_, ok := p.present[key]
+	return ok
 }
 
 // BambuAMS represents AMS (Automatic Material System) status.
