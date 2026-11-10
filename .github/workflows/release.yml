@@ -14,7 +14,7 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: macos-14
+          - os: macos-15
             platform: darwin/universal
             artifact_name: RankOS.app
             asset_name: RankOS-macos-universal

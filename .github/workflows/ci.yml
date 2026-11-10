@@ -86,9 +86,9 @@ jobs:
     strategy:
       matrix:
         include:
-          # macos-latest is an arm64 image. Hosted arm64 runners were not
-          # assigned after repeated queue attempts, so use the Intel image.
-          - os: macos-14
+          # macos-14 was retired on 2026-11-02. macos-latest (macOS 26 arm64)
+          # was not assigned a hosted runner, so use the macOS 15 image.
+          - os: macos-15
             platform: darwin/universal
             wails_flags: ""
           - os: windows-latest
