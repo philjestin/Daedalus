@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useSyncExternalStore } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
@@ -29,6 +29,7 @@ import { useProjects } from '../hooks/useProjects'
 import { usePrinters, usePrinterStates } from '../hooks/usePrinters'
 import { statsApi } from '../api/client'
 import { cn, getStatusBadge } from '../lib/utils'
+import { getThemeSnapshot, subscribeTheme, type Theme } from '../lib/theme'
 
 ChartJS.register(
   CategoryScale,
@@ -56,43 +57,69 @@ const periodOptions = [
   { label: '12 Months', value: '12m' },
 ]
 
-const chartDefaults = {
-  responsive: true,
-  maintainAspectRatio: false,
-  plugins: {
-    tooltip: {
-      backgroundColor: '#1e293b',
-      borderColor: '#334155',
-      borderWidth: 1,
-      titleColor: '#e2e8f0',
-      bodyColor: '#e2e8f0',
-      callbacks: {
-        label: (ctx: { dataset: { label?: string }; parsed: { y?: number | null } }) => {
-          const val = ctx.parsed.y ?? 0
-          return `${ctx.dataset.label}: $${(val / 100).toFixed(0)}`
+function withAlpha(hex: string, alpha: number) {
+  const n = hex.replace('#', '')
+  const r = parseInt(n.slice(0, 2), 16)
+  const g = parseInt(n.slice(2, 4), 16)
+  const b = parseInt(n.slice(4, 6), 16)
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`
+}
+
+function chartChrome(theme: Theme) {
+  const dark = theme === 'dark'
+  return {
+    tooltipBg: dark ? '#191D23' : '#FFFFFF',
+    tooltipBorder: dark ? '#31353A' : '#E4E4E4',
+    tooltipText: dark ? '#F7FBFF' : '#1A1C1D',
+    tick: dark ? '#9DA1A6' : '#2C2D2E',
+    grid: dark ? '#31353A' : '#E4E4E4',
+    success: dark ? '#6FCB96' : '#1F7A4D',
+    error: dark ? '#F0A0A0' : '#B42318',
+    info: dark ? '#8EBEFF' : '#1A6BB8',
+  }
+}
+
+function chartDefaults(theme: Theme) {
+  const chrome = chartChrome(theme)
+  return {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      tooltip: {
+        backgroundColor: chrome.tooltipBg,
+        borderColor: chrome.tooltipBorder,
+        borderWidth: 1,
+        titleColor: chrome.tooltipText,
+        bodyColor: chrome.tooltipText,
+        callbacks: {
+          label: (ctx: { dataset: { label?: string }; parsed: { y?: number | null } }) => {
+            const val = ctx.parsed.y ?? 0
+            return `${ctx.dataset.label}: $${(val / 100).toFixed(0)}`
+          },
         },
       },
-    },
-    legend: {
-      labels: { color: '#94a3b8' },
-    },
-  },
-  scales: {
-    x: {
-      ticks: { color: '#64748b', font: { size: 11 } },
-      grid: { color: '#1e293b' },
-    },
-    y: {
-      ticks: {
-        color: '#64748b',
-        callback: (value: string | number) => `$${(Number(value) / 100).toFixed(0)}`,
+      legend: {
+        labels: { color: chrome.tick },
       },
-      grid: { color: '#1e293b' },
     },
-  },
-} as const
+    scales: {
+      x: {
+        ticks: { color: chrome.tick, font: { size: 11 } },
+        grid: { color: chrome.grid },
+      },
+      y: {
+        ticks: {
+          color: chrome.tick,
+          callback: (value: string | number) => `$${(Number(value) / 100).toFixed(0)}`,
+        },
+        grid: { color: chrome.grid },
+      },
+    },
+  }
+}
 
 export default function Dashboard() {
+  const theme = useSyncExternalStore(subscribeTheme, getThemeSnapshot, () => 'light' as const)
   const { data: projects = [], isLoading: projectsLoading } = useProjects()
   const { data: printers = [], isLoading: printersLoading } = usePrinters()
   const { data: printerStates = {} } = usePrinterStates()
@@ -138,40 +165,40 @@ export default function Dashboard() {
         {
           label: 'Revenue',
           data: points.map(p => p.revenue),
-          borderColor: '#10b981',
-          backgroundColor: 'rgba(16, 185, 129, 0.1)',
+          borderColor: chartChrome(theme).success,
+          backgroundColor: withAlpha(chartChrome(theme).success, 0.12),
           fill: true,
           tension: 0.3,
         },
         {
           label: 'Expenses',
           data: points.map(p => p.expenses),
-          borderColor: '#ef4444',
-          backgroundColor: 'rgba(239, 68, 68, 0.1)',
+          borderColor: chartChrome(theme).error,
+          backgroundColor: withAlpha(chartChrome(theme).error, 0.12),
           fill: true,
           tension: 0.3,
         },
         {
           label: 'Profit',
           data: points.map(p => p.profit),
-          borderColor: '#3b82f6',
-          backgroundColor: 'rgba(59, 130, 246, 0.1)',
+          borderColor: chartChrome(theme).info,
+          backgroundColor: withAlpha(chartChrome(theme).info, 0.12),
           fill: true,
           tension: 0.3,
         },
       ],
     }
-  }, [timeSeries])
+  }, [timeSeries, theme])
 
   const barChartData = useMemo(() => ({
     labels: expensesByCategory.map(c => c.category),
     datasets: [{
       label: 'Expenses',
       data: expensesByCategory.map(c => c.total),
-      backgroundColor: '#ef4444',
-      borderRadius: 4,
+      backgroundColor: chartChrome(theme).error,
+      borderRadius: 0,
     }],
-  }), [expensesByCategory])
+  }), [expensesByCategory, theme])
 
   const doughnutData = useMemo(() => ({
     labels: salesByChannel.map(c => c.channel),
@@ -182,16 +209,18 @@ export default function Dashboard() {
     }],
   }), [salesByChannel])
 
+  const chrome = chartChrome(theme)
+  const options = chartDefaults(theme)
   const doughnutOptions = {
     responsive: true,
     maintainAspectRatio: false,
     plugins: {
       tooltip: {
-        backgroundColor: '#1e293b',
-        borderColor: '#334155',
+        backgroundColor: chrome.tooltipBg,
+        borderColor: chrome.tooltipBorder,
         borderWidth: 1,
-        titleColor: '#e2e8f0',
-        bodyColor: '#e2e8f0',
+        titleColor: chrome.tooltipText,
+        bodyColor: chrome.tooltipText,
         callbacks: {
           label: (ctx: { label?: string; parsed?: number }) => {
             const val = ctx.parsed ?? 0
@@ -201,7 +230,7 @@ export default function Dashboard() {
       },
       legend: {
         position: 'bottom' as const,
-        labels: { color: '#94a3b8', padding: 16 },
+        labels: { color: chrome.tick, padding: 16 },
       },
     },
   }
@@ -358,7 +387,7 @@ export default function Dashboard() {
             Revenue & Profit
           </h2>
           <div className="h-[300px]">
-            <Line data={lineChartData} options={chartDefaults} />
+            <Line data={lineChartData} options={options} />
           </div>
         </div>
       )}
@@ -373,7 +402,7 @@ export default function Dashboard() {
                 Expenses by Category
               </h2>
               <div className="h-[250px]">
-                <Bar data={barChartData} options={chartDefaults} />
+                <Bar data={barChartData} options={options} />
               </div>
             </div>
           )}

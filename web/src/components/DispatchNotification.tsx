@@ -64,7 +64,7 @@ export default function DispatchNotification({ request, onDismiss }: DispatchNot
 
   return (
     <div className="fixed bottom-4 right-4 z-50 w-96 animate-in slide-in-from-bottom-4">
-      <div className="card border-accent-500/50 shadow-lg shadow-accent-500/10">
+      <div className="card border-primary/40 shadow-card">
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-surface-700">
           <div className="flex items-center gap-2">

@@ -1,4 +1,8 @@
-/** @type {import('tailwindcss').Config} */
+/**
+ * Tailwind CSS v4 compiles theme tokens from src/index.css (@theme)
+ * and src/theme.css. This file is not loaded by the Vite build.
+ * @type {import('tailwindcss').Config}
+ */
 export default {
   content: [
     "./index.html",
@@ -9,35 +13,35 @@ export default {
       colors: {
         // Custom color palette - industrial/maker aesthetic
         surface: {
-          50: '#fafafa',
-          100: '#f4f4f5',
-          200: '#e4e4e7',
-          300: '#d4d4d8',
-          400: '#a1a1aa',
-          500: '#71717a',
-          600: '#52525b',
-          700: '#3f3f46',
-          800: '#27272a',
-          900: '#18181b',
-          950: '#09090b',
+          50: '#FFFFFF',
+          100: '#1A1C1D',
+          200: '#1A1C1D',
+          300: '#2C2D2E',
+          400: '#2C2D2E',
+          500: '#5E6368',
+          600: '#6B7076',
+          700: '#E4E4E4',
+          800: '#EEEEEE',
+          900: '#F7F7F7',
+          950: '#FFFFFF',
         },
         accent: {
-          DEFAULT: '#f97316',
-          50: '#fff7ed',
-          100: '#ffedd5',
-          200: '#fed7aa',
-          300: '#fdba74',
-          400: '#fb923c',
-          500: '#f97316',
-          600: '#ea580c',
-          700: '#c2410c',
-          800: '#9a3412',
-          900: '#7c2d12',
+          DEFAULT: '#3295FF',
+          50: '#E8F3FF',
+          100: '#D6EAFF',
+          200: '#ADDAFF',
+          300: '#7CC4FF',
+          400: '#3295FF',
+          500: '#3295FF',
+          600: '#3295FF',
+          700: '#1868B3',
+          800: '#14528C',
+          900: '#0E3B66',
         },
       },
       fontFamily: {
-        sans: ['JetBrains Mono', 'ui-monospace', 'monospace'],
-        display: ['Space Grotesk', 'system-ui', 'sans-serif'],
+        sans: ['Roboto', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'sans-serif'],
+        display: ['Poppins', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'sans-serif'],
       },
     },
   },

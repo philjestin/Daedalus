@@ -3,8 +3,14 @@ import { createRoot } from 'react-dom/client'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter } from 'react-router-dom'
 import * as Sentry from '@sentry/react'
+import '@fontsource/poppins/latin-600.css'
+import '@fontsource/roboto/latin-400.css'
+import '@fontsource/roboto/latin-500.css'
 import App from './App'
+import { applyTheme, getStoredTheme } from './lib/theme'
 import './index.css'
+
+applyTheme(getStoredTheme())
 
 // In the Wails desktop app, <a target="_blank"> links don't open in the system
 // browser. Intercept clicks on external links and use the Wails runtime to open

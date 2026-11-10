@@ -47,9 +47,9 @@ export function AlertBanner({ className = '' }: AlertBannerProps) {
   }
 
   const severityStyles: Record<AlertSeverity, string> = {
-    info: 'bg-blue-50 border-blue-200 text-blue-800',
-    warning: 'bg-amber-50 border-amber-200 text-amber-800',
-    critical: 'bg-red-50 border-red-200 text-red-800',
+    info: 'bg-info/15 border-info/35 text-info',
+    warning: 'bg-warning/15 border-warning/35 text-warning',
+    critical: 'bg-error/15 border-error/35 text-error',
   }
 
   const severityIcons: Record<AlertSeverity, React.ReactNode> = {
@@ -69,7 +69,7 @@ export function AlertBanner({ className = '' }: AlertBannerProps) {
       {sortedAlerts.slice(0, 3).map(alert => (
         <div
           key={alert.id}
-          className={`flex items-center justify-between px-4 py-2 rounded-lg border ${severityStyles[alert.severity]}`}
+          className={`flex items-center justify-between rounded-none border px-4 py-2 ${severityStyles[alert.severity]}`}
         >
           <div className="flex items-center gap-3">
             {severityIcons[alert.severity]}
@@ -88,28 +88,28 @@ export function AlertBanner({ className = '' }: AlertBannerProps) {
                 <Clock className="w-4 h-4" />
               </button>
               <div className="absolute right-0 top-full mt-1 hidden group-hover:block z-10">
-                <div className="bg-white border rounded-lg shadow-lg py-1 min-w-[120px]">
+                <div className="min-w-[120px] rounded-none border border-line bg-canvas py-1 text-ink shadow-card">
                   <button
                     onClick={() => handleDismiss(alert, '1h')}
-                    className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100"
+                    className="w-full px-3 py-1.5 text-left text-sm hover:bg-surface-raised"
                   >
                     1 hour
                   </button>
                   <button
                     onClick={() => handleDismiss(alert, '4h')}
-                    className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100"
+                    className="w-full px-3 py-1.5 text-left text-sm hover:bg-surface-raised"
                   >
                     4 hours
                   </button>
                   <button
                     onClick={() => handleDismiss(alert, '24h')}
-                    className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100"
+                    className="w-full px-3 py-1.5 text-left text-sm hover:bg-surface-raised"
                   >
                     24 hours
                   </button>
                   <button
                     onClick={() => handleDismiss(alert, 'permanent')}
-                    className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100"
+                    className="w-full px-3 py-1.5 text-left text-sm hover:bg-surface-raised"
                   >
                     Dismiss permanently
                   </button>
@@ -132,7 +132,7 @@ export function AlertBanner({ className = '' }: AlertBannerProps) {
 
       {alerts.length > 3 && (
         <div className="text-center">
-          <button className="text-sm text-gray-500 hover:text-gray-700">
+          <button className="text-sm text-body hover:text-ink">
             +{alerts.length - 3} more alerts
           </button>
         </div>
