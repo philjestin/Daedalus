@@ -94,12 +94,12 @@ function FeatureCard({
 }) {
   return (
     <AnimatedSection delay={delay}>
-      <div className="glow-card rounded-xl border border-surface-800 bg-surface-900/50 p-6 h-full">
-        <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-lg bg-accent-500/10 text-accent-500">
+      <div className="h-full rounded-none border border-border bg-surface p-6 shadow-card transition-transform duration-300 hover:-translate-y-0.5">
+        <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-none border border-border bg-primary/10 text-primary">
           {icon}
         </div>
-        <h3 className="mb-2 text-lg font-semibold text-surface-50">{title}</h3>
-        <p className="text-sm leading-relaxed text-surface-400">
+        <h3 className="type-heading-xs mb-2 text-ink">{title}</h3>
+        <p className="type-body-sm text-body">
           {description}
         </p>
       </div>
@@ -111,8 +111,8 @@ function FeatureCard({
 function Stat({ value, label }: { value: string; label: string }) {
   return (
     <div className="text-center">
-      <div className="text-3xl font-bold gradient-text">{value}</div>
-      <div className="mt-1 text-sm text-surface-400">{label}</div>
+      <div className="type-section text-primary">{value}</div>
+      <div className="type-body-sm mt-1 text-body">{label}</div>
     </div>
   );
 }
@@ -129,13 +129,13 @@ function IntegrationBadge({
 }) {
   return (
     <AnimatedSection delay={delay}>
-      <div className="glow-card flex items-center gap-4 rounded-xl border border-surface-800 bg-surface-900/50 px-6 py-5">
-        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent-500/10">
-          <Wifi className="h-5 w-5 text-accent-500" />
+      <div className="flex items-center gap-4 rounded-none border border-border bg-surface px-6 py-5 shadow-card">
+        <div className="flex h-11 w-11 items-center justify-center rounded-none border border-border bg-primary/10">
+          <Wifi className="h-5 w-5 text-primary" />
         </div>
         <div>
-          <div className="font-semibold text-surface-50">{name}</div>
-          <div className="font-mono text-xs text-surface-500">{protocol}</div>
+          <div className="type-heading-xs text-ink">{name}</div>
+          <div className="type-caption font-mono text-body">{protocol}</div>
         </div>
       </div>
     </AnimatedSection>
@@ -153,15 +153,15 @@ function SectionHeading({
   description: string;
 }) {
   return (
-    <AnimatedSection className="mx-auto mb-16 max-w-2xl text-center">
-      <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-accent-500/20 bg-accent-500/5 px-4 py-1.5 text-xs font-medium text-accent-400">
-        <span className="h-1.5 w-1.5 rounded-full bg-accent-500" />
+    <AnimatedSection className="mx-auto mb-section max-w-2xl text-center">
+      <div className="badge mb-4">
+        <span className="h-1.5 w-1.5 rounded-full bg-accent" />
         {badge}
       </div>
-      <h2 className="mb-4 text-3xl font-bold tracking-tight text-surface-50 sm:text-4xl">
+      <h2 className="type-section mb-4 text-ink">
         {title}
       </h2>
-      <p className="text-lg leading-relaxed text-surface-400">{description}</p>
+      <p className="type-body text-body">{description}</p>
     </AnimatedSection>
   );
 }
@@ -180,7 +180,7 @@ function Screenshot({
     <img
       src={src}
       alt={alt}
-      className={`w-full rounded-xl ${className}`}
+      className={`w-full rounded-none border border-border ${className}`}
       loading="lazy"
     />
   );
@@ -206,28 +206,28 @@ function ShowcaseRow({
 }) {
   return (
     <div
-      className={`flex flex-col gap-12 lg:flex-row lg:items-center lg:gap-16 ${
+      className={`flex flex-col gap-section lg:flex-row lg:items-center lg:gap-16 ${
         reversed ? "lg:flex-row-reverse" : ""
       }`}
     >
       <AnimatedSection className="flex-1">
-        <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-lg bg-accent-500/10 text-accent-500">
+        <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-none border border-border bg-primary/10 text-primary">
           {icon}
         </div>
-        <h3 className="mb-3 text-2xl font-bold text-surface-50">{title}</h3>
-        <p className="mb-6 leading-relaxed text-surface-400">{description}</p>
+        <h3 className="type-heading-sm mb-3 text-ink">{title}</h3>
+        <p className="type-body mb-6 text-body">{description}</p>
         <ul className="space-y-3">
           {bullets.map((b, i) => (
-            <li key={i} className="flex items-start gap-3 text-sm">
-              <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-accent-500" />
-              <span className="text-surface-300">{b}</span>
+            <li key={i} className="type-body-sm flex items-start gap-3">
+              <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+              <span className="text-body">{b}</span>
             </li>
           ))}
         </ul>
       </AnimatedSection>
 
       <AnimatedSection className="flex-1" delay={150}>
-        <div className="glow-accent rounded-2xl border border-surface-800 bg-surface-900/80 p-1">
+        <div className="rounded-none border border-border bg-surface p-1 shadow-card">
           <Screenshot src={screenshot} alt={screenshotAlt} />
         </div>
       </AnimatedSection>
@@ -260,36 +260,36 @@ function Nav() {
     <nav
       className={`fixed top-0 z-50 w-full transition-all duration-300 ${
         scrolled
-          ? "bg-surface-950/80 backdrop-blur-xl border-b border-surface-800/50"
-          : "bg-transparent"
+          ? "border-b border-border bg-canvas/95 backdrop-blur-xl"
+          : "border-b border-transparent bg-transparent"
       }`}
     >
-      <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
+      <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-3">
         <a href="#" className="flex items-center gap-2.5">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent-500/10">
-            <Layers className="h-4.5 w-4.5 text-accent-500" />
+          <div className="flex h-8 w-8 items-center justify-center rounded-none border border-border bg-primary/10">
+            <Layers className="h-4.5 w-4.5 text-primary" />
           </div>
-          <span className="text-lg font-bold tracking-tight text-surface-50">
+          <span className="type-heading-xs text-ink">
             RankOS
           </span>
         </a>
 
-        <div className="hidden items-center gap-8 md:flex">
+        <div className="hidden items-center gap-6 lg:flex xl:gap-8">
           {links.map((l) => (
             <a
               key={l.href}
               href={l.href}
-              className="text-sm text-surface-400 transition-colors hover:text-surface-100"
+              className="type-body-sm text-body transition-colors hover:text-primary xl:text-[17px]"
             >
               {l.label}
             </a>
           ))}
         </div>
 
-        <div className="hidden md:flex items-center gap-3">
+        <div className="hidden items-center gap-3 lg:flex">
           <a
             href="#get-started"
-            className="rounded-lg bg-accent-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-600"
+            className="btn btn-primary"
           >
             Get Started
           </a>
@@ -297,20 +297,20 @@ function Nav() {
 
         <button
           onClick={() => setOpen(!open)}
-          className="md:hidden text-surface-400"
+          className="inline-flex h-11 w-11 items-center justify-center text-body lg:hidden"
         >
           {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
         </button>
       </div>
 
       {open && (
-        <div className="border-t border-surface-800/50 bg-surface-950/95 backdrop-blur-xl px-6 py-4 md:hidden">
+        <div className="border-t border-border bg-canvas px-6 py-4 lg:hidden">
           {links.map((l) => (
             <a
               key={l.href}
               href={l.href}
               onClick={() => setOpen(false)}
-              className="block py-2 text-sm text-surface-400 transition-colors hover:text-surface-100"
+              className="type-body block py-2 text-body transition-colors hover:text-primary"
             >
               {l.label}
             </a>
@@ -318,7 +318,7 @@ function Nav() {
           <a
             href="#get-started"
             onClick={() => setOpen(false)}
-            className="mt-3 block rounded-lg bg-accent-500 px-4 py-2 text-center text-sm font-medium text-white"
+            className="btn btn-primary mt-3 w-full"
           >
             Get Started
           </a>
@@ -335,24 +335,24 @@ export default function Home() {
       <Nav />
 
       {/* ─── Hero ──────────────────────────────────────────────────────── */}
-      <section className="relative overflow-hidden pt-32 pb-24 sm:pt-40 sm:pb-32">
+      <section className="relative overflow-hidden pt-[calc(82px+60px)] pb-section lg:pt-[calc(82px+120px)] lg:pb-band">
         <div className="absolute inset-0 grid-bg" />
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] rounded-full bg-accent-500/5 blur-[120px]" />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-[600px] w-[600px] rounded-full bg-accent/15 blur-[120px]" />
 
         <div className="relative mx-auto max-w-6xl px-6">
           <AnimatedSection className="mx-auto max-w-3xl text-center">
-            <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-accent-500/20 bg-accent-500/5 px-4 py-1.5 text-xs font-medium text-accent-400">
-              <Zap className="h-3.5 w-3.5" />
+            <div className="badge mb-6">
+              <Zap className="h-3.5 w-3.5 text-primary" />
               Print Farm Management + Order Fulfillment
             </div>
 
-            <h1 className="mb-6 text-4xl font-bold tracking-tight text-surface-50 sm:text-6xl lg:text-7xl">
+            <h1 className="type-hero mb-6 text-ink">
               Run your print farm
               <br />
-              <span className="gradient-text">like a factory</span>
+              <span className="text-primary">like a factory</span>
             </h1>
 
-            <p className="mx-auto mb-10 max-w-xl text-lg leading-relaxed text-surface-400">
+            <p className="type-body mx-auto mb-10 max-w-xl text-body">
               RankOS is the all-in-one desktop platform for managing printers,
               fulfilling orders from Etsy, Shopify & Squarespace, tracking
               materials, and growing your maker business.
@@ -361,14 +361,14 @@ export default function Home() {
             <div className="flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
               <a
                 href="#get-started"
-                className="group inline-flex items-center gap-2 rounded-xl bg-accent-500 px-6 py-3 text-sm font-semibold text-white transition-all hover:bg-accent-600 hover:gap-3"
+                className="btn btn-primary group transition-all hover:gap-3"
               >
                 Get Started
                 <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
               </a>
               <a
                 href="#features"
-                className="inline-flex items-center gap-2 rounded-xl border border-surface-700 px-6 py-3 text-sm font-medium text-surface-300 transition-colors hover:border-surface-600 hover:text-surface-100"
+                className="btn btn-ghost"
               >
                 See Features
                 <ChevronRight className="h-4 w-4" />
@@ -378,7 +378,7 @@ export default function Home() {
 
           {/* Hero stats */}
           <AnimatedSection
-            className="mx-auto mt-20 flex max-w-md justify-between"
+            className="mx-auto mt-section flex max-w-md justify-between"
             delay={300}
           >
             <Stat value="4" label="Printer Protocols" />
@@ -387,8 +387,8 @@ export default function Home() {
           </AnimatedSection>
 
           {/* Hero screenshot */}
-          <AnimatedSection className="mt-16" delay={400}>
-            <div className="glow-accent rounded-2xl border border-surface-800 bg-surface-900/80 p-2">
+          <AnimatedSection className="mt-section" delay={400}>
+            <div className="rounded-none border border-border bg-surface p-2 shadow-card">
               <Screenshot
                 src="/screenshots/dashboard.png"
                 alt="RankOS dashboard showing financial overview, revenue charts, and print farm status"
@@ -399,7 +399,7 @@ export default function Home() {
       </section>
 
       {/* ─── Features Grid ─────────────────────────────────────────────── */}
-      <section id="features" className="py-24 sm:py-32">
+      <section id="features" className="py-section lg:py-band">
         <div className="mx-auto max-w-6xl px-6">
           <SectionHeading
             badge="Features"
@@ -487,9 +487,9 @@ export default function Home() {
       {/* ─── Printer Management Deep Dive ──────────────────────────────── */}
       <section
         id="printers"
-        className="py-24 sm:py-32 border-t border-surface-800/50"
+        className="py-section lg:py-band border-t border-border"
       >
-        <div className="mx-auto max-w-6xl px-6 space-y-32">
+        <div className="mx-auto max-w-6xl px-6 space-y-section lg:space-y-band">
           <ShowcaseRow
             icon={<Printer className="h-5 w-5" />}
             title="Fleet management for every printer"
@@ -544,7 +544,7 @@ export default function Home() {
       {/* ─── Production & Materials ───────────────────────────────────── */}
       <section
         id="analytics"
-        className="py-24 sm:py-32 border-t border-surface-800/50"
+        className="py-section lg:py-band border-t border-border"
       >
         <div className="mx-auto max-w-6xl px-6">
           <SectionHeading
@@ -554,17 +554,17 @@ export default function Home() {
           />
           <div className="grid gap-6 lg:grid-cols-2">
             <AnimatedSection>
-              <div className="glow-card rounded-2xl border border-surface-800 bg-surface-900/50 p-1">
+              <div className="rounded-none border border-border bg-surface p-1 shadow-card">
                 <Screenshot
                   src="/screenshots/timeline.png"
                   alt="RankOS production timeline showing Gantt-style order scheduling"
                 />
               </div>
               <div className="mt-4 px-2">
-                <h3 className="font-semibold text-surface-100">
+                <h3 className="type-heading-xs text-ink">
                   Production Timeline
                 </h3>
-                <p className="mt-1 text-sm text-surface-400">
+                <p className="type-body-sm mt-1 text-body">
                   Gantt-style view of all active orders, tasks, and print jobs.
                   Configurable date ranges with status color coding: pending, in
                   progress, printing, completed, shipped, and cancelled.
@@ -572,17 +572,17 @@ export default function Home() {
               </div>
             </AnimatedSection>
             <AnimatedSection delay={150}>
-              <div className="glow-card rounded-2xl border border-surface-800 bg-surface-900/50 p-1">
+              <div className="rounded-none border border-border bg-surface p-1 shadow-card">
                 <Screenshot
                   src="/screenshots/materials.png"
                   alt="RankOS material inventory showing spool tracking with weight and color"
                 />
               </div>
               <div className="mt-4 px-2">
-                <h3 className="font-semibold text-surface-100">
+                <h3 className="type-heading-xs text-ink">
                   Material Inventory
                 </h3>
-                <p className="mt-1 text-sm text-surface-400">
+                <p className="type-body-sm mt-1 text-body">
                   Track every spool across PLA, PETG, ABS, ASA, and TPU.
                   Automatic weight updates with Bambu Lab AMS integration, color
                   visualization, and low-stock alerts.
@@ -594,8 +594,8 @@ export default function Home() {
       </section>
 
       {/* ─── Expenses & Projects ─────────────────────────────────────── */}
-      <section className="py-24 sm:py-32 border-t border-surface-800/50">
-        <div className="mx-auto max-w-6xl px-6 space-y-32">
+      <section className="py-section lg:py-band border-t border-border">
+        <div className="mx-auto max-w-6xl px-6 space-y-section lg:space-y-band">
           <ShowcaseRow
             icon={<Receipt className="h-5 w-5" />}
             title="Receipt OCR that actually works"
@@ -631,7 +631,7 @@ export default function Home() {
       </section>
 
       {/* ─── 3MF + Design Versioning ───────────────────────────────────── */}
-      <section className="py-24 sm:py-32 border-t border-surface-800/50">
+      <section className="py-section lg:py-band border-t border-border">
         <div className="mx-auto max-w-6xl px-6">
           <SectionHeading
             badge="Smart Workflows"
@@ -677,7 +677,7 @@ export default function Home() {
       {/* ─── Integrations ──────────────────────────────────────────────── */}
       <section
         id="integrations"
-        className="py-24 sm:py-32 border-t border-surface-800/50"
+        className="py-section lg:py-band border-t border-border"
       >
         <div className="mx-auto max-w-6xl px-6">
           <SectionHeading
@@ -720,15 +720,15 @@ export default function Home() {
           </div>
 
           <AnimatedSection className="mt-6">
-            <div className="glow-card flex items-center gap-4 rounded-xl border border-surface-800 bg-surface-900/50 px-6 py-5 max-w-sm mx-auto">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-surface-800">
-                <Printer className="h-5 w-5 text-surface-400" />
+            <div className="mx-auto flex max-w-sm items-center gap-4 rounded-none border border-border bg-surface px-6 py-5 shadow-card">
+              <div className="flex h-11 w-11 items-center justify-center rounded-none border border-border bg-canvas">
+                <Printer className="h-5 w-5 text-body" />
               </div>
               <div>
-                <div className="font-semibold text-surface-50">
+                <div className="type-heading-xs text-ink">
                   Manual Printers
                 </div>
-                <div className="font-mono text-xs text-surface-500">
+                <div className="type-caption font-mono text-body">
                   No connection required
                 </div>
               </div>
@@ -740,7 +740,7 @@ export default function Home() {
       {/* ─── Deploy ────────────────────────────────────────────────────── */}
       <section
         id="deploy"
-        className="py-24 sm:py-32 border-t border-surface-800/50"
+        className="py-section lg:py-band border-t border-border"
       >
         <div className="mx-auto max-w-6xl px-6">
           <SectionHeading
@@ -771,18 +771,18 @@ export default function Home() {
               },
             ].map((item, i) => (
               <AnimatedSection key={item.title} delay={i * 100}>
-                <div className="glow-card h-full rounded-xl border border-surface-800 bg-surface-900/50 p-6">
-                  <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-accent-500/10 text-accent-500">
+                <div className="h-full rounded-none border border-border bg-surface p-6 shadow-card transition-transform duration-300 hover:-translate-y-0.5">
+                  <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-none border border-border bg-primary/10 text-primary">
                     {item.icon}
                   </div>
-                  <h3 className="mb-2 text-lg font-semibold text-surface-50">
+                  <h3 className="type-heading-xs mb-2 text-ink">
                     {item.title}
                   </h3>
-                  <p className="mb-4 text-sm leading-relaxed text-surface-400">
+                  <p className="type-body-sm mb-4 text-body">
                     {item.desc}
                   </p>
-                  <div className="rounded-lg bg-surface-950 px-4 py-2.5 font-mono text-sm text-accent-400">
-                    <span className="text-surface-600">$ </span>
+                  <div className="rounded-none border border-border bg-canvas px-4 py-2.5 font-mono text-[15px] leading-none text-ink">
+                    <span className="text-body">$ </span>
                     {item.code}
                   </div>
                 </div>
@@ -793,7 +793,7 @@ export default function Home() {
       </section>
 
       {/* ─── Tech Stack ────────────────────────────────────────────────── */}
-      <section className="py-24 sm:py-32 border-t border-surface-800/50">
+      <section className="py-section lg:py-band border-t border-border">
         <div className="mx-auto max-w-6xl px-6">
           <SectionHeading
             badge="Under the Hood"
@@ -820,12 +820,12 @@ export default function Home() {
                 ].map((t) => (
                   <div
                     key={t.label}
-                    className="rounded-lg border border-surface-800 bg-surface-900/50 px-4 py-3 text-center"
+                    className="rounded-none border border-border bg-surface px-4 py-3 text-center"
                   >
-                    <div className="text-sm font-semibold text-surface-100">
+                    <div className="type-body-sm-strong text-ink">
                       {t.label}
                     </div>
-                    <div className="mt-0.5 font-mono text-[10px] text-surface-500">
+                    <div className="type-caption mt-0.5 font-mono text-body">
                       {t.detail}
                     </div>
                   </div>
@@ -839,17 +839,17 @@ export default function Home() {
       {/* ─── CTA ───────────────────────────────────────────────────────── */}
       <section
         id="get-started"
-        className="relative py-24 sm:py-32 border-t border-surface-800/50"
+        className="relative py-section lg:py-band border-t border-border"
       >
         <div className="absolute inset-0 grid-bg" />
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] rounded-full bg-accent-500/5 blur-[100px]" />
+        <div className="absolute top-1/2 left-1/2 h-[500px] w-[500px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-accent/15 blur-[100px]" />
 
         <div className="relative mx-auto max-w-6xl px-6">
           <AnimatedSection className="mx-auto max-w-2xl text-center">
-            <h2 className="mb-4 text-3xl font-bold tracking-tight text-surface-50 sm:text-4xl">
+            <h2 className="type-section mb-4 text-ink">
               Ready to take control?
             </h2>
-            <p className="mb-8 text-lg leading-relaxed text-surface-400">
+            <p className="type-body mb-8 text-body">
               Stop juggling spreadsheets, browser tabs, and printer UIs.
               RankOS brings your entire operation into one place.
             </p>
@@ -857,14 +857,14 @@ export default function Home() {
             <div className="flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
               <a
                 href="https://github.com/cadimartech/rankos"
-                className="group inline-flex items-center gap-2 rounded-xl bg-accent-500 px-8 py-3.5 text-sm font-semibold text-white transition-all hover:bg-accent-600"
+                className="btn btn-primary"
               >
                 <Github className="h-4 w-4" />
                 View on GitHub
-                <ExternalLink className="h-3.5 w-3.5 opacity-50" />
+                <ExternalLink className="h-3.5 w-3.5" />
               </a>
-              <div className="rounded-xl border border-surface-700 bg-surface-900/50 px-6 py-3.5 font-mono text-sm text-surface-300">
-                <span className="text-surface-600">$ </span>
+              <div className="inline-flex max-w-full items-center rounded-none border border-border bg-surface px-[30px] py-4 text-center font-mono text-[15px] leading-[1.6] text-ink">
+                <span className="text-body">$ </span>
                 git clone cadimartech/rankos && make dev
               </div>
             </div>
@@ -873,20 +873,20 @@ export default function Home() {
       </section>
 
       {/* ─── Footer ────────────────────────────────────────────────────── */}
-      <footer className="border-t border-surface-800/50 py-12">
+      <footer className="border-t border-border py-section">
         <div className="mx-auto max-w-6xl px-6">
           <div className="flex flex-col items-center justify-between gap-6 sm:flex-row">
             <div className="flex items-center gap-2.5">
-              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-accent-500/10">
-                <Layers className="h-4 w-4 text-accent-500" />
+              <div className="flex h-7 w-7 items-center justify-center rounded-none border border-border bg-primary/10">
+                <Layers className="h-4 w-4 text-primary" />
               </div>
-              <span className="text-sm font-bold text-surface-300">
+              <span className="type-heading-xs text-ink">
                 RankOS
               </span>
             </div>
-            <div className="flex items-center gap-6 text-xs text-surface-500">
+            <div className="type-caption flex items-center gap-6 text-body">
               <span>Built with Go, React & Wails</span>
-              <span className="hidden sm:inline text-surface-700">|</span>
+              <span className="hidden text-muted sm:inline">|</span>
               <span>Print Farm Management</span>
             </div>
           </div>

@@ -39,7 +39,7 @@ export default function DocsHome() {
   return (
     <div className="docs-prose">
       <h1>Getting Started</h1>
-      <p className="text-lg !text-surface-300">
+      <p className="!text-body">
         Welcome to the RankOS documentation. This guide will walk you through setting up
         your print farm and using every feature of the platform.
       </p>
@@ -100,18 +100,18 @@ export default function DocsHome() {
             <Link
               key={s.href}
               href={s.href}
-              className="group flex items-center gap-3 rounded-xl border border-surface-800 bg-surface-900/50 px-4 py-3 no-underline transition-colors hover:border-accent-500/30 hover:bg-surface-900"
+              className="group flex items-center gap-3 rounded-none border border-border bg-surface px-4 py-3 no-underline shadow-card transition-colors hover:border-primary"
             >
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent-500/10 text-accent-500">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-none border border-border bg-primary/10 text-primary">
                 <Icon className="h-4 w-4" />
               </div>
               <div className="min-w-0">
-                <div className="text-sm font-medium text-surface-100 group-hover:text-accent-400 transition-colors">
+                <div className="type-body-sm-strong text-ink transition-colors group-hover:text-primary">
                   {s.label}
                 </div>
-                <div className="text-xs text-surface-500 truncate">{s.desc}</div>
+                <div className="type-caption truncate text-body">{s.desc}</div>
               </div>
-              <ArrowRight className="ml-auto h-4 w-4 shrink-0 text-surface-600 group-hover:text-accent-500 transition-colors" />
+              <ArrowRight className="ml-auto h-4 w-4 shrink-0 text-body transition-colors group-hover:text-primary" />
             </Link>
           );
         })}

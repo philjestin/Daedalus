@@ -7,7 +7,7 @@ export default function TimelineDocs() {
   return (
     <div className="docs-prose">
       <h1>Timeline</h1>
-      <p className="text-lg !text-surface-300">
+      <p className="!text-body">
         A Gantt-style view of your entire production pipeline. See orders, tasks, and print
         jobs laid out across time with color-coded status indicators.
       </p>

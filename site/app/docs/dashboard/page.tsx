@@ -7,7 +7,7 @@ export default function DashboardDocs() {
   return (
     <div className="docs-prose">
       <h1>Dashboard</h1>
-      <p className="text-lg !text-surface-300">
+      <p className="!text-body">
         Your command center for the entire print farm. The dashboard gives you a real-time
         financial overview, fleet status, and production metrics at a glance.
       </p>

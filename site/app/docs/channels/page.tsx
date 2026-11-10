@@ -7,7 +7,7 @@ export default function ChannelsDocs() {
   return (
     <div className="docs-prose">
       <h1>Sales Channels</h1>
-      <p className="text-lg !text-surface-300">
+      <p className="!text-body">
         Connect your online stores to automatically import orders, sync inventory,
         and link marketplace listings to your RankOS product catalog.
       </p>

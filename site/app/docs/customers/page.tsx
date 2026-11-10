@@ -7,7 +7,7 @@ export default function CustomersDocs() {
   return (
     <div className="docs-prose">
       <h1>Customers</h1>
-      <p className="text-lg !text-surface-300">
+      <p className="!text-body">
         Keep track of everyone you do business with. Customers tie together quotes,
         orders, and sales into a single profile so you can see your full history with
         each buyer.

@@ -7,7 +7,7 @@ export default function SettingsDocs() {
   return (
     <div className="docs-prose">
       <h1>Settings</h1>
-      <p className="text-lg !text-surface-300">
+      <p className="!text-body">
         Configure integrations, manage API keys, set up automated backups, and customize
         your RankOS instance.
       </p>

@@ -7,7 +7,7 @@ export default function MaterialsDocs() {
   return (
     <div className="docs-prose">
       <h1>Materials &amp; Inventory</h1>
-      <p className="text-lg !text-surface-300">
+      <p className="!text-body">
         Track every spool of filament, manage additional supplies, integrate with Bambu Lab
         AMS, and get alerts before you run out of materials.
       </p>

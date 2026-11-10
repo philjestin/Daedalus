@@ -7,7 +7,7 @@ export default function ProjectsDocs() {
   return (
     <div className="docs-prose">
       <h1>Projects</h1>
-      <p className="text-lg !text-surface-300">
+      <p className="!text-body">
         Build a product catalog with multi-part designs, automatic 3MF parsing, immutable
         design versioning, and full bill of materials tracking.
       </p>

@@ -7,7 +7,7 @@ export default function ExpensesDocs() {
   return (
     <div className="docs-prose">
       <h1>Expenses &amp; OCR</h1>
-      <p className="text-lg !text-surface-300">
+      <p className="!text-body">
         Upload photos of receipts and let OCR extract the details automatically. Categorize
         expenses, review parsed data, and optionally create spool entries from filament purchases.
       </p>

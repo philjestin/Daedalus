@@ -7,7 +7,7 @@ export default function DeploymentDocs() {
   return (
     <div className="docs-prose">
       <h1>Deployment</h1>
-      <p className="text-lg !text-surface-300">
+      <p className="!text-body">
         Run RankOS as a native desktop app or a Docker container on your own server.
         Your data, your infrastructure.
       </p>
