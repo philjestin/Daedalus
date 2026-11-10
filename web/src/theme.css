@@ -1,0 +1,117 @@
+/*
+  InfinityFlow-inspired tokens.
+  Light is the default. Dark applies when <html data-theme="dark"> (also .dark).
+  Numbered --s-* / --a-* roles keep existing surface-* and accent-* utilities in sync.
+*/
+
+:root,
+[data-theme='light'] {
+  color-scheme: light;
+
+  --bg: #ffffff;
+  --surface: #f7f7f7;
+  --surface-raised: #eeeeee;
+  --text: #1a1c1d;
+  --text-muted: #2c2d2e;
+  --text-tertiary: #5e6368;
+  --border: #e4e4e4;
+  --muted: #dadce0;
+  --accent: #3295ff;
+  --accent-fg: #000000;
+  --accent-secondary: #ffd200;
+  --focus-ring: #3295ff;
+  --badge-bg: #f3f3f3;
+  --elevation: rgba(0, 0, 0, 0.08) 0px 4px 6px 0px;
+
+  --status-success: #1f7a4d;
+  --status-success-fg: #ffffff;
+  --status-error: #b42318;
+  --status-error-fg: #ffffff;
+  --status-warning: #8a5a00;
+  --status-warning-fg: #1a1c1d;
+  --status-info: #1a6bb8;
+  --status-info-fg: #ffffff;
+
+  --s-50: #ffffff;
+  --s-100: var(--text);
+  --s-200: var(--text);
+  --s-300: var(--text-muted);
+  --s-400: var(--text-muted);
+  --s-500: var(--text-tertiary);
+  --s-600: #6b7076;
+  --s-700: var(--border);
+  --s-800: var(--surface-raised);
+  --s-900: var(--surface);
+  --s-950: var(--bg);
+}
+
+[data-theme='dark'] {
+  color-scheme: dark;
+
+  --bg: #0a0f15;
+  --surface: #191d23;
+  --surface-raised: #25292f;
+  --text: #f7fbff;
+  --text-muted: #9da1a6;
+  --text-tertiary: #9da1a6;
+  --border: #31353a;
+  --muted: #3a4048;
+  --accent: #3295ff;
+  --accent-fg: #0b0b0c;
+  --accent-secondary: #ffd200;
+  --focus-ring: #3295ff;
+  --badge-bg: #25292f;
+  --elevation: rgba(0, 0, 0, 0.08) 0px 4px 6px 0px;
+
+  --status-success: #6fcb96;
+  --status-success-fg: #0b0b0c;
+  --status-error: #f0a0a0;
+  --status-error-fg: #0b0b0c;
+  --status-warning: #e6c15a;
+  --status-warning-fg: #0b0b0c;
+  --status-info: #8ebeff;
+  --status-info-fg: #0b0b0c;
+
+  --s-50: #f7fbff;
+  --s-100: var(--text);
+  --s-200: #e4eaf1;
+  --s-300: #c5cad1;
+  --s-400: var(--text-muted);
+  --s-500: var(--text-tertiary);
+  --s-600: #7a8088;
+  --s-700: var(--border);
+  --s-800: var(--surface-raised);
+  --s-900: var(--surface);
+  --s-950: var(--bg);
+}
+
+:root {
+  --disabled-bg: #9ca3af;
+  --disabled-fg: #d1d5db;
+
+  --a-50: #e8f3ff;
+  --a-100: #d6eaff;
+  --a-200: #addaff;
+  --a-300: #3295ff;
+  --a-400: #3295ff;
+  --a-500: #3295ff;
+  --a-600: #3295ff;
+  --a-700: #1868b3;
+  --a-800: #14528c;
+  --a-900: #0e3b66;
+}
+
+/*
+  Accent fills stay #3295FF. Link and nav text use a darker step in light mode
+  because #3295FF on white is below 4.5:1. Dark mode text can stay #3295FF.
+*/
+:root,
+[data-theme='light'] {
+  --a-300: #1868b3;
+  --a-400: #1868b3;
+}
+
+[data-theme='dark'] {
+  --a-300: #7cc4ff;
+  --a-400: #3295ff;
+}
