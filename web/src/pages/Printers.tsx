@@ -215,7 +215,7 @@ export default function Printers() {
       {/* Header */}
       <div className="flex items-center justify-between mb-8">
         <div>
-          <h1 className="text-3xl font-display font-bold text-surface-100">
+          <h1 className="text-heading-md font-display font-semibold text-surface-100">
             Printers
           </h1>
           <p className="text-surface-400 mt-1">
@@ -253,7 +253,7 @@ export default function Printers() {
       ) : printers.length === 0 ? (
         <div className="text-center py-16">
           <PrinterIcon className="h-16 w-16 mx-auto mb-4 text-surface-600" />
-          <h3 className="text-xl font-semibold text-surface-300 mb-2">
+          <h3 className="text-heading-xs font-display font-semibold text-surface-300 mb-2">
             No printers configured
           </h3>
           <p className="text-surface-500 mb-4">
@@ -276,17 +276,17 @@ export default function Printers() {
                 <div className="flex items-start justify-between mb-4">
                   <div className="flex items-center gap-3">
                     <div className={cn(
-                      'p-2 rounded-lg',
-                      state?.status === 'printing' ? 'bg-emerald-500/20' :
-                      state?.status === 'idle' ? 'bg-blue-500/20' :
-                      state?.status === 'error' ? 'bg-red-500/20' :
+                      'p-2 rounded-none',
+                      state?.status === 'printing' ? 'bg-success/20' :
+                      state?.status === 'idle' ? 'bg-info/20' :
+                      state?.status === 'error' ? 'bg-error/20' :
                       'bg-surface-800'
                     )}>
                       <PrinterIcon className={cn(
                         'h-5 w-5',
-                        state?.status === 'printing' ? 'text-emerald-400' :
-                        state?.status === 'idle' ? 'text-blue-400' :
-                        state?.status === 'error' ? 'text-red-400' :
+                        state?.status === 'printing' ? 'text-success' :
+                        state?.status === 'idle' ? 'text-info' :
+                        state?.status === 'error' ? 'text-error' :
                         'text-surface-500'
                       )} />
                     </div>
@@ -309,7 +309,7 @@ export default function Printers() {
                       </button>
                       <button
                         onClick={() => handleDelete(printer.id)}
-                        className="text-xs bg-red-500/20 text-red-400 hover:bg-red-500/30 rounded px-2 py-0.5"
+                        className="text-xs bg-error/20 text-error hover:bg-error/30 rounded-none px-2 py-0.5"
                       >
                         Delete
                       </button>
@@ -317,7 +317,7 @@ export default function Printers() {
                   ) : (
                     <button
                       onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleDelete(printer.id) }}
-                      className="p-1.5 rounded hover:bg-surface-800 text-surface-500 hover:text-red-400 transition-colors"
+                      className="p-1.5 rounded-none hover:bg-surface-800 text-surface-500 hover:text-error transition-colors"
                     >
                       <Trash2 className="h-4 w-4" />
                     </button>
@@ -342,7 +342,7 @@ export default function Printers() {
                       </div>
                       <div className="h-2 bg-surface-800 rounded-full overflow-hidden">
                         <div
-                          className="h-full bg-emerald-500 transition-all"
+                          className="h-full bg-success transition-all"
                           style={{ width: `${state.progress}%` }}
                         />
                       </div>
@@ -380,7 +380,7 @@ export default function Printers() {
                       <Wifi className={cn(
                         'h-4 w-4',
                         state?.status && state.status !== 'offline'
-                          ? 'text-emerald-400'
+                          ? 'text-success'
                           : 'text-surface-500'
                       )} />
                     )}
@@ -406,10 +406,10 @@ export default function Printers() {
 
       {/* Discover Printers Modal */}
       {showDiscover && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-overlay flex items-center justify-center z-50">
           <div className="card w-full max-w-2xl p-6">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-semibold text-surface-100">
+              <h2 className="text-heading-xs font-display font-semibold text-surface-100">
                 Network Discovery
               </h2>
               <button
@@ -456,22 +456,22 @@ export default function Printers() {
                   return (
                   <div
                     key={printer.id}
-                    className="rounded-lg bg-surface-800/50 border border-surface-700"
+                    className="rounded-none bg-surface-800/50 border border-surface-700"
                   >
                     <div className="flex items-center justify-between p-4">
                       <div className="flex items-center gap-4">
                         <div className={cn(
-                          'p-2 rounded-lg',
-                          printer.type === 'octoprint' ? 'bg-green-500/20' :
-                          printer.type === 'moonraker' ? 'bg-purple-500/20' :
-                          isBambu ? 'bg-blue-500/20' :
+                          'p-2 rounded-none',
+                          printer.type === 'octoprint' ? 'bg-success/20' :
+                          printer.type === 'moonraker' ? 'bg-gold/20' :
+                          isBambu ? 'bg-info/20' :
                           'bg-surface-700'
                         )}>
                           <PrinterIcon className={cn(
                             'h-5 w-5',
-                            printer.type === 'octoprint' ? 'text-green-400' :
-                            printer.type === 'moonraker' ? 'text-purple-400' :
-                            isBambu ? 'text-blue-400' :
+                            printer.type === 'octoprint' ? 'text-success' :
+                            printer.type === 'moonraker' ? 'text-gold' :
+                            isBambu ? 'text-info' :
                             'text-surface-400'
                           )} />
                         </div>
@@ -488,7 +488,7 @@ export default function Printers() {
                       </div>
                       <div>
                         {printer.already_added ? (
-                          <span className="flex items-center gap-1 text-emerald-400 text-sm">
+                          <span className="flex items-center gap-1 text-success text-sm">
                             <Check className="h-4 w-4" />
                             Added
                           </span>
@@ -519,7 +519,7 @@ export default function Printers() {
                       <div className="px-4 pb-4 pt-0 border-t border-surface-700">
                         <div className="mt-3 space-y-3">
                           <div>
-                            <label className="block text-sm font-medium text-surface-300 mb-1">
+                            <label className="block text-label-sm font-normal text-surface-300 mb-1">
                               <Key className="h-3.5 w-3.5 inline mr-1" />
                               LAN Access Code <span className="text-surface-500 font-normal">(optional)</span>
                             </label>
@@ -542,7 +542,7 @@ export default function Printers() {
                             </p>
                           </div>
                           <div>
-                            <label className="block text-sm font-medium text-surface-300 mb-1">
+                            <label className="block text-label-sm font-normal text-surface-300 mb-1">
                               Serial Number
                             </label>
                             <input
@@ -616,10 +616,10 @@ export default function Printers() {
 
       {/* Bambu Cloud Modal */}
       {showCloud && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-overlay flex items-center justify-center z-50">
           <div className="card w-full max-w-lg p-6">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-semibold text-surface-100">
+              <h2 className="text-heading-xs font-display font-semibold text-surface-100">
                 {cloudStep === 'login' && 'Connect Bambu Cloud'}
                 {cloudStep === 'verify' && 'Enter Verification Code'}
                 {cloudStep === 'devices' && 'Your Bambu Printers'}
@@ -633,7 +633,7 @@ export default function Printers() {
             </div>
 
             {cloudError && (
-              <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3 mb-4 text-sm text-red-400">
+              <div className="bg-error/10 border border-error/20 rounded-none p-3 mb-4 text-sm text-error">
                 {cloudError}
               </div>
             )}
@@ -645,7 +645,7 @@ export default function Printers() {
                   This works even when printers are not in LAN-only mode.
                 </p>
                 <div>
-                  <label className="block text-sm font-medium text-surface-300 mb-1">
+                  <label className="block text-label-sm font-normal text-surface-300 mb-1">
                     Email
                   </label>
                   <input
@@ -658,7 +658,7 @@ export default function Printers() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-surface-300 mb-1">
+                  <label className="block text-label-sm font-normal text-surface-300 mb-1">
                     Password
                   </label>
                   <input
@@ -699,7 +699,7 @@ export default function Printers() {
                   Enter the 6-digit code below.
                 </p>
                 <div>
-                  <label className="block text-sm font-medium text-surface-300 mb-1">
+                  <label className="block text-label-sm font-normal text-surface-300 mb-1">
                     Verification Code
                   </label>
                   <input
@@ -750,16 +750,16 @@ export default function Printers() {
                     {cloudDevices.map(device => (
                       <div
                         key={device.dev_id}
-                        className="flex items-center justify-between p-4 rounded-lg bg-surface-800/50 border border-surface-700"
+                        className="flex items-center justify-between p-4 rounded-none bg-surface-800/50 border border-surface-700"
                       >
                         <div className="flex items-center gap-3">
                           <div className={cn(
-                            'p-2 rounded-lg',
-                            device.online ? 'bg-emerald-500/20' : 'bg-surface-700'
+                            'p-2 rounded-none',
+                            device.online ? 'bg-success/20' : 'bg-surface-700'
                           )}>
                             <PrinterIcon className={cn(
                               'h-5 w-5',
-                              device.online ? 'text-emerald-400' : 'text-surface-500'
+                              device.online ? 'text-success' : 'text-surface-500'
                             )} />
                           </div>
                           <div>
@@ -769,7 +769,7 @@ export default function Printers() {
                             <div className="text-sm text-surface-500">
                               {device.dev_product_name || device.dev_model_name}
                               {device.online ? (
-                                <span className="text-emerald-400 ml-2">Online</span>
+                                <span className="text-success ml-2">Online</span>
                               ) : (
                                 <span className="text-surface-600 ml-2">Offline</span>
                               )}
@@ -777,7 +777,7 @@ export default function Printers() {
                           </div>
                         </div>
                         {addedCloudDevices.has(device.dev_id) ? (
-                          <span className="flex items-center gap-1 text-emerald-400 text-sm">
+                          <span className="flex items-center gap-1 text-success text-sm">
                             <Check className="h-4 w-4" />
                             Added
                           </span>
@@ -817,16 +817,16 @@ export default function Printers() {
 
       {/* Add Printer Modal */}
       {showAdd && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-overlay flex items-center justify-center z-50">
           <div className="card w-full max-w-lg p-6">
-            <h2 className="text-xl font-semibold text-surface-100 mb-4">
+            <h2 className="text-heading-xs font-display font-semibold text-surface-100 mb-4">
               Add Printer
             </h2>
             <form onSubmit={handleCreate}>
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-surface-300 mb-1">
+                    <label className="block text-label-sm font-normal text-surface-300 mb-1">
                       Name *
                     </label>
                     <input
@@ -839,7 +839,7 @@ export default function Printers() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-surface-300 mb-1">
+                    <label className="block text-label-sm font-normal text-surface-300 mb-1">
                       Model
                     </label>
                     <input
@@ -852,7 +852,7 @@ export default function Printers() {
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-surface-300 mb-1">
+                    <label className="block text-label-sm font-normal text-surface-300 mb-1">
                       Manufacturer
                     </label>
                     <input
@@ -863,7 +863,7 @@ export default function Printers() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-surface-300 mb-1">
+                    <label className="block text-label-sm font-normal text-surface-300 mb-1">
                       Location
                     </label>
                     <input
@@ -875,7 +875,7 @@ export default function Printers() {
                   </div>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-surface-300 mb-1">
+                  <label className="block text-label-sm font-normal text-surface-300 mb-1">
                     Cost per Hour ($)
                   </label>
                   <input
@@ -892,7 +892,7 @@ export default function Printers() {
                   </p>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-surface-300 mb-1">
+                  <label className="block text-label-sm font-normal text-surface-300 mb-1">
                     Connection Type
                   </label>
                   <select name="connection_type" className="input">
@@ -903,7 +903,7 @@ export default function Printers() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-surface-300 mb-1">
+                  <label className="block text-label-sm font-normal text-surface-300 mb-1">
                     Connection URL
                   </label>
                   <input

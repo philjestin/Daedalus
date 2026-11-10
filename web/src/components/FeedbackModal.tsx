@@ -47,33 +47,33 @@ export default function FeedbackModal({ onClose }: FeedbackModalProps) {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+    <div className="fixed inset-0 bg-overlay flex items-center justify-center z-50">
       <div className="card w-full max-w-lg p-6 m-4">
         {submitted ? (
           <div className="text-center py-8">
-            <div className="w-12 h-12 rounded-full bg-green-500/20 flex items-center justify-center mx-auto mb-4">
-              <svg className="w-6 h-6 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="w-12 h-12 rounded-badge bg-success/20 flex items-center justify-center mx-auto mb-4">
+              <svg className="w-6 h-6 text-success" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
               </svg>
             </div>
-            <h3 className="text-lg font-semibold text-surface-100">Thanks for your feedback!</h3>
+            <h3 className="text-heading-xs font-display font-semibold text-surface-100">Thanks for your feedback!</h3>
             <p className="text-sm text-surface-400 mt-1">We appreciate you helping improve RankOS.</p>
           </div>
         ) : (
           <>
             {/* Header */}
             <div className="flex items-center justify-between mb-5">
-              <h2 className="text-xl font-semibold text-surface-100">Send Feedback</h2>
+              <h2 className="text-heading-xs font-display font-semibold text-surface-100">Send Feedback</h2>
               <button
                 onClick={onClose}
-                className="w-8 h-8 flex items-center justify-center rounded-lg text-surface-400 hover:text-surface-100 hover:bg-surface-800 transition-colors"
+                className="w-8 h-8 flex items-center justify-center rounded-none text-surface-400 hover:text-surface-100 hover:bg-surface-800 transition-colors"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
 
             {error && (
-              <div className="mb-4 p-3 bg-red-500/20 border border-red-500/50 rounded text-red-300 text-sm">
+              <div className="mb-4 p-3 bg-error/20 border border-error/50 rounded-none text-error text-sm">
                 {error}
               </div>
             )}
@@ -89,7 +89,7 @@ export default function FeedbackModal({ onClose }: FeedbackModalProps) {
                       type="button"
                       onClick={() => setType(ft.value)}
                       className={cn(
-                        'flex-1 px-3 py-2 text-sm font-medium rounded-lg border transition-colors',
+                        'flex-1 px-3 py-2 text-sm font-medium rounded-none border transition-colors',
                         type === ft.value
                           ? 'border-accent-500 bg-accent-500/20 text-accent-300'
                           : 'border-surface-700 text-surface-400 hover:border-surface-600 hover:text-surface-200'
@@ -110,7 +110,7 @@ export default function FeedbackModal({ onClose }: FeedbackModalProps) {
                   placeholder="Tell us what's on your mind..."
                   required
                   rows={4}
-                  className="w-full bg-surface-800 border border-surface-700 rounded-lg px-3 py-2 text-surface-100 placeholder-surface-500 resize-none focus:outline-none focus:border-accent-500 transition-colors"
+                  className="input resize-none focus:border-accent-500 transition-colors"
                 />
               </div>
 
@@ -124,7 +124,7 @@ export default function FeedbackModal({ onClose }: FeedbackModalProps) {
                   value={contact}
                   onChange={(e) => setContact(e.target.value)}
                   placeholder="Email if you'd like a response"
-                  className="w-full bg-surface-800 border border-surface-700 rounded-lg px-3 py-2 text-surface-100 placeholder-surface-500 focus:outline-none focus:border-accent-500 transition-colors"
+                  className="input focus:border-accent-500 transition-colors"
                 />
               </div>
 
@@ -141,7 +141,7 @@ export default function FeedbackModal({ onClose }: FeedbackModalProps) {
                 <button
                   type="submit"
                   disabled={loading || !message.trim()}
-                  className="px-5 py-2 bg-accent-600 hover:bg-accent-500 text-white rounded-lg font-medium transition-colors disabled:opacity-50"
+                  className="btn btn-primary px-5 py-2 disabled:opacity-50"
                 >
                   {loading ? 'Sending...' : 'Send Feedback'}
                 </button>

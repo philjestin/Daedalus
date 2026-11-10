@@ -49,59 +49,59 @@ export function getStatusColor(status: string): string {
     case 'idle':
     case 'draft':
     case 'new':
-      return 'text-surface-400'
+      return 'text-tertiary'
     case 'active':
     case 'printing':
     case 'in_use':
-      return 'text-blue-400'
+      return 'text-info'
     case 'completed':
     case 'complete':
-      return 'text-emerald-400'
+      return 'text-success'
     case 'paused':
     case 'low':
-      return 'text-amber-400'
+      return 'text-warning'
     case 'error':
     case 'failed':
     case 'cancelled':
-      return 'text-red-400'
+      return 'text-error'
     case 'offline':
     case 'archived':
     case 'empty':
-      return 'text-surface-500'
+      return 'text-tertiary'
     default:
-      return 'text-surface-400'
+      return 'text-tertiary'
   }
 }
 
-// Get status badge classes.
+// Get status badge classes. Pair with the `badge` component class.
 export function getStatusBadge(status: string): string {
   switch (status) {
     case 'idle':
     case 'draft':
     case 'new':
-      return 'bg-surface-700/50 text-surface-300'
+      return 'text-body'
     case 'active':
     case 'printing':
     case 'in_use':
     case 'sending':
-      return 'bg-blue-500/20 text-blue-400'
+      return 'badge-info'
     case 'completed':
     case 'complete':
-      return 'bg-emerald-500/20 text-emerald-400'
+      return 'badge-success'
     case 'paused':
     case 'low':
     case 'queued':
-      return 'bg-amber-500/20 text-amber-400'
+      return 'badge-warning'
     case 'error':
     case 'failed':
     case 'cancelled':
-      return 'bg-red-500/20 text-red-400'
+      return 'badge-error'
     case 'offline':
     case 'archived':
     case 'empty':
-      return 'bg-surface-800 text-surface-500'
+      return 'text-tertiary'
     default:
-      return 'bg-surface-700/50 text-surface-300'
+      return 'text-body'
   }
 }
 

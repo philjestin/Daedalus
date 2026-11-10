@@ -41,7 +41,7 @@ export default function TemplateAnalyticsCard({ templateId }: TemplateAnalyticsC
       <div className="card p-6">
         <div className="flex items-center gap-2 mb-4">
           <BarChart3 className="h-5 w-5 text-surface-400" />
-          <h2 className="text-lg font-semibold text-surface-100">Performance Analytics</h2>
+          <h2 className="text-heading-xs font-display font-semibold text-surface-100">Performance Analytics</h2>
         </div>
         <div className="text-surface-500 text-center py-4">Loading...</div>
       </div>
@@ -53,7 +53,7 @@ export default function TemplateAnalyticsCard({ templateId }: TemplateAnalyticsC
       <div className="card p-6">
         <div className="flex items-center gap-2 mb-4">
           <BarChart3 className="h-5 w-5 text-surface-400" />
-          <h2 className="text-lg font-semibold text-surface-100">Performance Analytics</h2>
+          <h2 className="text-heading-xs font-display font-semibold text-surface-100">Performance Analytics</h2>
         </div>
         <div className="text-surface-500 text-center py-4">
           Unable to load analytics
@@ -67,7 +67,7 @@ export default function TemplateAnalyticsCard({ templateId }: TemplateAnalyticsC
       <div className="card p-6">
         <div className="flex items-center gap-2 mb-4">
           <BarChart3 className="h-5 w-5 text-surface-400" />
-          <h2 className="text-lg font-semibold text-surface-100">Performance Analytics</h2>
+          <h2 className="text-heading-xs font-display font-semibold text-surface-100">Performance Analytics</h2>
         </div>
         <div className="text-center py-8 text-surface-500">
           <BarChart3 className="h-12 w-12 mx-auto mb-3 opacity-50" />
@@ -88,7 +88,7 @@ export default function TemplateAnalyticsCard({ templateId }: TemplateAnalyticsC
     <div className="card p-6">
       <div className="flex items-center gap-2 mb-4">
         <BarChart3 className="h-5 w-5 text-surface-400" />
-        <h2 className="text-lg font-semibold text-surface-100">Performance Analytics</h2>
+        <h2 className="text-heading-xs font-display font-semibold text-surface-100">Performance Analytics</h2>
         <span className="text-sm text-surface-500">
           ({analytics.project_count} project{analytics.project_count !== 1 ? 's' : ''})
         </span>
@@ -96,7 +96,7 @@ export default function TemplateAnalyticsCard({ templateId }: TemplateAnalyticsC
 
       {/* Stats Grid */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <div className="p-3 rounded-lg bg-surface-800/50">
+        <div className="p-3 rounded-none bg-surface-800/50">
           <div className="text-xs text-surface-500 mb-1">Total Revenue</div>
           <div className="font-semibold text-surface-100">
             {formatCents(analytics.net_revenue_cents)}
@@ -106,11 +106,11 @@ export default function TemplateAnalyticsCard({ templateId }: TemplateAnalyticsC
           </div>
         </div>
 
-        <div className="p-3 rounded-lg bg-surface-800/50">
+        <div className="p-3 rounded-none bg-surface-800/50">
           <div className="text-xs text-surface-500 mb-1">Avg Margin</div>
           <div className={cn(
             'font-semibold',
-            analytics.avg_gross_margin_percent >= 0 ? 'text-emerald-400' : 'text-red-400'
+            analytics.avg_gross_margin_percent >= 0 ? 'text-success' : 'text-error'
           )}>
             {analytics.avg_gross_margin_percent.toFixed(1)}%
           </div>
@@ -119,12 +119,12 @@ export default function TemplateAnalyticsCard({ templateId }: TemplateAnalyticsC
           </div>
         </div>
 
-        <div className="p-3 rounded-lg bg-surface-800/50">
+        <div className="p-3 rounded-none bg-surface-800/50">
           <div className="text-xs text-surface-500 mb-1">Success Rate</div>
           <div className={cn(
             'font-semibold',
-            analytics.success_rate >= 90 ? 'text-emerald-400' :
-            analytics.success_rate >= 70 ? 'text-amber-400' : 'text-red-400'
+            analytics.success_rate >= 90 ? 'text-success' :
+            analytics.success_rate >= 70 ? 'text-warning' : 'text-error'
           )}>
             {analytics.success_rate.toFixed(0)}%
           </div>
@@ -133,7 +133,7 @@ export default function TemplateAnalyticsCard({ templateId }: TemplateAnalyticsC
           </div>
         </div>
 
-        <div className="p-3 rounded-lg bg-surface-800/50">
+        <div className="p-3 rounded-none bg-surface-800/50">
           <div className="text-xs text-surface-500 mb-1">Avg Print Time</div>
           <div className="font-semibold text-surface-100">
             {formatDuration(analytics.avg_print_seconds)}
@@ -168,7 +168,7 @@ export default function TemplateAnalyticsCard({ templateId }: TemplateAnalyticsC
                   {printTimeDiff.value > 0 && (
                     <span className={cn(
                       'text-xs px-1.5 py-0.5 rounded',
-                      printTimeDiff.better ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'
+                      printTimeDiff.better ? 'bg-success/20 text-success' : 'bg-error/20 text-error'
                     )}>
                       {printTimeDiff.better ? '-' : '+'}{printTimeDiff.value.toFixed(0)}%
                     </span>
@@ -193,7 +193,7 @@ export default function TemplateAnalyticsCard({ templateId }: TemplateAnalyticsC
                   {materialDiff.value > 0 && (
                     <span className={cn(
                       'text-xs px-1.5 py-0.5 rounded',
-                      materialDiff.better ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'
+                      materialDiff.better ? 'bg-success/20 text-success' : 'bg-error/20 text-error'
                     )}>
                       {materialDiff.better ? '-' : '+'}{materialDiff.value.toFixed(0)}%
                     </span>
@@ -218,7 +218,7 @@ export default function TemplateAnalyticsCard({ templateId }: TemplateAnalyticsC
                   {costDiff.value > 0 && (
                     <span className={cn(
                       'text-xs px-1.5 py-0.5 rounded',
-                      costDiff.better ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'
+                      costDiff.better ? 'bg-success/20 text-success' : 'bg-error/20 text-error'
                     )}>
                       {costDiff.better ? '-' : '+'}{costDiff.value.toFixed(0)}%
                     </span>
@@ -234,12 +234,12 @@ export default function TemplateAnalyticsCard({ templateId }: TemplateAnalyticsC
       <div className="mt-4 pt-4 border-t border-surface-700 flex items-center justify-between text-xs text-surface-500">
         <div className="flex items-center gap-4">
           <span className="flex items-center gap-1">
-            <CheckCircle className="h-3 w-3 text-emerald-500" />
+            <CheckCircle className="h-3 w-3 text-success" />
             {analytics.total_completed} completed
           </span>
           {analytics.total_failed > 0 && (
             <span className="flex items-center gap-1">
-              <AlertCircle className="h-3 w-3 text-red-500" />
+              <AlertCircle className="h-3 w-3 text-error" />
               {analytics.total_failed} failed
             </span>
           )}

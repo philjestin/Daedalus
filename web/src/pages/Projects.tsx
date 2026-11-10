@@ -138,7 +138,7 @@ export default function Projects() {
       {/* Header */}
       <div className="flex items-center justify-between mb-8">
         <div>
-          <h1 className="text-3xl font-display font-bold text-surface-100">
+          <h1 className="text-heading-md font-display font-semibold text-surface-100">
             Projects
           </h1>
           <p className="text-surface-400 mt-1">
@@ -156,11 +156,11 @@ export default function Projects() {
 
       {/* View Toggle */}
       <div className="flex items-center justify-end mb-6">
-        <div className="flex gap-1 bg-surface-800 rounded-lg p-1">
+        <div className="flex gap-1 bg-surface-800 rounded-none p-1">
           <button
             onClick={() => setViewMode('grid')}
             className={cn(
-              'p-1.5 rounded transition-colors',
+              'p-1.5 rounded-none transition-colors',
               viewMode === 'grid' ? 'bg-surface-700 text-surface-100' : 'text-surface-500 hover:text-surface-300'
             )}
             title="Grid view"
@@ -170,7 +170,7 @@ export default function Projects() {
           <button
             onClick={() => setViewMode('table')}
             className={cn(
-              'p-1.5 rounded transition-colors',
+              'p-1.5 rounded-none transition-colors',
               viewMode === 'table' ? 'bg-surface-700 text-surface-100' : 'text-surface-500 hover:text-surface-300'
             )}
             title="Table view"
@@ -186,7 +186,7 @@ export default function Projects() {
       ) : projects.length === 0 ? (
         <div className="text-center py-16">
           <FolderKanban className="h-16 w-16 mx-auto mb-4 text-surface-600" />
-          <h3 className="text-xl font-semibold text-surface-300 mb-2">
+          <h3 className="text-heading-xs font-display font-semibold text-surface-300 mb-2">
             No projects found
           </h3>
           <p className="text-surface-500 mb-4">
@@ -232,13 +232,13 @@ export default function Projects() {
                       <td className="p-3 text-right text-sm text-surface-300">
                         {s ? formatCents(s.net_revenue_cents) : '-'}
                       </td>
-                      <td className={cn('p-3 text-right text-sm font-medium', s && s.gross_profit_cents >= 0 ? 'text-emerald-400' : s ? 'text-red-400' : 'text-surface-500')}>
+                      <td className={cn('p-3 text-right text-sm font-medium', s && s.gross_profit_cents >= 0 ? 'text-success' : s ? 'text-error' : 'text-surface-500')}>
                         {s ? formatCents(s.gross_profit_cents) : '-'}
                       </td>
-                      <td className={cn('p-3 text-right text-sm', s && s.profit_per_hour_cents >= 0 ? 'text-emerald-400' : s ? 'text-red-400' : 'text-surface-500')}>
+                      <td className={cn('p-3 text-right text-sm', s && s.profit_per_hour_cents >= 0 ? 'text-success' : s ? 'text-error' : 'text-surface-500')}>
                         {s ? formatCents(s.profit_per_hour_cents) : '-'}
                       </td>
-                      <td className={cn('p-3 text-right text-sm', s ? (s.success_rate >= 90 ? 'text-emerald-400' : s.success_rate >= 70 ? 'text-amber-400' : 'text-red-400') : 'text-surface-500')}>
+                      <td className={cn('p-3 text-right text-sm', s ? (s.success_rate >= 90 ? 'text-success' : s.success_rate >= 70 ? 'text-warning' : 'text-error') : 'text-surface-500')}>
                         {s ? `${s.success_rate.toFixed(0)}%` : '-'}
                       </td>
                       <td className="p-3 text-right text-sm text-surface-300">
@@ -292,15 +292,15 @@ export default function Projects() {
 
       {/* Create Modal */}
       {showCreate && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-overlay flex items-center justify-center z-50">
           <div className="card w-full max-w-md p-6">
-            <h2 className="text-xl font-semibold text-surface-100 mb-4">
+            <h2 className="text-heading-xs font-display font-semibold text-surface-100 mb-4">
               Create Project
             </h2>
             <form onSubmit={handleCreate}>
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-surface-300 mb-1">
+                  <label className="block text-label-sm font-normal text-surface-300 mb-1">
                     Project Name
                   </label>
                   <input
@@ -313,7 +313,7 @@ export default function Projects() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-surface-300 mb-1">
+                  <label className="block text-label-sm font-normal text-surface-300 mb-1">
                     Description
                   </label>
                   <textarea

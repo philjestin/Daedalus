@@ -115,14 +115,14 @@ export function TagSelector({
         {selectedTags.map(tag => (
           <span
             key={tag.id}
-            className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium text-white"
+            className="inline-flex items-center gap-1 px-2 py-1 rounded-badge text-xs font-medium text-on-color"
             style={{ backgroundColor: tag.color }}
           >
             <TagIcon className="w-3 h-3" />
             {tag.name}
             <button
               onClick={() => handleRemoveTag(tag)}
-              className="hover:bg-white/20 rounded-full p-0.5"
+              className="hover:bg-canvas/20 rounded-badge p-0.5"
             >
               <X className="w-3 h-3" />
             </button>
@@ -132,7 +132,7 @@ export function TagSelector({
         {/* Add tag button */}
         <button
           onClick={() => setShowDropdown(!showDropdown)}
-          className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 transition-colors"
+          className="inline-flex items-center gap-1 px-2 py-1 rounded-badge text-xs font-medium text-body bg-surface hover:bg-muted transition-colors"
         >
           <Plus className="w-3 h-3" />
           Add tag
@@ -141,17 +141,17 @@ export function TagSelector({
 
       {/* Dropdown */}
       {showDropdown && (
-        <div className="absolute z-10 mt-2 w-64 bg-white rounded-lg shadow-lg border">
+        <div className="card absolute z-10 mt-2 w-64">
           {/* Existing tags */}
           {availableTags.length > 0 && (
             <div className="p-2 border-b">
-              <div className="text-xs font-medium text-gray-500 mb-2">Existing tags</div>
+              <div className="text-xs font-medium text-tertiary mb-2">Existing tags</div>
               <div className="flex flex-wrap gap-1">
                 {availableTags.map(tag => (
                   <button
                     key={tag.id}
                     onClick={() => handleAddTag(tag)}
-                    className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium text-white hover:opacity-80 transition-opacity"
+                    className="inline-flex items-center gap-1 px-2 py-1 rounded-badge text-xs font-medium text-on-color hover:opacity-80 transition-opacity"
                     style={{ backgroundColor: tag.color }}
                   >
                     <TagIcon className="w-3 h-3" />
@@ -164,7 +164,7 @@ export function TagSelector({
 
           {/* Create new tag */}
           <div className="p-2">
-            <div className="text-xs font-medium text-gray-500 mb-2">Create new tag</div>
+            <div className="text-xs font-medium text-tertiary mb-2">Create new tag</div>
             <div className="flex gap-2 mb-2">
               <input
                 type="text"
@@ -177,7 +177,7 @@ export function TagSelector({
               <button
                 onClick={handleCreateTag}
                 disabled={!newTagName.trim() || creating}
-                className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="btn btn-primary px-3 py-1 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {creating ? '...' : 'Create'}
               </button>
@@ -190,7 +190,7 @@ export function TagSelector({
                   key={color}
                   onClick={() => setNewTagColor(color)}
                   className={`w-6 h-6 rounded-full border-2 transition-all ${
-                    newTagColor === color ? 'border-gray-800 scale-110' : 'border-transparent'
+                    newTagColor === color ? 'border-line scale-110' : 'border-transparent'
                   }`}
                   style={{ backgroundColor: color }}
                 />
@@ -202,7 +202,7 @@ export function TagSelector({
           <div className="p-2 border-t">
             <button
               onClick={() => setShowDropdown(false)}
-              className="w-full px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded"
+              className="btn btn-ghost w-full text-sm hover:bg-surface"
             >
               Close
             </button>

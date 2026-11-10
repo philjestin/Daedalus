@@ -17,11 +17,11 @@ import { ordersApi, templatesApi } from '../api/client'
 import type { Order, OrderProgress, OrderStatus, Template } from '../types'
 
 const statusConfig: Record<OrderStatus, { label: string; color: string; icon: React.ReactNode }> = {
-  pending: { label: 'Pending', color: 'bg-gray-100 text-gray-700', icon: <Clock className="w-4 h-4" /> },
-  in_progress: { label: 'In Progress', color: 'bg-blue-100 text-blue-700', icon: <RefreshCw className="w-4 h-4" /> },
-  completed: { label: 'Completed', color: 'bg-green-100 text-green-700', icon: <CheckCircle className="w-4 h-4" /> },
-  shipped: { label: 'Shipped', color: 'bg-purple-100 text-purple-700', icon: <Truck className="w-4 h-4" /> },
-  cancelled: { label: 'Cancelled', color: 'bg-red-100 text-red-700', icon: <XCircle className="w-4 h-4" /> },
+  pending: { label: 'Pending', color: 'badge', icon: <Clock className="w-4 h-4" /> },
+  in_progress: { label: 'In Progress', color: 'badge badge-info', icon: <RefreshCw className="w-4 h-4" /> },
+  completed: { label: 'Completed', color: 'badge badge-success', icon: <CheckCircle className="w-4 h-4" /> },
+  shipped: { label: 'Shipped', color: 'badge badge-info', icon: <Truck className="w-4 h-4" /> },
+  cancelled: { label: 'Cancelled', color: 'badge badge-error', icon: <XCircle className="w-4 h-4" /> },
 }
 
 export function OrderDetail() {
@@ -101,7 +101,7 @@ export function OrderDetail() {
   if (loading) {
     return (
       <div className="p-6">
-        <div className="text-center py-12 text-gray-500">Loading order...</div>
+        <div className="text-center py-12 text-tertiary">Loading order...</div>
       </div>
     )
   }
@@ -110,9 +110,9 @@ export function OrderDetail() {
     return (
       <div className="p-6">
         <div className="text-center py-12">
-          <Package className="w-12 h-12 mx-auto text-gray-400 mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 mb-2">Order not found</h3>
-          <Link to="/orders" className="text-blue-600 hover:text-blue-700">
+          <Package className="w-12 h-12 mx-auto text-tertiary mb-4" />
+          <h3 className="text-heading-xs font-display font-semibold text-ink mb-2">Order not found</h3>
+          <Link to="/orders" className="text-info hover:text-info">
             Back to orders
           </Link>
         </div>
@@ -124,17 +124,17 @@ export function OrderDetail() {
     <div className="p-6">
       {/* Header */}
       <div className="flex items-center gap-4 mb-6">
-        <Link to="/orders" className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
+        <Link to="/orders" className="p-2 hover:bg-surface-raised rounded-none transition-colors">
           <ArrowLeft className="w-5 h-5" />
         </Link>
         <div className="flex-1">
-          <h1 className="text-2xl font-bold">{order.customer_name}</h1>
-          <p className="text-gray-600">
+          <h1 className="text-heading-sm font-display font-semibold">{order.customer_name}</h1>
+          <p className="text-body">
             {order.source.charAt(0).toUpperCase() + order.source.slice(1)} Order
             {order.source_order_id && ` #${order.source_order_id}`}
           </p>
         </div>
-        <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium ${statusConfig[order.status].color}`}>
+        <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-badge text-sm font-medium ${statusConfig[order.status].color}`}>
           {statusConfig[order.status].icon}
           {statusConfig[order.status].label}
         </span>
@@ -145,40 +145,40 @@ export function OrderDetail() {
         <div className="lg:col-span-2 space-y-6">
           {/* Progress */}
           {progress && (
-            <div className="bg-white rounded-lg border p-6">
-              <h2 className="text-lg font-semibold mb-4">Progress</h2>
+            <div className="card p-6">
+              <h2 className="text-heading-xs font-display font-semibold mb-4">Progress</h2>
               <div className="mb-4">
-                <div className="flex justify-between text-sm text-gray-600 mb-1">
+                <div className="flex justify-between text-sm text-body mb-1">
                   <span>{progress.completed_jobs} of {progress.total_jobs} jobs complete</span>
                   <span>{Math.round(progress.progress_percent)}%</span>
                 </div>
-                <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+                <div className="h-2 bg-muted rounded-full overflow-hidden">
                   <div
-                    className="h-full bg-blue-600 rounded-full transition-all duration-300"
+                    className="h-full bg-primary rounded-badge transition-all duration-300"
                     style={{ width: `${progress.progress_percent}%` }}
                   />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4 text-center">
-                <div className="p-3 bg-gray-50 rounded-lg">
-                  <div className="text-2xl font-bold text-gray-900">{progress.completed_items}</div>
-                  <div className="text-sm text-gray-500">Items Processed</div>
+                <div className="p-3 bg-surface-raised rounded-none">
+                  <div className="text-heading-sm font-display font-semibold text-ink">{progress.completed_items}</div>
+                  <div className="text-sm text-tertiary">Items Processed</div>
                 </div>
-                <div className="p-3 bg-gray-50 rounded-lg">
-                  <div className="text-2xl font-bold text-gray-900">{progress.total_items}</div>
-                  <div className="text-sm text-gray-500">Total Items</div>
+                <div className="p-3 bg-surface-raised rounded-none">
+                  <div className="text-heading-sm font-display font-semibold text-ink">{progress.total_items}</div>
+                  <div className="text-sm text-tertiary">Total Items</div>
                 </div>
               </div>
             </div>
           )}
 
           {/* Items */}
-          <div className="bg-white rounded-lg border p-6">
+          <div className="card p-6">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold">Order Items</h2>
+              <h2 className="text-heading-xs font-display font-semibold">Order Items</h2>
               <button
                 onClick={() => setShowAddItem(true)}
-                className="inline-flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700"
+                className="inline-flex items-center gap-1 text-sm text-info hover:text-info"
               >
                 <Plus className="w-4 h-4" />
                 Add Item
@@ -190,13 +190,13 @@ export function OrderDetail() {
                 {order.items.map(item => (
                   <div
                     key={item.id}
-                    className="flex items-center justify-between p-4 border rounded-lg"
+                    className="flex items-center justify-between p-4 border rounded-none"
                   >
                     <div>
                       <div className="font-medium">{item.sku || 'No SKU'}</div>
-                      <div className="text-sm text-gray-500">Qty: {item.quantity}</div>
+                      <div className="text-sm text-tertiary">Qty: {item.quantity}</div>
                       {item.notes && (
-                        <div className="text-sm text-gray-500 mt-1">{item.notes}</div>
+                        <div className="text-sm text-tertiary mt-1">{item.notes}</div>
                       )}
                     </div>
                     <div className="flex items-center gap-2">
@@ -204,20 +204,20 @@ export function OrderDetail() {
                         <button
                           onClick={() => handleProcessItem(item.id)}
                           disabled={processingItem === item.id}
-                          className="inline-flex items-center gap-1 px-3 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+                          className="btn btn-primary inline-flex items-center gap-1 px-3 py-1.5 text-sm disabled:opacity-50"
                         >
                           <Play className="w-4 h-4" />
                           {processingItem === item.id ? 'Processing...' : 'Process'}
                         </button>
                       ) : (
-                        <span className="text-sm text-amber-600">No template linked</span>
+                        <span className="text-sm text-warning">No template linked</span>
                       )}
                     </div>
                   </div>
                 ))}
               </div>
             ) : (
-              <div className="text-center py-8 text-gray-500">
+              <div className="text-center py-8 text-tertiary">
                 No items yet. Add items to this order.
               </div>
             )}
@@ -225,17 +225,17 @@ export function OrderDetail() {
 
           {/* Tasks */}
           {order.tasks && order.tasks.length > 0 && (
-            <div className="bg-white rounded-lg border p-6">
-              <h2 className="text-lg font-semibold mb-4">Tasks</h2>
+            <div className="card p-6">
+              <h2 className="text-heading-xs font-display font-semibold mb-4">Tasks</h2>
               <div className="space-y-2">
                 {order.tasks.map(task => (
                   <Link
                     key={task.id}
                     to={`/tasks/${task.id}`}
-                    className="block p-3 border rounded-lg hover:bg-gray-50 transition-colors"
+                    className="block p-3 border border-line rounded-none hover:bg-surface-raised transition-colors"
                   >
                     <div className="font-medium">{task.name}</div>
-                    <div className="text-sm text-gray-500">
+                    <div className="text-sm text-tertiary">
                       Status: {task.status} | Progress: {Math.round(task.progress || 0)}%
                     </div>
                   </Link>
@@ -246,15 +246,15 @@ export function OrderDetail() {
 
           {/* Events */}
           {order.events && order.events.length > 0 && (
-            <div className="bg-white rounded-lg border p-6">
-              <h2 className="text-lg font-semibold mb-4">Activity</h2>
+            <div className="card p-6">
+              <h2 className="text-heading-xs font-display font-semibold mb-4">Activity</h2>
               <div className="space-y-3">
                 {order.events.map(event => (
                   <div key={event.id} className="flex gap-3">
-                    <div className="w-2 h-2 rounded-full bg-gray-400 mt-2" />
+                    <div className="w-2 h-2 rounded-full bg-muted mt-2" />
                     <div>
                       <div className="text-sm">{event.message || event.event_type}</div>
-                      <div className="text-xs text-gray-500">{formatDate(event.created_at)}</div>
+                      <div className="text-xs text-tertiary">{formatDate(event.created_at)}</div>
                     </div>
                   </div>
                 ))}
@@ -266,14 +266,14 @@ export function OrderDetail() {
         {/* Sidebar */}
         <div className="space-y-6">
           {/* Actions */}
-          <div className="bg-white rounded-lg border p-6">
-            <h2 className="text-lg font-semibold mb-4">Actions</h2>
+          <div className="card p-6">
+            <h2 className="text-heading-xs font-display font-semibold mb-4">Actions</h2>
             <div className="space-y-2">
               {order.status === 'pending' && (
                 <button
                   onClick={() => handleStatusChange('in_progress')}
                   disabled={updatingStatus}
-                  className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                  className="btn btn-primary w-full px-4 py-2 disabled:opacity-50"
                 >
                   Start Processing
                 </button>
@@ -282,7 +282,7 @@ export function OrderDetail() {
                 <button
                   onClick={() => handleStatusChange('completed')}
                   disabled={updatingStatus}
-                  className="w-full px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
+                  className="btn btn-success w-full px-4 py-2 disabled:opacity-50"
                 >
                   Mark Completed
                 </button>
@@ -291,7 +291,7 @@ export function OrderDetail() {
                 <button
                   onClick={handleShip}
                   disabled={updatingStatus}
-                  className="w-full px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50"
+                  className="btn btn-secondary w-full px-4 py-2 disabled:opacity-50"
                 >
                   Mark Shipped
                 </button>
@@ -300,7 +300,7 @@ export function OrderDetail() {
                 <button
                   onClick={() => handleStatusChange('cancelled')}
                   disabled={updatingStatus}
-                  className="w-full px-4 py-2 text-red-600 border border-red-200 rounded-lg hover:bg-red-50"
+                  className="w-full px-4 py-2 text-error border border-error rounded-none hover:bg-error"
                 >
                   Cancel Order
                 </button>
@@ -309,12 +309,12 @@ export function OrderDetail() {
           </div>
 
           {/* Details */}
-          <div className="bg-white rounded-lg border p-6">
-            <h2 className="text-lg font-semibold mb-4">Details</h2>
+          <div className="card p-6">
+            <h2 className="text-heading-xs font-display font-semibold mb-4">Details</h2>
             <dl className="space-y-3">
               {order.customer_email && (
                 <div>
-                  <dt className="text-sm text-gray-500 flex items-center gap-1">
+                  <dt className="text-sm text-tertiary flex items-center gap-1">
                     <Mail className="w-4 h-4" /> Email
                   </dt>
                   <dd className="text-sm font-medium">{order.customer_email}</dd>
@@ -322,25 +322,25 @@ export function OrderDetail() {
               )}
               {order.due_date && (
                 <div>
-                  <dt className="text-sm text-gray-500 flex items-center gap-1">
+                  <dt className="text-sm text-tertiary flex items-center gap-1">
                     <Calendar className="w-4 h-4" /> Due Date
                   </dt>
                   <dd className="text-sm font-medium">{formatDate(order.due_date)}</dd>
                 </div>
               )}
               <div>
-                <dt className="text-sm text-gray-500">Created</dt>
+                <dt className="text-sm text-tertiary">Created</dt>
                 <dd className="text-sm font-medium">{formatDate(order.created_at)}</dd>
               </div>
               <div>
-                <dt className="text-sm text-gray-500">Priority</dt>
+                <dt className="text-sm text-tertiary">Priority</dt>
                 <dd className="text-sm font-medium">
                   {order.priority === 0 ? 'Normal' : order.priority === 1 ? 'High' : 'Urgent'}
                 </dd>
               </div>
               {order.notes && (
                 <div>
-                  <dt className="text-sm text-gray-500">Notes</dt>
+                  <dt className="text-sm text-tertiary">Notes</dt>
                   <dd className="text-sm">{order.notes}</dd>
                 </div>
               )}
@@ -410,14 +410,14 @@ function AddItemModal({ orderId, onClose, onAdded }: AddItemModalProps) {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
-        <h2 className="text-xl font-bold mb-4">Add Order Item</h2>
+    <div className="fixed inset-0 bg-overlay flex items-center justify-center z-50">
+      <div className="card w-full max-w-md p-6">
+        <h2 className="text-heading-xs font-display font-semibold mb-4">Add Order Item</h2>
 
         <form onSubmit={handleSubmit}>
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-surface-300 mb-1">
+              <label className="block text-label-sm font-normal text-surface-300 mb-1">
                 Template (Recipe)
               </label>
               <select
@@ -435,7 +435,7 @@ function AddItemModal({ orderId, onClose, onAdded }: AddItemModalProps) {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-surface-300 mb-1">
+              <label className="block text-label-sm font-normal text-surface-300 mb-1">
                 SKU
               </label>
               <input
@@ -448,7 +448,7 @@ function AddItemModal({ orderId, onClose, onAdded }: AddItemModalProps) {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-surface-300 mb-1">
+              <label className="block text-label-sm font-normal text-surface-300 mb-1">
                 Quantity
               </label>
               <input
@@ -461,7 +461,7 @@ function AddItemModal({ orderId, onClose, onAdded }: AddItemModalProps) {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-surface-300 mb-1">
+              <label className="block text-label-sm font-normal text-surface-300 mb-1">
                 Notes
               </label>
               <textarea
@@ -477,14 +477,14 @@ function AddItemModal({ orderId, onClose, onAdded }: AddItemModalProps) {
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 text-gray-600 hover:text-gray-800"
+              className="btn btn-ghost"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={adding}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+              className="btn btn-primary px-4 py-2 disabled:opacity-50"
             >
               {adding ? 'Adding...' : 'Add Item'}
             </button>

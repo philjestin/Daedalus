@@ -112,7 +112,7 @@ export default function ProjectDetail() {
         </Link>
         
         <div>
-          <h1 className="text-3xl font-display font-bold text-surface-100">
+          <h1 className="text-heading-md font-display font-semibold text-surface-100">
             {project.name}
           </h1>
           {project.description && (
@@ -142,14 +142,14 @@ export default function ProjectDetail() {
               return (
                 <div 
                   key={printer.id}
-                  className="p-3 rounded-lg bg-surface-800/50 border border-surface-700"
+                  className="p-3 rounded-none bg-surface-800/50 border border-surface-700"
                 >
                   <div className="flex items-center gap-2 mb-2">
                     <div className={cn(
                       'w-2 h-2 rounded-full',
-                      state?.status === 'printing' ? 'bg-emerald-400 animate-pulse' :
-                      state?.status === 'idle' ? 'bg-blue-400' :
-                      state?.status === 'error' ? 'bg-red-400' :
+                      state?.status === 'printing' ? 'bg-success animate-pulse' :
+                      state?.status === 'idle' ? 'bg-info' :
+                      state?.status === 'error' ? 'bg-error' :
                       'bg-surface-600'
                     )} />
                     <span className="font-medium text-surface-100 text-sm truncate">
@@ -169,7 +169,7 @@ export default function ProjectDetail() {
                   {state?.status === 'printing' && (
                     <div className="mt-2 h-1 bg-surface-700 rounded-full overflow-hidden">
                       <div 
-                        className="h-full bg-emerald-500 transition-all"
+                        className="h-full bg-success transition-all"
                         style={{ width: `${state.progress}%` }}
                       />
                     </div>
@@ -230,7 +230,7 @@ export default function ProjectDetail() {
       {activeTab === 'parts' && (
         <>
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-semibold text-surface-100">Parts</h2>
+            <h2 className="text-heading-xs font-display font-semibold text-surface-100">Parts</h2>
             <button
               onClick={() => setShowAddPart(true)}
               className="btn btn-secondary"
@@ -245,7 +245,7 @@ export default function ProjectDetail() {
           ) : parts.length === 0 ? (
             <div className="card p-8 text-center">
               <Box className="h-12 w-12 mx-auto mb-3 text-surface-600" />
-              <h3 className="text-lg font-medium text-surface-300 mb-2">
+              <h3 className="text-heading-xs font-display font-semibold text-surface-300 mb-2">
                 No parts yet
               </h3>
               <p className="text-surface-500 mb-4">
@@ -311,7 +311,7 @@ export default function ProjectDetail() {
           <form onSubmit={handleAddPart}>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-surface-300 mb-1">
+                <label className="block text-label-sm font-normal text-surface-300 mb-1">
                   Part Name
                 </label>
                 <input
@@ -324,7 +324,7 @@ export default function ProjectDetail() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-surface-300 mb-1">
+                <label className="block text-label-sm font-normal text-surface-300 mb-1">
                   Description
                 </label>
                 <textarea
@@ -335,7 +335,7 @@ export default function ProjectDetail() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-surface-300 mb-1">
+                <label className="block text-label-sm font-normal text-surface-300 mb-1">
                   Quantity
                 </label>
                 <input
@@ -352,7 +352,7 @@ export default function ProjectDetail() {
                 </label>
                 <div
                   className={cn(
-                    'border-2 border-dashed rounded-lg p-6 text-center transition-colors',
+                    'border-2 border-dashed rounded-none p-6 text-center transition-colors',
                     partFile ? 'border-accent-500 bg-accent-500/5' : 'border-surface-700 hover:border-surface-600'
                   )}
                 >
@@ -392,7 +392,7 @@ export default function ProjectDetail() {
               </div>
               {partFile && (
                 <div>
-                  <label className="block text-sm font-medium text-surface-300 mb-1">
+                  <label className="block text-label-sm font-normal text-surface-300 mb-1">
                     File Notes
                   </label>
                   <textarea
@@ -526,7 +526,7 @@ function PartCard({
           </span>
           <button
             onClick={onDelete}
-            className="p-1.5 rounded-lg text-surface-500 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+            className="p-1.5 rounded-none text-surface-500 hover:text-error hover:bg-error/10 transition-colors"
             title="Delete part"
           >
             <Trash2 className="h-4 w-4" />
@@ -558,7 +558,7 @@ function PartCard({
             {designs.slice(0, 3).map((design) => (
               <div 
                 key={design.id}
-                className="flex items-center justify-between p-3 rounded-lg bg-surface-800/50"
+                className="flex items-center justify-between p-3 rounded-none bg-surface-800/50"
               >
                 <div className="flex items-center gap-3">
                   <FileCode className="h-5 w-5 text-surface-500" />
@@ -571,18 +571,18 @@ function PartCard({
                     </div>
                     {design.slice_profile && (
                       <div className="flex items-center gap-2 mt-1 flex-wrap">
-                        <span className="inline-flex items-center gap-1 text-xs bg-surface-700/60 text-surface-300 rounded px-1.5 py-0.5">
+                        <span className="inline-flex items-center gap-1 text-xs bg-surface-700/60 text-surface-300 rounded-none px-1.5 py-0.5">
                           <Scale className="h-3 w-3" />
                           {Math.round(design.slice_profile.weight_grams)}g
                         </span>
-                        <span className="inline-flex items-center gap-1 text-xs bg-surface-700/60 text-surface-300 rounded px-1.5 py-0.5">
+                        <span className="inline-flex items-center gap-1 text-xs bg-surface-700/60 text-surface-300 rounded-none px-1.5 py-0.5">
                           <Timer className="h-3 w-3" />
                           {formatPrintTime(design.slice_profile.print_time_seconds)}
                         </span>
                         {design.slice_profile.filaments.map((f, i) => (
                           <span
                             key={i}
-                            className="inline-flex items-center gap-1.5 text-xs bg-surface-700/60 text-surface-300 rounded px-1.5 py-0.5"
+                            className="inline-flex items-center gap-1.5 text-xs bg-surface-700/60 text-surface-300 rounded-none px-1.5 py-0.5"
                           >
                             <span
                               className="inline-block h-2.5 w-2.5 rounded-full border border-surface-600"
@@ -718,7 +718,7 @@ function SuppliesSection({ projectId }: { projectId: string }) {
   return (
     <div className="mt-8">
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-xl font-semibold text-surface-100 flex items-center gap-2">
+        <h2 className="text-heading-xs font-display font-semibold text-surface-100 flex items-center gap-2">
           <ShoppingCart className="h-5 w-5 text-surface-400" />
           Supplies
         </h2>
@@ -739,7 +739,7 @@ function SuppliesSection({ projectId }: { projectId: string }) {
                 type="button"
                 onClick={() => setAddMode('catalog')}
                 className={cn(
-                  'text-xs px-3 py-1 rounded-full transition-colors',
+                  'text-xs px-3 py-1 rounded-badge transition-colors',
                   addMode === 'catalog'
                     ? 'bg-accent-500/20 text-accent-400 border border-accent-500'
                     : 'bg-surface-800 text-surface-400 border border-surface-700 hover:text-surface-200'
@@ -751,7 +751,7 @@ function SuppliesSection({ projectId }: { projectId: string }) {
                 type="button"
                 onClick={() => setAddMode('manual')}
                 className={cn(
-                  'text-xs px-3 py-1 rounded-full transition-colors',
+                  'text-xs px-3 py-1 rounded-badge transition-colors',
                   addMode === 'manual'
                     ? 'bg-accent-500/20 text-accent-400 border border-accent-500'
                     : 'bg-surface-800 text-surface-400 border border-surface-700 hover:text-surface-200'
@@ -893,7 +893,7 @@ function SuppliesSection({ projectId }: { projectId: string }) {
                       <button
                         onClick={() => handleDelete(supply)}
                         onBlur={() => setConfirmDeleteSupplyId(null)}
-                        className="text-xs px-2 py-1 rounded bg-red-500/20 text-red-400 border border-red-500/50 hover:bg-red-500/30 transition-colors"
+                        className="badge badge-error border border-error/40 hover:bg-error/25 transition-colors"
                         autoFocus
                       >
                         Delete?
@@ -901,7 +901,7 @@ function SuppliesSection({ projectId }: { projectId: string }) {
                     ) : (
                       <button
                         onClick={() => handleDelete(supply)}
-                        className="p-1 rounded text-surface-500 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                        className="p-1 rounded-none text-surface-500 hover:text-error hover:bg-error/10 transition-colors"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                       </button>
@@ -1002,7 +1002,7 @@ function PrintHistoryTab({
     return (
       <div className="card p-8 text-center">
         <History className="h-12 w-12 mx-auto mb-3 text-surface-600" />
-        <h3 className="text-lg font-medium text-surface-300 mb-2">
+        <h3 className="text-heading-xs font-display font-semibold text-surface-300 mb-2">
           No print history yet
         </h3>
         <p className="text-surface-500">
@@ -1040,7 +1040,7 @@ function PrintHistoryTab({
         </div>
         <div className="card p-4">
           <div className="text-sm text-surface-500 mb-1">Success Rate</div>
-          <div className="text-2xl font-semibold text-emerald-400">
+          <div className="text-2xl font-semibold text-success">
             {(statsCompleted + statsFailed) > 0
               ? Math.round((statsCompleted / (statsCompleted + statsFailed)) * 100)
               : 0}%
@@ -1048,7 +1048,7 @@ function PrintHistoryTab({
         </div>
         <div className="card p-4">
           <div className="text-sm text-surface-500 mb-1">Active</div>
-          <div className="text-2xl font-semibold text-blue-400">
+          <div className="text-2xl font-semibold text-info">
             {statsPrinting}{statsQueued > 0 && <span className="text-sm text-surface-400 ml-1">+{statsQueued} queued</span>}
           </div>
         </div>
@@ -1060,7 +1060,7 @@ function PrintHistoryTab({
         </div>
         <div className="card p-4">
           <div className="text-sm text-surface-500 mb-1">Total Cost</div>
-          <div className="text-2xl font-semibold text-emerald-400">
+          <div className="text-2xl font-semibold text-success">
             ${totalCost.toFixed(2)}
           </div>
         </div>
@@ -1078,13 +1078,13 @@ function PrintHistoryTab({
               <div className="flex items-center gap-4">
                 <div
                   className={cn(
-                    'w-10 h-10 rounded-lg flex items-center justify-center',
+                    'w-10 h-10 rounded-none flex items-center justify-center',
                     job.status === 'completed' && job.outcome?.success
-                      ? 'bg-emerald-500/20 text-emerald-400'
+                      ? 'bg-success/20 text-success'
                       : job.status === 'failed' || (job.outcome && !job.outcome.success)
-                      ? 'bg-red-500/20 text-red-400'
+                      ? 'bg-error/20 text-error'
                       : job.status === 'printing'
-                      ? 'bg-blue-500/20 text-blue-400'
+                      ? 'bg-info/20 text-info'
                       : 'bg-surface-700 text-surface-400'
                   )}
                 >
@@ -1124,7 +1124,7 @@ function PrintHistoryTab({
                     <div className="text-surface-300">
                       {job.outcome.material_used.toFixed(1)}g used
                       {job.outcome.material_cost > 0 && (
-                        <span className="text-emerald-400 ml-2">
+                        <span className="text-success ml-2">
                           ${job.outcome.material_cost.toFixed(2)}
                         </span>
                       )}
@@ -1137,7 +1137,7 @@ function PrintHistoryTab({
                             className={cn(
                               'h-3 w-3',
                               star <= job.outcome!.quality_rating!
-                                ? 'fill-amber-400 text-amber-400'
+                                ? 'fill-warning text-warning'
                                 : 'text-surface-600'
                             )}
                           />
@@ -1225,8 +1225,8 @@ function ProjectQuickStats({ summary }: { summary: ProjectSummary }) {
 
   return (
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
-      <div className="flex items-center gap-3 px-4 py-3 rounded-lg bg-surface-800/50 border border-surface-700">
-        <Timer className="h-5 w-5 text-blue-400 shrink-0" />
+      <div className="flex items-center gap-3 px-4 py-3 rounded-none bg-surface-800/50 border border-surface-700">
+        <Timer className="h-5 w-5 text-info shrink-0" />
         <div className="min-w-0">
           <div className="text-xs text-surface-500">Print Time</div>
           <div className="text-sm font-semibold text-surface-100 truncate">
@@ -1234,8 +1234,8 @@ function ProjectQuickStats({ summary }: { summary: ProjectSummary }) {
           </div>
         </div>
       </div>
-      <div className="flex items-center gap-3 px-4 py-3 rounded-lg bg-surface-800/50 border border-surface-700">
-        <DollarSign className="h-5 w-5 text-amber-400 shrink-0" />
+      <div className="flex items-center gap-3 px-4 py-3 rounded-none bg-surface-800/50 border border-surface-700">
+        <DollarSign className="h-5 w-5 text-warning shrink-0" />
         <div className="min-w-0">
           <div className="text-xs text-surface-500">Unit Cost</div>
           <div className="text-sm font-semibold text-surface-100 truncate">
@@ -1243,8 +1243,8 @@ function ProjectQuickStats({ summary }: { summary: ProjectSummary }) {
           </div>
         </div>
       </div>
-      <div className="flex items-center gap-3 px-4 py-3 rounded-lg bg-surface-800/50 border border-surface-700">
-        <Scale className="h-5 w-5 text-purple-400 shrink-0" />
+      <div className="flex items-center gap-3 px-4 py-3 rounded-none bg-surface-800/50 border border-surface-700">
+        <Scale className="h-5 w-5 text-info shrink-0" />
         <div className="min-w-0">
           <div className="text-xs text-surface-500">Material</div>
           <div className="text-sm font-semibold text-surface-100 truncate">
@@ -1252,14 +1252,14 @@ function ProjectQuickStats({ summary }: { summary: ProjectSummary }) {
           </div>
         </div>
       </div>
-      <div className="flex items-center gap-3 px-4 py-3 rounded-lg bg-surface-800/50 border border-surface-700">
-        <TrendingUp className="h-5 w-5 text-emerald-400 shrink-0" />
+      <div className="flex items-center gap-3 px-4 py-3 rounded-none bg-surface-800/50 border border-surface-700">
+        <TrendingUp className="h-5 w-5 text-success shrink-0" />
         <div className="min-w-0">
           <div className="text-xs text-surface-500">Avg Profit / Sale</div>
           <div className={cn(
             'text-sm font-semibold truncate',
             summary.sales_count > 0
-              ? avgProfit >= 0 ? 'text-emerald-400' : 'text-red-400'
+              ? avgProfit >= 0 ? 'text-success' : 'text-error'
               : 'text-surface-500'
           )}>
             {summary.sales_count > 0 ? formatCents(avgProfit) : '-'}
@@ -1276,7 +1276,7 @@ function ProjectAnalyticsTab({ summary }: { summary?: ProjectSummary }) {
     return (
       <div className="card p-8 text-center">
         <BarChart3 className="h-12 w-12 mx-auto mb-3 text-surface-600" />
-        <h3 className="text-lg font-medium text-surface-300 mb-2">
+        <h3 className="text-heading-xs font-display font-semibold text-surface-300 mb-2">
           No analytics yet
         </h3>
         <p className="text-surface-500">
@@ -1328,7 +1328,7 @@ function ProjectAnalyticsTab({ summary }: { summary?: ProjectSummary }) {
               Fees
               <Tooltip text="Marketplace and payment processing fees deducted from sales (e.g. Etsy fees, PayPal fees)." />
             </div>
-            <div className="text-2xl font-semibold text-red-400">
+            <div className="text-2xl font-semibold text-error">
               {formatCents(summary.total_fees_cents)}
             </div>
           </div>
@@ -1348,7 +1348,7 @@ function ProjectAnalyticsTab({ summary }: { summary?: ProjectSummary }) {
             </div>
             <div className={cn(
               'text-2xl font-semibold',
-              summary.gross_profit_cents >= 0 ? 'text-emerald-400' : 'text-red-400'
+              summary.gross_profit_cents >= 0 ? 'text-success' : 'text-error'
             )}>
               {formatCents(summary.gross_profit_cents)}
             </div>
@@ -1384,7 +1384,7 @@ function ProjectAnalyticsTab({ summary }: { summary?: ProjectSummary }) {
                 Total COGS
                 <Tooltip text="Cost of Goods Sold. Unit cost multiplied by the number of units sold. Represents total production cost for all sales." />
               </div>
-              <div className="text-2xl font-semibold text-red-400">
+              <div className="text-2xl font-semibold text-error">
                 {formatCents(summary.total_cost_cents)}
               </div>
               <div className="text-xs text-surface-500 mt-1">
@@ -1421,7 +1421,7 @@ function ProjectAnalyticsTab({ summary }: { summary?: ProjectSummary }) {
                 Est. Material
                 <Tooltip text="Estimated material cost calculated from slice profile weight data at a default rate of $19.99/kg. Used when actual costs aren't available." />
               </div>
-              <div className="text-2xl font-semibold text-amber-400">
+              <div className="text-2xl font-semibold text-warning">
                 {formatCents(summary.estimated_material_cost_cents)}
               </div>
               <div className="text-xs text-surface-500 mt-1">from slice profiles</div>
@@ -1477,8 +1477,8 @@ function ProjectAnalyticsTab({ summary }: { summary?: ProjectSummary }) {
             </div>
             <div className={cn(
               'text-2xl font-semibold',
-              summary.success_rate >= 90 ? 'text-emerald-400' :
-              summary.success_rate >= 70 ? 'text-amber-400' : 'text-red-400'
+              summary.success_rate >= 90 ? 'text-success' :
+              summary.success_rate >= 70 ? 'text-warning' : 'text-error'
             )}>
               {summary.success_rate.toFixed(0)}%
             </div>
@@ -1493,7 +1493,7 @@ function ProjectAnalyticsTab({ summary }: { summary?: ProjectSummary }) {
             </div>
             <div className={cn(
               'text-2xl font-semibold',
-              summary.profit_per_hour_cents >= 0 ? 'text-emerald-400' : 'text-red-400'
+              summary.profit_per_hour_cents >= 0 ? 'text-success' : 'text-error'
             )}>
               {formatCents(summary.profit_per_hour_cents)}
             </div>
@@ -1542,7 +1542,7 @@ function UploadDesignModal({
           </label>
           <div 
             className={cn(
-              'border-2 border-dashed rounded-lg p-8 text-center transition-colors',
+              'border-2 border-dashed rounded-none p-8 text-center transition-colors',
               file ? 'border-accent-500 bg-accent-500/5' : 'border-surface-700 hover:border-surface-600'
             )}
           >
@@ -1571,7 +1571,7 @@ function UploadDesignModal({
           </div>
         </div>
         <div>
-          <label className="block text-sm font-medium text-surface-300 mb-1">
+          <label className="block text-label-sm font-normal text-surface-300 mb-1">
             Notes
           </label>
           <textarea
@@ -1672,7 +1672,7 @@ function SendToPrinterModal({
           <label className="block text-sm font-medium text-surface-300 mb-2">
             Design
           </label>
-          <div className="p-3 rounded-lg bg-surface-800/50">
+          <div className="p-3 rounded-none bg-surface-800/50">
             <div className="font-medium text-surface-100">
               v{design.version} — {design.file_name}
             </div>
@@ -1687,7 +1687,7 @@ function SendToPrinterModal({
             Select Printer
           </label>
           {availablePrinters.length === 0 ? (
-            <div className="text-surface-500 text-sm p-4 text-center bg-surface-800/50 rounded-lg">
+            <div className="text-surface-500 text-sm p-4 text-center bg-surface-800/50 rounded-none">
               No printers available. All printers are busy or offline.
             </div>
           ) : (
@@ -1696,7 +1696,7 @@ function SendToPrinterModal({
                 <label
                   key={printer.id}
                   className={cn(
-                    'flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-colors',
+                    'flex items-center gap-3 p-3 rounded-none cursor-pointer transition-colors',
                     selectedPrinter === printer.id
                       ? 'bg-accent-500/10 border border-accent-500'
                       : 'bg-surface-800/50 border border-transparent hover:bg-surface-800'
@@ -1734,7 +1734,7 @@ function SendToPrinterModal({
             Select Material Spool
           </label>
           {availableSpools.length === 0 ? (
-            <div className="text-surface-500 text-sm p-4 text-center bg-surface-800/50 rounded-lg">
+            <div className="text-surface-500 text-sm p-4 text-center bg-surface-800/50 rounded-none">
               No spools available. Add material spools in the Materials page.
             </div>
           ) : (
@@ -1745,7 +1745,7 @@ function SendToPrinterModal({
                   <label
                     key={spool.id}
                     className={cn(
-                      'flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-colors',
+                      'flex items-center gap-3 p-3 rounded-none cursor-pointer transition-colors',
                       selectedSpool === spool.id
                         ? 'bg-accent-500/10 border border-accent-500'
                         : 'bg-surface-800/50 border border-transparent hover:bg-surface-800'
@@ -1781,13 +1781,13 @@ function SendToPrinterModal({
                         <span>•</span>
                         <span
                           className={cn(
-                            isLow && 'text-amber-400 font-medium'
+                            isLow && 'text-warning font-medium'
                           )}
                         >
                           {spool.remaining_weight.toFixed(0)}g remaining
                         </span>
                         {isLow && (
-                          <AlertTriangle className="h-3 w-3 text-amber-400" />
+                          <AlertTriangle className="h-3 w-3 text-warning" />
                         )}
                       </div>
                     </div>
@@ -1828,11 +1828,11 @@ function Modal({
 }) {
   return (
     <div
-      className="fixed inset-0 bg-black/60 flex items-center justify-center z-50"
+      className="fixed inset-0 bg-overlay flex items-center justify-center z-50"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
       <div className="card w-full max-w-md p-6">
-        <h2 className="text-xl font-semibold text-surface-100 mb-4">{title}</h2>
+        <h2 className="text-heading-xs font-display font-semibold text-surface-100 mb-4">{title}</h2>
         {children}
       </div>
     </div>
@@ -1890,9 +1890,9 @@ function OutcomeCaptureModal({
               type="button"
               onClick={() => setSuccess(true)}
               className={cn(
-                'flex items-center justify-center gap-2 p-3 rounded-lg border transition-colors',
+                'flex items-center justify-center gap-2 p-3 rounded-none border transition-colors',
                 success
-                  ? 'bg-emerald-500/20 border-emerald-500 text-emerald-400'
+                  ? 'bg-success/20 border-success text-success'
                   : 'bg-surface-800/50 border-surface-700 text-surface-400 hover:bg-surface-800'
               )}
             >
@@ -1903,9 +1903,9 @@ function OutcomeCaptureModal({
               type="button"
               onClick={() => setSuccess(false)}
               className={cn(
-                'flex items-center justify-center gap-2 p-3 rounded-lg border transition-colors',
+                'flex items-center justify-center gap-2 p-3 rounded-none border transition-colors',
                 !success
-                  ? 'bg-red-500/20 border-red-500 text-red-400'
+                  ? 'bg-error/20 border-error text-error'
                   : 'bg-surface-800/50 border-surface-700 text-surface-400 hover:bg-surface-800'
               )}
             >
@@ -1933,7 +1933,7 @@ function OutcomeCaptureModal({
                     className={cn(
                       'h-6 w-6 transition-colors',
                       rating <= qualityRating
-                        ? 'fill-amber-400 text-amber-400'
+                        ? 'fill-warning text-warning'
                         : 'text-surface-600'
                     )}
                   />
@@ -1946,7 +1946,7 @@ function OutcomeCaptureModal({
         {/* Failure Reason (only for failure) */}
         {!success && (
           <div>
-            <label className="block text-sm font-medium text-surface-300 mb-1">
+            <label className="block text-label-sm font-normal text-surface-300 mb-1">
               Failure Reason
             </label>
             <input
@@ -1961,7 +1961,7 @@ function OutcomeCaptureModal({
 
         {/* Material Used */}
         <div>
-          <label className="block text-sm font-medium text-surface-300 mb-1">
+          <label className="block text-label-sm font-normal text-surface-300 mb-1">
             Material Used (grams)
           </label>
           <input
@@ -1980,7 +1980,7 @@ function OutcomeCaptureModal({
 
         {/* Notes */}
         <div>
-          <label className="block text-sm font-medium text-surface-300 mb-1">
+          <label className="block text-label-sm font-normal text-surface-300 mb-1">
             Notes
           </label>
           <textarea

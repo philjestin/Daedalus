@@ -5,11 +5,11 @@ import { ordersApi } from '../api/client'
 import type { Order, OrderStatus, OrderSource } from '../types'
 
 const statusConfig: Record<OrderStatus, { label: string; color: string; icon: React.ReactNode }> = {
-  pending: { label: 'Pending', color: 'bg-gray-100 text-gray-700', icon: <Clock className="w-4 h-4" /> },
-  in_progress: { label: 'In Progress', color: 'bg-blue-100 text-blue-700', icon: <RefreshCw className="w-4 h-4" /> },
-  completed: { label: 'Completed', color: 'bg-green-100 text-green-700', icon: <CheckCircle className="w-4 h-4" /> },
-  shipped: { label: 'Shipped', color: 'bg-purple-100 text-purple-700', icon: <Truck className="w-4 h-4" /> },
-  cancelled: { label: 'Cancelled', color: 'bg-red-100 text-red-700', icon: <XCircle className="w-4 h-4" /> },
+  pending: { label: 'Pending', color: 'badge', icon: <Clock className="w-4 h-4" /> },
+  in_progress: { label: 'In Progress', color: 'badge badge-info', icon: <RefreshCw className="w-4 h-4" /> },
+  completed: { label: 'Completed', color: 'badge badge-success', icon: <CheckCircle className="w-4 h-4" /> },
+  shipped: { label: 'Shipped', color: 'badge badge-info', icon: <Truck className="w-4 h-4" /> },
+  cancelled: { label: 'Cancelled', color: 'badge badge-error', icon: <XCircle className="w-4 h-4" /> },
 }
 
 const sourceLabels: Record<OrderSource, string> = {
@@ -56,9 +56,9 @@ export function Orders() {
     const dueDate = new Date(order.due_date)
     const now = new Date()
     const hoursUntilDue = (dueDate.getTime() - now.getTime()) / (1000 * 60 * 60)
-    if (hoursUntilDue < 0) return 'text-red-600 font-semibold'
-    if (hoursUntilDue < 24) return 'text-red-500'
-    if (hoursUntilDue < 72) return 'text-amber-500'
+    if (hoursUntilDue < 0) return 'text-error font-semibold'
+    if (hoursUntilDue < 24) return 'text-error'
+    if (hoursUntilDue < 72) return 'text-warning'
     return ''
   }
 
@@ -66,12 +66,12 @@ export function Orders() {
     <div className="p-6">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold">Orders</h1>
-          <p className="text-gray-600">Manage customer orders from all sources</p>
+          <h1 className="text-heading-sm font-display font-semibold">Orders</h1>
+          <p className="text-body">Manage customer orders from all sources</p>
         </div>
         <button
           onClick={() => setShowCreateModal(true)}
-          className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+          className="btn btn-primary inline-flex items-center gap-2 px-4 py-2"
         >
           <Plus className="w-4 h-4" />
           New Order
@@ -109,65 +109,65 @@ export function Orders() {
 
       {/* Orders list */}
       {loading ? (
-        <div className="text-center py-12 text-gray-500">Loading orders...</div>
+        <div className="text-center py-12 text-tertiary">Loading orders...</div>
       ) : orders.length === 0 ? (
         <div className="text-center py-12">
-          <Package className="w-12 h-12 mx-auto text-gray-400 mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 mb-2">No orders yet</h3>
-          <p className="text-gray-500 mb-4">Create a manual order or sync from a marketplace</p>
+          <Package className="w-12 h-12 mx-auto text-tertiary mb-4" />
+          <h3 className="text-heading-xs font-display font-semibold text-ink mb-2">No orders yet</h3>
+          <p className="text-tertiary mb-4">Create a manual order or sync from a marketplace</p>
           <button
             onClick={() => setShowCreateModal(true)}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+            className="btn btn-primary inline-flex items-center gap-2 px-4 py-2"
           >
             <Plus className="w-4 h-4" />
             Create Order
           </button>
         </div>
       ) : (
-        <div className="bg-white rounded-lg border overflow-hidden">
+        <div className="card overflow-hidden">
           <table className="w-full">
-            <thead className="bg-gray-50 border-b">
+            <thead className="bg-surface-raised border-b border-line">
               <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-4 py-3 text-left text-xs font-medium text-tertiary uppercase tracking-wider">
                   Customer
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-4 py-3 text-left text-xs font-medium text-tertiary uppercase tracking-wider">
                   Source
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-4 py-3 text-left text-xs font-medium text-tertiary uppercase tracking-wider">
                   Status
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-4 py-3 text-left text-xs font-medium text-tertiary uppercase tracking-wider">
                   Due Date
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-4 py-3 text-left text-xs font-medium text-tertiary uppercase tracking-wider">
                   Items
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-4 py-3 text-left text-xs font-medium text-tertiary uppercase tracking-wider">
                   Created
                 </th>
                 <th className="px-4 py-3"></th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-200">
+            <tbody className="divide-y divide-line">
               {orders.map(order => (
-                <tr key={order.id} className="hover:bg-gray-50">
+                <tr key={order.id} className="hover:bg-surface-raised">
                   <td className="px-4 py-4">
-                    <div className="font-medium text-gray-900">{order.customer_name}</div>
+                    <div className="font-medium text-ink">{order.customer_name}</div>
                     {order.customer_email && (
-                      <div className="text-sm text-gray-500">{order.customer_email}</div>
+                      <div className="text-sm text-tertiary">{order.customer_email}</div>
                     )}
                   </td>
                   <td className="px-4 py-4">
-                    <span className="text-sm text-gray-600">
+                    <span className="text-sm text-body">
                       {sourceLabels[order.source]}
                     </span>
                     {order.source_order_id && (
-                      <div className="text-xs text-gray-400">#{order.source_order_id}</div>
+                      <div className="text-xs text-tertiary">#{order.source_order_id}</div>
                     )}
                   </td>
                   <td className="px-4 py-4">
-                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${statusConfig[order.status].color}`}>
+                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-badge text-xs font-medium ${statusConfig[order.status].color}`}>
                       {statusConfig[order.status].icon}
                       {statusConfig[order.status].label}
                     </span>
@@ -175,16 +175,16 @@ export function Orders() {
                   <td className={`px-4 py-4 text-sm ${getDueDateClass(order)}`}>
                     {formatDate(order.due_date)}
                   </td>
-                  <td className="px-4 py-4 text-sm text-gray-600">
+                  <td className="px-4 py-4 text-sm text-body">
                     {order.items?.length || 0} items
                   </td>
-                  <td className="px-4 py-4 text-sm text-gray-500">
+                  <td className="px-4 py-4 text-sm text-tertiary">
                     {formatDate(order.created_at)}
                   </td>
                   <td className="px-4 py-4">
                     <Link
                       to={`/orders/${order.id}`}
-                      className="text-blue-600 hover:text-blue-700"
+                      className="text-info hover:text-info"
                     >
                       <ChevronRight className="w-5 h-5" />
                     </Link>
@@ -245,14 +245,14 @@ function CreateOrderModal({ onClose, onCreated }: CreateOrderModalProps) {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
-        <h2 className="text-xl font-bold mb-4">Create New Order</h2>
+    <div className="fixed inset-0 bg-overlay flex items-center justify-center z-50">
+      <div className="card w-full max-w-md p-6">
+        <h2 className="text-heading-xs font-display font-semibold mb-4">Create New Order</h2>
 
         <form onSubmit={handleSubmit}>
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-surface-300 mb-1">
+              <label className="block text-label-sm font-normal text-surface-300 mb-1">
                 Customer Name *
               </label>
               <input
@@ -266,7 +266,7 @@ function CreateOrderModal({ onClose, onCreated }: CreateOrderModalProps) {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-surface-300 mb-1">
+              <label className="block text-label-sm font-normal text-surface-300 mb-1">
                 Customer Email
               </label>
               <input
@@ -279,7 +279,7 @@ function CreateOrderModal({ onClose, onCreated }: CreateOrderModalProps) {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-surface-300 mb-1">
+              <label className="block text-label-sm font-normal text-surface-300 mb-1">
                 Due Date
               </label>
               <input
@@ -291,7 +291,7 @@ function CreateOrderModal({ onClose, onCreated }: CreateOrderModalProps) {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-surface-300 mb-1">
+              <label className="block text-label-sm font-normal text-surface-300 mb-1">
                 Priority
               </label>
               <select
@@ -306,7 +306,7 @@ function CreateOrderModal({ onClose, onCreated }: CreateOrderModalProps) {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-surface-300 mb-1">
+              <label className="block text-label-sm font-normal text-surface-300 mb-1">
                 Notes
               </label>
               <textarea
@@ -323,14 +323,14 @@ function CreateOrderModal({ onClose, onCreated }: CreateOrderModalProps) {
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 text-gray-600 hover:text-gray-800"
+              className="btn btn-ghost"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={!customerName.trim() || creating}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="btn btn-primary px-4 py-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {creating ? 'Creating...' : 'Create Order'}
             </button>

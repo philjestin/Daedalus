@@ -107,7 +107,7 @@ export default function Materials() {
       {/* Header */}
       <div className="flex items-center justify-between mb-8">
         <div>
-          <h1 className="text-3xl font-display font-bold text-surface-100">
+          <h1 className="text-heading-md font-display font-semibold text-surface-100">
             Materials
           </h1>
           <p className="text-surface-400 mt-1">
@@ -137,7 +137,7 @@ export default function Materials() {
         <button
           onClick={() => setTab('spools')}
           className={cn(
-            'px-4 py-2 rounded-lg text-sm font-medium transition-colors',
+            'px-4 py-2 rounded-full text-sm font-medium transition-colors',
             tab === 'spools'
               ? 'bg-accent-500/20 text-accent-400'
               : 'text-surface-400 hover:text-surface-100 hover:bg-surface-800'
@@ -149,7 +149,7 @@ export default function Materials() {
         <button
           onClick={() => setTab('catalog')}
           className={cn(
-            'px-4 py-2 rounded-lg text-sm font-medium transition-colors',
+            'px-4 py-2 rounded-full text-sm font-medium transition-colors',
             tab === 'catalog'
               ? 'bg-accent-500/20 text-accent-400'
               : 'text-surface-400 hover:text-surface-100 hover:bg-surface-800'
@@ -161,7 +161,7 @@ export default function Materials() {
         <button
           onClick={() => setTab('supplies')}
           className={cn(
-            'px-4 py-2 rounded-lg text-sm font-medium transition-colors',
+            'px-4 py-2 rounded-full text-sm font-medium transition-colors',
             tab === 'supplies'
               ? 'bg-accent-500/20 text-accent-400'
               : 'text-surface-400 hover:text-surface-100 hover:bg-surface-800'
@@ -179,7 +179,7 @@ export default function Materials() {
         ) : spools.length === 0 ? (
           <div className="text-center py-16">
             <Droplet className="h-16 w-16 mx-auto mb-4 text-surface-600" />
-            <h3 className="text-xl font-semibold text-surface-300 mb-2">
+            <h3 className="text-heading-xs font-display font-semibold text-surface-300 mb-2">
               No spools in inventory
             </h3>
             <p className="text-surface-500 mb-4">
@@ -204,7 +204,7 @@ export default function Materials() {
                   <div className="flex items-center gap-3 mb-3">
                     <div
                       className="w-8 h-8 rounded-full border-2 border-surface-700"
-                      style={{ backgroundColor: material?.color_hex || '#666' }}
+                      style={{ backgroundColor: material?.color_hex || 'var(--muted)' }}
                     />
                     <div className="flex-1 min-w-0">
                       <h3 className="font-medium text-surface-100 truncate">
@@ -218,7 +218,7 @@ export default function Materials() {
                       <button
                         onClick={() => handleDeleteSpool(spool)}
                         onBlur={() => setConfirmDeleteId(null)}
-                        className="text-xs px-2 py-1 rounded bg-red-500/20 text-red-400 border border-red-500/50 hover:bg-red-500/30 transition-colors"
+                        className="badge badge-error border border-error/40 hover:bg-error/25 transition-colors"
                         autoFocus
                       >
                         Delete?
@@ -226,7 +226,7 @@ export default function Materials() {
                     ) : (
                       <button
                         onClick={() => handleDeleteSpool(spool)}
-                        className="p-1.5 rounded-lg text-surface-500 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                        className="p-1.5 rounded-none text-surface-500 hover:text-error hover:bg-error/10 transition-colors"
                         title="Delete spool"
                       >
                         <Trash2 className="h-4 w-4" />
@@ -245,9 +245,9 @@ export default function Materials() {
                       <div 
                         className={cn(
                           'h-full transition-all',
-                          percentRemaining > 30 ? 'bg-emerald-500' :
-                          percentRemaining > 10 ? 'bg-amber-500' :
-                          'bg-red-500'
+                          percentRemaining > 30 ? 'bg-success' :
+                          percentRemaining > 10 ? 'bg-warning' :
+                          'bg-error'
                         )}
                         style={{ width: `${percentRemaining}%` }}
                       />
@@ -277,7 +277,7 @@ export default function Materials() {
         ) : filamentMaterials.length === 0 ? (
           <div className="text-center py-16">
             <Package className="h-16 w-16 mx-auto mb-4 text-surface-600" />
-            <h3 className="text-xl font-semibold text-surface-300 mb-2">
+            <h3 className="text-heading-xs font-display font-semibold text-surface-300 mb-2">
               No materials in catalog
             </h3>
             <p className="text-surface-500 mb-4">
@@ -298,7 +298,7 @@ export default function Materials() {
                 <div className="flex items-center gap-3 mb-3">
                   <div
                     className="w-10 h-10 rounded-full border-2 border-surface-700"
-                    style={{ backgroundColor: material.color_hex || '#666' }}
+                    style={{ backgroundColor: material.color_hex || 'var(--muted)' }}
                   />
                   <div className="flex-1 min-w-0">
                     <h3 className="font-medium text-surface-100 truncate">
@@ -312,7 +312,7 @@ export default function Materials() {
                     <button
                       onClick={() => handleDeleteMaterial(material)}
                       onBlur={() => setConfirmDeleteId(null)}
-                      className="text-xs px-2 py-1 rounded bg-red-500/20 text-red-400 border border-red-500/50 hover:bg-red-500/30 transition-colors"
+                      className="badge badge-error border border-error/40 hover:bg-error/25 transition-colors"
                       autoFocus
                     >
                       Delete?
@@ -320,7 +320,7 @@ export default function Materials() {
                   ) : (
                     <button
                       onClick={() => handleDeleteMaterial(material)}
-                      className="p-1.5 rounded-lg text-surface-500 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                      className="p-1.5 rounded-none text-surface-500 hover:text-error hover:bg-error/10 transition-colors"
                       title="Delete material"
                     >
                       <Trash2 className="h-4 w-4" />
@@ -354,7 +354,7 @@ export default function Materials() {
         ) : supplyMaterials.length === 0 ? (
           <div className="text-center py-16">
             <ShoppingCart className="h-16 w-16 mx-auto mb-4 text-surface-600" />
-            <h3 className="text-xl font-semibold text-surface-300 mb-2">
+            <h3 className="text-heading-xs font-display font-semibold text-surface-300 mb-2">
               No supplies yet
             </h3>
             <p className="text-surface-500 mb-4">
@@ -385,7 +385,7 @@ export default function Materials() {
                         <button
                           onClick={() => handleDeleteMaterial(material)}
                           onBlur={() => setConfirmDeleteId(null)}
-                          className="text-xs px-2 py-1 rounded bg-red-500/20 text-red-400 border border-red-500/50 hover:bg-red-500/30 transition-colors"
+                          className="badge badge-error border border-error/40 hover:bg-error/25 transition-colors"
                           autoFocus
                         >
                           Delete?
@@ -393,7 +393,7 @@ export default function Materials() {
                       ) : (
                         <button
                           onClick={() => handleDeleteMaterial(material)}
-                          className="p-1 rounded text-surface-500 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                          className="p-1 rounded-none text-surface-500 hover:text-error hover:bg-error/10 transition-colors"
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                         </button>
@@ -409,15 +409,15 @@ export default function Materials() {
 
       {/* Add Material Modal */}
       {showAddMaterial && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-overlay flex items-center justify-center z-50">
           <div className="card w-full max-w-md p-6">
-            <h2 className="text-xl font-semibold text-surface-100 mb-4">
+            <h2 className="text-heading-xs font-display font-semibold text-surface-100 mb-4">
               Add Material
             </h2>
             <form onSubmit={handleCreateMaterial}>
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-surface-300 mb-1">
+                  <label className="block text-label-sm font-normal text-surface-300 mb-1">
                     Name *
                   </label>
                   <input
@@ -431,7 +431,7 @@ export default function Materials() {
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-surface-300 mb-1">
+                    <label className="block text-label-sm font-normal text-surface-300 mb-1">
                       Type *
                     </label>
                     <select name="type" required className="input">
@@ -443,7 +443,7 @@ export default function Materials() {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-surface-300 mb-1">
+                    <label className="block text-label-sm font-normal text-surface-300 mb-1">
                       Manufacturer
                     </label>
                     <input
@@ -456,7 +456,7 @@ export default function Materials() {
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-surface-300 mb-1">
+                    <label className="block text-label-sm font-normal text-surface-300 mb-1">
                       Color
                     </label>
                     <input
@@ -467,19 +467,19 @@ export default function Materials() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-surface-300 mb-1">
+                    <label className="block text-label-sm font-normal text-surface-300 mb-1">
                       Color Hex
                     </label>
                     <input
                       type="color"
                       name="color_hex"
                       className="input h-10 p-1"
-                      defaultValue="#1a1a2e"
+                      defaultValue="#3295FF"
                     />
                   </div>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-surface-300 mb-1">
+                  <label className="block text-label-sm font-normal text-surface-300 mb-1">
                     Cost per kg ($)
                   </label>
                   <input
@@ -514,9 +514,9 @@ export default function Materials() {
 
       {/* Add Spool Modal */}
       {showAddSpool && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-overlay flex items-center justify-center z-50">
           <div className="card w-full max-w-md p-6">
-            <h2 className="text-xl font-semibold text-surface-100 mb-4">
+            <h2 className="text-heading-xs font-display font-semibold text-surface-100 mb-4">
               Add Spool
             </h2>
             {materials.length === 0 ? (
@@ -538,7 +538,7 @@ export default function Materials() {
               <form onSubmit={handleCreateSpool}>
                 <div className="space-y-4">
                   <div>
-                    <label className="block text-sm font-medium text-surface-300 mb-1">
+                    <label className="block text-label-sm font-normal text-surface-300 mb-1">
                       Material *
                     </label>
                     <select name="material_id" required className="input">
@@ -552,7 +552,7 @@ export default function Materials() {
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-surface-300 mb-1">
+                      <label className="block text-label-sm font-normal text-surface-300 mb-1">
                         Initial Weight (g)
                       </label>
                       <input
@@ -563,7 +563,7 @@ export default function Materials() {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-surface-300 mb-1">
+                      <label className="block text-label-sm font-normal text-surface-300 mb-1">
                         Purchase Cost ($)
                       </label>
                       <input
@@ -576,7 +576,7 @@ export default function Materials() {
                     </div>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-surface-300 mb-1">
+                    <label className="block text-label-sm font-normal text-surface-300 mb-1">
                       Location
                     </label>
                     <input

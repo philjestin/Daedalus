@@ -105,7 +105,7 @@ export default function RecipeSupplyEditor({ templateId, supplies }: RecipeSuppl
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <ShoppingCart className="h-5 w-5 text-surface-400" />
-          <h2 className="text-lg font-semibold text-surface-100">
+          <h2 className="text-heading-xs font-display font-semibold text-surface-100">
             Supplies ({supplies.length})
           </h2>
           {totalCost > 0 && (
@@ -136,7 +136,7 @@ export default function RecipeSupplyEditor({ templateId, supplies }: RecipeSuppl
           {supplies.map((s) => (
             <div
               key={s.id}
-              className="flex items-center justify-between p-4 rounded-lg bg-surface-800/50"
+              className="flex items-center justify-between p-4 rounded-none bg-surface-800/50"
             >
               <div className="flex items-center gap-4">
                 <div>
@@ -160,7 +160,7 @@ export default function RecipeSupplyEditor({ templateId, supplies }: RecipeSuppl
               <button
                 onClick={() => removeSupply.mutate(s.id)}
                 disabled={removeSupply.isPending}
-                className="btn btn-ghost text-red-400 hover:text-red-300 hover:bg-red-500/10"
+                className="btn btn-ghost text-error hover:text-error hover:bg-error/10"
               >
                 <Trash2 className="h-4 w-4" />
               </button>
@@ -171,7 +171,7 @@ export default function RecipeSupplyEditor({ templateId, supplies }: RecipeSuppl
 
       {/* Add Supply Form */}
       {showAddForm && (
-        <div className="mt-4 p-4 rounded-lg bg-surface-800 border border-surface-700">
+        <div className="card mt-4 p-4">
           <h3 className="text-sm font-medium text-surface-200 mb-4">Add Supply Item</h3>
 
           {/* Mode Toggle */}
@@ -181,7 +181,7 @@ export default function RecipeSupplyEditor({ templateId, supplies }: RecipeSuppl
                 type="button"
                 onClick={() => setAddMode('catalog')}
                 className={cn(
-                  'text-xs px-3 py-1 rounded-full transition-colors',
+                  'text-xs px-3 py-1 rounded-badge transition-colors',
                   addMode === 'catalog'
                     ? 'bg-accent-500/20 text-accent-400 border border-accent-500'
                     : 'bg-surface-700 text-surface-400 border border-surface-600 hover:text-surface-200'
@@ -193,7 +193,7 @@ export default function RecipeSupplyEditor({ templateId, supplies }: RecipeSuppl
                 type="button"
                 onClick={() => setAddMode('manual')}
                 className={cn(
-                  'text-xs px-3 py-1 rounded-full transition-colors',
+                  'text-xs px-3 py-1 rounded-badge transition-colors',
                   addMode === 'manual'
                     ? 'bg-accent-500/20 text-accent-400 border border-accent-500'
                     : 'bg-surface-700 text-surface-400 border border-surface-600 hover:text-surface-200'
@@ -208,7 +208,7 @@ export default function RecipeSupplyEditor({ templateId, supplies }: RecipeSuppl
             /* Catalog Mode */
             <div className="grid grid-cols-[1fr_auto] gap-4 items-end">
               <div>
-                <label className="block text-sm font-medium text-surface-300 mb-1">
+                <label className="block text-label-sm font-normal text-surface-300 mb-1">
                   Supply Material
                 </label>
                 <select
@@ -225,7 +225,7 @@ export default function RecipeSupplyEditor({ templateId, supplies }: RecipeSuppl
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-surface-300 mb-1">
+                <label className="block text-label-sm font-normal text-surface-300 mb-1">
                   Quantity
                 </label>
                 <input
@@ -241,7 +241,7 @@ export default function RecipeSupplyEditor({ templateId, supplies }: RecipeSuppl
             /* Manual Mode */
             <div className="grid grid-cols-2 gap-4">
               <div className="col-span-2">
-                <label className="block text-sm font-medium text-surface-300 mb-1">
+                <label className="block text-label-sm font-normal text-surface-300 mb-1">
                   Name
                 </label>
                 <input
@@ -253,7 +253,7 @@ export default function RecipeSupplyEditor({ templateId, supplies }: RecipeSuppl
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-surface-300 mb-1">
+                <label className="block text-label-sm font-normal text-surface-300 mb-1">
                   Unit Cost ($)
                 </label>
                 <input
@@ -272,7 +272,7 @@ export default function RecipeSupplyEditor({ templateId, supplies }: RecipeSuppl
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-surface-300 mb-1">
+                <label className="block text-label-sm font-normal text-surface-300 mb-1">
                   Quantity
                 </label>
                 <input
@@ -286,7 +286,7 @@ export default function RecipeSupplyEditor({ templateId, supplies }: RecipeSuppl
                 />
               </div>
               <div className="col-span-2">
-                <label className="block text-sm font-medium text-surface-300 mb-1">
+                <label className="block text-label-sm font-normal text-surface-300 mb-1">
                   Notes (optional)
                 </label>
                 <input

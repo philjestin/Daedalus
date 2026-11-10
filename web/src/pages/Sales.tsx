@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useSyncExternalStore } from 'react'
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
 import {
   DollarSign,
@@ -16,6 +16,7 @@ import {
 } from 'lucide-react'
 import { salesApi, statsApi, projectsApi, customersApi } from '../api/client'
 import { cn } from '../lib/utils'
+import { chartPalette, getThemeSnapshot, subscribeTheme } from '../lib/theme'
 import type { Sale, SalesChannel, ProjectSummary, WeeklyInsights, Customer } from '../types'
 import {
   Chart as ChartJS,
@@ -29,11 +30,11 @@ import { Bar } from 'react-chartjs-2'
 ChartJS.register(CategoryScale, LinearScale, BarElement, ChartTooltip)
 
 const channelConfig: Record<SalesChannel, { icon: React.ElementType; color: string; bgColor: string }> = {
-  marketplace: { icon: Store, color: 'text-purple-400', bgColor: 'bg-purple-500/20' },
-  etsy: { icon: Tag, color: 'text-orange-400', bgColor: 'bg-orange-500/20' },
-  website: { icon: Globe, color: 'text-blue-400', bgColor: 'bg-blue-500/20' },
-  direct: { icon: Users, color: 'text-emerald-400', bgColor: 'bg-emerald-500/20' },
-  other: { icon: DollarSign, color: 'text-surface-400', bgColor: 'bg-surface-500/20' },
+  marketplace: { icon: Store, color: 'text-gold', bgColor: 'bg-gold/20' },
+  etsy: { icon: Tag, color: 'text-warning', bgColor: 'bg-warning/20' },
+  website: { icon: Globe, color: 'text-info', bgColor: 'bg-info/20' },
+  direct: { icon: Users, color: 'text-success', bgColor: 'bg-success/20' },
+  other: { icon: DollarSign, color: 'text-tertiary', bgColor: 'bg-muted' },
 }
 
 const formatCents = (cents: number) => `$${(cents / 100).toFixed(2)}`
@@ -50,6 +51,8 @@ const toCents = (val: string) => Math.round(parseFloat(val || '0') * 100)
 const fromCents = (cents: number) => (cents / 100).toFixed(2)
 
 export default function Sales() {
+  const theme = useSyncExternalStore(subscribeTheme, getThemeSnapshot, () => 'light' as const)
+  const palette = chartPalette(theme)
   const queryClient = useQueryClient()
   const [editingSale, setEditingSale] = useState<Sale | null>(null)
   const [showModal, setShowModal] = useState(false)
@@ -100,7 +103,7 @@ export default function Sales() {
     <div className="p-4 sm:p-6 lg:p-8">
       <div className="flex items-center justify-between mb-8">
         <div>
-          <h1 className="text-3xl font-display font-bold text-surface-100">
+          <h1 className="text-heading-md font-display font-semibold text-surface-100">
             Sales
           </h1>
           <p className="text-surface-400 mt-1">
@@ -117,7 +120,7 @@ export default function Sales() {
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
         <div className="card p-4">
           <div className="text-sm text-surface-500 mb-1">Gross Revenue</div>
-          <div className="text-2xl font-semibold text-emerald-400">
+          <div className="text-2xl font-semibold text-success">
             {formatCents(totals.totalGross)}
           </div>
         </div>
@@ -130,7 +133,7 @@ export default function Sales() {
         </div>
         <div className="card p-4">
           <div className="text-sm text-surface-500 mb-1">Total COGS</div>
-          <div className="text-2xl font-semibold text-red-400">
+          <div className="text-2xl font-semibold text-error">
             {formatCents(totals.totalCOGS)}
           </div>
           <div className="text-xs text-surface-500 mt-1">materials + printing + supplies</div>
@@ -139,7 +142,7 @@ export default function Sales() {
           <div className="text-sm text-surface-500 mb-1">Net Profit</div>
           <div className={cn(
             'text-2xl font-semibold',
-            totals.totalProfit >= 0 ? 'text-emerald-400' : 'text-red-400'
+            totals.totalProfit >= 0 ? 'text-success' : 'text-error'
           )}>
             {formatCents(totals.totalProfit)}
           </div>
@@ -147,7 +150,7 @@ export default function Sales() {
         </div>
         <div className="card p-4">
           <div className="text-sm text-surface-500 mb-1">Sales</div>
-          <div className="text-2xl font-semibold text-blue-400">
+          <div className="text-2xl font-semibold text-info">
             {totals.count}
           </div>
           <div className="text-xs text-surface-500 mt-1">avg {formatCents(totals.avgOrder)}</div>
@@ -162,7 +165,7 @@ export default function Sales() {
       {/* Project Analytics */}
       {projectSales.length > 0 && (
         <div className="mb-8">
-          <h2 className="text-lg font-semibold text-surface-100 mb-4">
+          <h2 className="text-heading-xs font-display font-semibold text-surface-100 mb-4">
             Top Projects
           </h2>
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 mb-6">
@@ -176,8 +179,8 @@ export default function Sales() {
                     datasets: [{
                       label: 'Revenue',
                       data: projectSales.map(p => p.gross_cents),
-                      backgroundColor: '#10b981',
-                      borderRadius: 4,
+                      backgroundColor: palette.primary,
+                      borderRadius: 0,
                     }],
                   }}
                   options={{
@@ -186,11 +189,11 @@ export default function Sales() {
                     indexAxis: 'y',
                     plugins: {
                       tooltip: {
-                        backgroundColor: '#1e293b',
-                        borderColor: '#334155',
+                        backgroundColor: palette.tooltipBg,
+                        borderColor: palette.tooltipBorder,
                         borderWidth: 1,
-                        titleColor: '#e2e8f0',
-                        bodyColor: '#e2e8f0',
+                        titleColor: palette.tooltipText,
+                        bodyColor: palette.tooltipText,
                         callbacks: {
                           label: (ctx) => `$${((ctx.parsed.x ?? 0) / 100).toFixed(2)}`,
                         },
@@ -200,13 +203,13 @@ export default function Sales() {
                     scales: {
                       x: {
                         ticks: {
-                          color: '#64748b',
+                          color: palette.tick,
                           callback: (value) => `$${(Number(value) / 100).toFixed(0)}`,
                         },
-                        grid: { color: '#1e293b' },
+                        grid: { color: palette.grid },
                       },
                       y: {
-                        ticks: { color: '#94a3b8', font: { size: 12 } },
+                        ticks: { color: palette.tick, font: { size: 12 } },
                         grid: { display: false },
                       },
                     },
@@ -239,13 +242,13 @@ export default function Sales() {
                       <tr key={p.project_id || p.project_name} className="border-b border-surface-800">
                         <td className="py-2.5 text-surface-100 font-medium">{p.project_name}</td>
                         <td className="py-2.5 text-right text-surface-300">{p.count}</td>
-                        <td className="py-2.5 text-right text-emerald-400 font-medium">{formatCents(p.gross_cents)}</td>
+                        <td className="py-2.5 text-right text-success font-medium">{formatCents(p.gross_cents)}</td>
                         <td className="py-2.5 text-right text-surface-300">{formatCents(p.unit_cost_cents || 0)}</td>
-                        <td className="py-2.5 text-right text-red-400">{formatCents(p.total_cogs_cents || 0)}</td>
+                        <td className="py-2.5 text-right text-error">{formatCents(p.total_cogs_cents || 0)}</td>
                         <td className="py-2.5 text-right text-surface-300">{formatTime(printSeconds)}</td>
                         <td className={cn(
                           'py-2.5 text-right font-medium',
-                          (p.profit_cents || 0) >= 0 ? 'text-emerald-400' : 'text-red-400'
+                          (p.profit_cents || 0) >= 0 ? 'text-success' : 'text-error'
                         )}>
                           {formatCents(p.profit_cents || 0)}
                         </td>
@@ -257,9 +260,9 @@ export default function Sales() {
                   <tr className="text-surface-100 font-semibold">
                     <td className="pt-3">Total</td>
                     <td className="pt-3 text-right">{projectSales.reduce((s, p) => s + p.count, 0)}</td>
-                    <td className="pt-3 text-right text-emerald-400">{formatCents(projectSales.reduce((s, p) => s + p.gross_cents, 0))}</td>
+                    <td className="pt-3 text-right text-success">{formatCents(projectSales.reduce((s, p) => s + p.gross_cents, 0))}</td>
                     <td className="pt-3 text-right">-</td>
-                    <td className="pt-3 text-right text-red-400">{formatCents(projectSales.reduce((s, p) => s + (p.total_cogs_cents || 0), 0))}</td>
+                    <td className="pt-3 text-right text-error">{formatCents(projectSales.reduce((s, p) => s + (p.total_cogs_cents || 0), 0))}</td>
                     <td className="pt-3 text-right">
                       {formatTime(projectSales.reduce((s, p) => {
                         const t = (p.total_print_seconds || 0) > 0 ? p.total_print_seconds : (p.estimated_print_seconds || 0)
@@ -268,7 +271,7 @@ export default function Sales() {
                     </td>
                     <td className={cn(
                       'pt-3 text-right',
-                      projectSales.reduce((s, p) => s + (p.profit_cents || 0), 0) >= 0 ? 'text-emerald-400' : 'text-red-400'
+                      projectSales.reduce((s, p) => s + (p.profit_cents || 0), 0) >= 0 ? 'text-success' : 'text-error'
                     )}>
                       {formatCents(projectSales.reduce((s, p) => s + (p.profit_cents || 0), 0))}
                     </td>
@@ -286,7 +289,7 @@ export default function Sales() {
       ) : sales.length === 0 ? (
         <div className="card p-8 text-center">
           <ShoppingBag className="h-12 w-12 mx-auto mb-3 text-surface-600" />
-          <h3 className="text-lg font-medium text-surface-300 mb-2">
+          <h3 className="text-heading-xs font-display font-semibold text-surface-300 mb-2">
             No sales yet
           </h3>
           <p className="text-surface-500 mb-4">
@@ -310,7 +313,7 @@ export default function Sales() {
                 <div className="flex items-center gap-4">
                   <div
                     className={cn(
-                      'w-10 h-10 rounded-lg flex items-center justify-center',
+                      'w-10 h-10 rounded-none flex items-center justify-center',
                       cfg.bgColor,
                       cfg.color
                     )}
@@ -353,7 +356,7 @@ export default function Sales() {
                     </button>
                     <button
                       onClick={() => deleteSale.mutate(sale.id)}
-                      className="btn btn-ghost text-xs py-1 px-2 text-red-400 hover:text-red-300"
+                      className="btn btn-ghost text-xs py-1 px-2 text-error hover:text-error"
                     >
                       <Trash2 className="h-3 w-3" />
                     </button>
@@ -392,8 +395,8 @@ function ChangeBadge({ current, previous }: { current: number; previous: number 
   const Icon = isUp ? TrendingUp : TrendingDown
   return (
     <span className={cn(
-      'inline-flex items-center gap-0.5 text-xs font-medium px-1.5 py-0.5 rounded-full',
-      isUp ? 'bg-emerald-500/15 text-emerald-400' : 'bg-red-500/15 text-red-400'
+      'inline-flex items-center gap-0.5 text-xs font-medium px-1.5 py-0.5 rounded-badge',
+      isUp ? 'bg-success/15 text-success' : 'bg-error/15 text-error'
     )}>
       <Icon className="h-3 w-3" />
       {Math.abs(pct)}%
@@ -420,7 +423,7 @@ function WeeklyInsightsCard({ insights }: { insights: WeeklyInsights }) {
   return (
     <div className="mb-8">
       <div className="flex items-center gap-3 mb-4">
-        <h2 className="text-lg font-semibold text-surface-100">This Week in Sales</h2>
+        <h2 className="text-heading-xs font-display font-semibold text-surface-100">This Week in Sales</h2>
         <span className="text-sm text-surface-500">{formatWeekRange(insights.week_start, insights.week_end)}</span>
       </div>
 
@@ -431,7 +434,7 @@ function WeeklyInsightsCard({ insights }: { insights: WeeklyInsights }) {
             <span className="text-sm text-surface-500">Gross Revenue</span>
             <ChangeBadge current={tw.gross_cents} previous={lw.gross_cents} />
           </div>
-          <div className="text-2xl font-semibold text-emerald-400">{formatCents(tw.gross_cents)}</div>
+          <div className="text-2xl font-semibold text-success">{formatCents(tw.gross_cents)}</div>
         </div>
         <div className="card p-4">
           <div className="flex items-center justify-between mb-1">
@@ -445,7 +448,7 @@ function WeeklyInsightsCard({ insights }: { insights: WeeklyInsights }) {
             <span className="text-sm text-surface-500"># Sales</span>
             <ChangeBadge current={tw.count} previous={lw.count} />
           </div>
-          <div className="text-2xl font-semibold text-blue-400">{tw.count}</div>
+          <div className="text-2xl font-semibold text-info">{tw.count}</div>
         </div>
         <div className="card p-4">
           <div className="flex items-center justify-between mb-1">
@@ -459,21 +462,21 @@ function WeeklyInsightsCard({ insights }: { insights: WeeklyInsights }) {
       {/* Pending sales row */}
       {insights.pending_count > 0 && (
         <div className="mt-4">
-          <div className="text-xs font-medium text-amber-400/80 uppercase tracking-wider mb-2">Pipeline — In Production</div>
+          <div className="text-xs font-medium text-warning/80 uppercase tracking-wider mb-2">Pipeline — In Production</div>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="card p-4 border border-amber-500/20">
+            <div className="card p-4 border border-warning/20">
               <div className="text-sm text-surface-500 mb-1">Pending Revenue</div>
-              <div className="text-2xl font-semibold text-amber-400">{formatCents(insights.pending_revenue_cents)}</div>
+              <div className="text-2xl font-semibold text-warning">{formatCents(insights.pending_revenue_cents)}</div>
             </div>
-            <div className="card p-4 border border-amber-500/20">
+            <div className="card p-4 border border-warning/20">
               <div className="text-sm text-surface-500 mb-1">Pending Units</div>
-              <div className="text-2xl font-semibold text-amber-400">{insights.pending_count}</div>
+              <div className="text-2xl font-semibold text-warning">{insights.pending_count}</div>
             </div>
-            <div className="card p-4 border border-amber-500/20">
+            <div className="card p-4 border border-warning/20">
               <div className="text-sm text-surface-500 mb-1">Avg Unit Value</div>
               <div className="text-2xl font-semibold text-surface-100">{formatCents(pendingAvg)}</div>
             </div>
-            <div className="card p-4 border border-amber-500/20">
+            <div className="card p-4 border border-warning/20">
               <div className="text-sm text-surface-500 mb-1">Total Pipeline</div>
               <div className="text-2xl font-semibold text-surface-100">
                 {formatCents(tw.gross_cents + insights.pending_revenue_cents)}
@@ -490,7 +493,7 @@ function WeeklyInsightsCard({ insights }: { insights: WeeklyInsights }) {
           {insights.channels.map((ch) => {
             const cfg = channelConfig[ch.channel as keyof typeof channelConfig] || channelConfig.other
             return (
-              <span key={ch.channel} className={cn('inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full', cfg.bgColor, cfg.color)}>
+              <span key={ch.channel} className={cn('inline-flex items-center gap-1 text-xs px-2 py-1 rounded-badge', cfg.bgColor, cfg.color)}>
                 <span className="capitalize">{ch.channel}</span>
                 <span className="opacity-60">&times; {ch.count}</span>
               </span>
@@ -622,12 +625,12 @@ function SaleModal({
 
   return (
     <div
-      className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 overflow-y-auto"
+      className="fixed inset-0 bg-overlay flex items-center justify-center z-50 overflow-y-auto"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
       <div className="card w-full max-w-2xl p-6 my-8">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-semibold text-surface-100">
+          <h2 className="text-heading-xs font-display font-semibold text-surface-100">
             {isEdit ? 'Edit Sale' : 'Add Sale'}
           </h2>
           <button onClick={onClose} className="text-surface-400 hover:text-surface-200">
@@ -658,7 +661,7 @@ function SaleModal({
 
           {/* Project Cost Summary */}
           {selectedProjectId && (
-            <div className="p-3 rounded-lg bg-surface-800/50 border border-surface-700">
+            <div className="p-3 rounded-none bg-surface-800/50 border border-surface-700">
               <div className="text-sm font-medium text-surface-300 mb-2">Project Costs</div>
               {loadingSummary ? (
                 <div className="text-sm text-surface-500">Loading costs...</div>
@@ -682,13 +685,13 @@ function SaleModal({
                   </div>
                   <div className="col-span-2 pt-2 border-t border-surface-700 flex justify-between font-medium">
                     <span className="text-surface-400">Total COGS:</span>
-                    <span className="text-red-400">{formatCents(projectSummary.total_cost_cents)}</span>
+                    <span className="text-error">{formatCents(projectSummary.total_cost_cents)}</span>
                   </div>
                   {toCents(gross) > 0 && (
                     <div className="col-span-2 flex justify-between font-medium">
                       <span className="text-surface-400">Est. Profit:</span>
                       <span className={cn(
-                        netCents - projectSummary.total_cost_cents >= 0 ? 'text-emerald-400' : 'text-red-400'
+                        netCents - projectSummary.total_cost_cents >= 0 ? 'text-success' : 'text-error'
                       )}>
                         {formatCents(netCents - projectSummary.total_cost_cents)}
                       </span>
@@ -883,12 +886,12 @@ function SaleModal({
           </div>
 
           {/* Net calculation */}
-          <div className="p-3 rounded-lg bg-surface-800/50 border border-surface-700">
+          <div className="p-3 rounded-none bg-surface-800/50 border border-surface-700">
             <div className="flex items-center justify-between">
               <span className="text-sm text-surface-400">Calculated Net</span>
               <span className={cn(
-                'text-lg font-semibold',
-                netCents >= 0 ? 'text-emerald-400' : 'text-red-400'
+                'text-heading-xs font-display font-semibold',
+                netCents >= 0 ? 'text-success' : 'text-error'
               )}>
                 {formatCents(netCents)}
               </span>

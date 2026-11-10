@@ -6,16 +6,16 @@ import type { JobEvent } from '../types'
 
 const EVENT_ICONS: Record<string, { icon: string; color: string }> = {
   queued:    { icon: '\u25CB', color: 'text-surface-400' },
-  assigned:  { icon: '\u25CF', color: 'text-blue-400' },
-  uploaded:  { icon: '\u2191', color: 'text-blue-400' },
-  started:   { icon: '\u25B6', color: 'text-emerald-400' },
-  progress:  { icon: '\u2026', color: 'text-blue-300' },
-  paused:    { icon: '\u23F8', color: 'text-amber-400' },
-  resumed:   { icon: '\u25B6', color: 'text-emerald-400' },
-  completed: { icon: '\u2713', color: 'text-emerald-400' },
-  failed:    { icon: '\u2717', color: 'text-red-400' },
+  assigned:  { icon: '\u25CF', color: 'text-info' },
+  uploaded:  { icon: '\u2191', color: 'text-info' },
+  started:   { icon: '\u25B6', color: 'text-success' },
+  progress:  { icon: '\u2026', color: 'text-info' },
+  paused:    { icon: '\u23F8', color: 'text-warning' },
+  resumed:   { icon: '\u25B6', color: 'text-success' },
+  completed: { icon: '\u2713', color: 'text-success' },
+  failed:    { icon: '\u2717', color: 'text-error' },
   cancelled: { icon: '\u2715', color: 'text-surface-400' },
-  retried:   { icon: '\u21BB', color: 'text-amber-400' },
+  retried:   { icon: '\u21BB', color: 'text-warning' },
 }
 
 function formatEventTime(dateString: string): string {
@@ -43,7 +43,7 @@ function EventRow({ event }: { event: JobEvent }) {
           <span className="text-xs text-surface-500">{event.actor_type}</span>
         </div>
         {event.error_message && (
-          <div className="text-xs text-red-400 mt-0.5">{event.error_message}</div>
+          <div className="text-xs text-error mt-0.5">{event.error_message}</div>
         )}
         {event.progress !== undefined && event.event_type === 'progress' && (
           <div className="text-xs text-surface-400 mt-0.5">{event.progress}%</div>

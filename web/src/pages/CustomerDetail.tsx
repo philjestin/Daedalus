@@ -111,9 +111,9 @@ export default function CustomerDetail() {
 
   const statusColors: Record<string, string> = {
     draft: 'bg-surface-700 text-surface-300',
-    sent: 'bg-blue-500/20 text-blue-400',
-    accepted: 'bg-green-500/20 text-green-400',
-    rejected: 'bg-red-500/20 text-red-400',
+    sent: 'bg-info/20 text-info',
+    accepted: 'bg-success/20 text-success',
+    rejected: 'bg-error/20 text-error',
     expired: 'bg-surface-700 text-surface-400',
   }
 
@@ -126,17 +126,17 @@ export default function CustomerDetail() {
           Back to Customers
         </Link>
         <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-display font-bold text-surface-100">{customer.name}</h1>
+          <h1 className="text-heading-sm font-display font-semibold text-surface-100">{customer.name}</h1>
           <div className="flex items-center gap-2">
             <button
               onClick={() => editing ? setEditing(false) : startEditing()}
-              className="px-4 py-2 text-sm text-surface-400 hover:text-surface-200 border border-surface-700 rounded-lg hover:bg-surface-800"
+              className="px-4 py-2 text-sm text-surface-400 hover:text-surface-200 border border-surface-700 rounded-none hover:bg-surface-800"
             >
               {editing ? 'Cancel' : 'Edit'}
             </button>
             <button
               onClick={handleDelete}
-              className="inline-flex items-center gap-1.5 px-4 py-2 text-sm text-red-400 hover:bg-red-500/10 border border-red-500/30 rounded-lg"
+              className="inline-flex items-center gap-1.5 px-4 py-2 text-sm text-error hover:bg-error/10 border border-error/30 rounded-none"
               title="Delete customer"
             >
               <Trash2 className="h-4 w-4" />
@@ -150,41 +150,41 @@ export default function CustomerDetail() {
         {/* Info / Edit */}
         <div className="lg:col-span-1">
           {editing ? (
-            <div className="bg-surface-900 border border-surface-800 rounded-lg p-4">
+            <div className="bg-surface-900 border border-surface-800 rounded-none p-4">
               <form onSubmit={handleUpdate} className="space-y-3">
                 <div>
                   <label className="block text-xs font-medium text-surface-400 mb-1">Name</label>
-                  <input name="name" defaultValue={customer.name} required className="w-full px-3 py-2 bg-surface-800 border border-surface-700 rounded-lg text-surface-100 text-sm focus:outline-none focus:ring-1 focus:ring-accent-500" />
+                  <input name="name" defaultValue={customer.name} required className="input" />
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-surface-400 mb-1">Email</label>
-                  <input name="email" type="email" defaultValue={customer.email} className="w-full px-3 py-2 bg-surface-800 border border-surface-700 rounded-lg text-surface-100 text-sm focus:outline-none focus:ring-1 focus:ring-accent-500" />
+                  <input name="email" type="email" defaultValue={customer.email} className="input" />
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-surface-400 mb-1">Company</label>
-                  <input name="company" defaultValue={customer.company} className="w-full px-3 py-2 bg-surface-800 border border-surface-700 rounded-lg text-surface-100 text-sm focus:outline-none focus:ring-1 focus:ring-accent-500" />
+                  <input name="company" defaultValue={customer.company} className="input" />
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-surface-400 mb-1">Phone</label>
-                  <input name="phone" defaultValue={customer.phone} className="w-full px-3 py-2 bg-surface-800 border border-surface-700 rounded-lg text-surface-100 text-sm focus:outline-none focus:ring-1 focus:ring-accent-500" />
+                  <input name="phone" defaultValue={customer.phone} className="input" />
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-surface-400 mb-1">Notes</label>
-                  <textarea name="notes" defaultValue={customer.notes} rows={3} className="w-full px-3 py-2 bg-surface-800 border border-surface-700 rounded-lg text-surface-100 text-sm focus:outline-none focus:ring-1 focus:ring-accent-500" />
+                  <textarea name="notes" defaultValue={customer.notes} rows={3} className="input" />
                 </div>
 
                 {/* Billing Address */}
                 <div className="pt-2 border-t border-surface-800">
                   <label className="block text-xs font-medium text-surface-400 mb-1">Billing Address</label>
                   <div className="space-y-1.5">
-                    <input value={billingAddr.line1 || ''} onChange={e => setBillingAddr(a => ({ ...a, line1: e.target.value }))} placeholder="Address line 1" className="w-full px-3 py-1.5 bg-surface-800 border border-surface-700 rounded-lg text-surface-100 text-sm focus:outline-none focus:ring-1 focus:ring-accent-500" />
-                    <input value={billingAddr.line2 || ''} onChange={e => setBillingAddr(a => ({ ...a, line2: e.target.value }))} placeholder="Address line 2" className="w-full px-3 py-1.5 bg-surface-800 border border-surface-700 rounded-lg text-surface-100 text-sm focus:outline-none focus:ring-1 focus:ring-accent-500" />
+                    <input value={billingAddr.line1 || ''} onChange={e => setBillingAddr(a => ({ ...a, line1: e.target.value }))} placeholder="Address line 1" className="input" />
+                    <input value={billingAddr.line2 || ''} onChange={e => setBillingAddr(a => ({ ...a, line2: e.target.value }))} placeholder="Address line 2" className="input" />
                     <div className="grid grid-cols-3 gap-1.5">
-                      <input value={billingAddr.city || ''} onChange={e => setBillingAddr(a => ({ ...a, city: e.target.value }))} placeholder="City" className="px-3 py-1.5 bg-surface-800 border border-surface-700 rounded-lg text-surface-100 text-sm focus:outline-none focus:ring-1 focus:ring-accent-500" />
-                      <input value={billingAddr.state || ''} onChange={e => setBillingAddr(a => ({ ...a, state: e.target.value }))} placeholder="State" className="px-3 py-1.5 bg-surface-800 border border-surface-700 rounded-lg text-surface-100 text-sm focus:outline-none focus:ring-1 focus:ring-accent-500" />
-                      <input value={billingAddr.zip || ''} onChange={e => setBillingAddr(a => ({ ...a, zip: e.target.value }))} placeholder="Zip" className="px-3 py-1.5 bg-surface-800 border border-surface-700 rounded-lg text-surface-100 text-sm focus:outline-none focus:ring-1 focus:ring-accent-500" />
+                      <input value={billingAddr.city || ''} onChange={e => setBillingAddr(a => ({ ...a, city: e.target.value }))} placeholder="City" className="input" />
+                      <input value={billingAddr.state || ''} onChange={e => setBillingAddr(a => ({ ...a, state: e.target.value }))} placeholder="State" className="input" />
+                      <input value={billingAddr.zip || ''} onChange={e => setBillingAddr(a => ({ ...a, zip: e.target.value }))} placeholder="Zip" className="input" />
                     </div>
-                    <input value={billingAddr.country || ''} onChange={e => setBillingAddr(a => ({ ...a, country: e.target.value }))} placeholder="Country" className="w-full px-3 py-1.5 bg-surface-800 border border-surface-700 rounded-lg text-surface-100 text-sm focus:outline-none focus:ring-1 focus:ring-accent-500" />
+                    <input value={billingAddr.country || ''} onChange={e => setBillingAddr(a => ({ ...a, country: e.target.value }))} placeholder="Country" className="input" />
                   </div>
                 </div>
 
@@ -192,22 +192,22 @@ export default function CustomerDetail() {
                 <div>
                   <label className="block text-xs font-medium text-surface-400 mb-1">Shipping Address</label>
                   <div className="space-y-1.5">
-                    <input value={shippingAddr.line1 || ''} onChange={e => setShippingAddr(a => ({ ...a, line1: e.target.value }))} placeholder="Address line 1" className="w-full px-3 py-1.5 bg-surface-800 border border-surface-700 rounded-lg text-surface-100 text-sm focus:outline-none focus:ring-1 focus:ring-accent-500" />
-                    <input value={shippingAddr.line2 || ''} onChange={e => setShippingAddr(a => ({ ...a, line2: e.target.value }))} placeholder="Address line 2" className="w-full px-3 py-1.5 bg-surface-800 border border-surface-700 rounded-lg text-surface-100 text-sm focus:outline-none focus:ring-1 focus:ring-accent-500" />
+                    <input value={shippingAddr.line1 || ''} onChange={e => setShippingAddr(a => ({ ...a, line1: e.target.value }))} placeholder="Address line 1" className="input" />
+                    <input value={shippingAddr.line2 || ''} onChange={e => setShippingAddr(a => ({ ...a, line2: e.target.value }))} placeholder="Address line 2" className="input" />
                     <div className="grid grid-cols-3 gap-1.5">
-                      <input value={shippingAddr.city || ''} onChange={e => setShippingAddr(a => ({ ...a, city: e.target.value }))} placeholder="City" className="px-3 py-1.5 bg-surface-800 border border-surface-700 rounded-lg text-surface-100 text-sm focus:outline-none focus:ring-1 focus:ring-accent-500" />
-                      <input value={shippingAddr.state || ''} onChange={e => setShippingAddr(a => ({ ...a, state: e.target.value }))} placeholder="State" className="px-3 py-1.5 bg-surface-800 border border-surface-700 rounded-lg text-surface-100 text-sm focus:outline-none focus:ring-1 focus:ring-accent-500" />
-                      <input value={shippingAddr.zip || ''} onChange={e => setShippingAddr(a => ({ ...a, zip: e.target.value }))} placeholder="Zip" className="px-3 py-1.5 bg-surface-800 border border-surface-700 rounded-lg text-surface-100 text-sm focus:outline-none focus:ring-1 focus:ring-accent-500" />
+                      <input value={shippingAddr.city || ''} onChange={e => setShippingAddr(a => ({ ...a, city: e.target.value }))} placeholder="City" className="input" />
+                      <input value={shippingAddr.state || ''} onChange={e => setShippingAddr(a => ({ ...a, state: e.target.value }))} placeholder="State" className="input" />
+                      <input value={shippingAddr.zip || ''} onChange={e => setShippingAddr(a => ({ ...a, zip: e.target.value }))} placeholder="Zip" className="input" />
                     </div>
-                    <input value={shippingAddr.country || ''} onChange={e => setShippingAddr(a => ({ ...a, country: e.target.value }))} placeholder="Country" className="w-full px-3 py-1.5 bg-surface-800 border border-surface-700 rounded-lg text-surface-100 text-sm focus:outline-none focus:ring-1 focus:ring-accent-500" />
+                    <input value={shippingAddr.country || ''} onChange={e => setShippingAddr(a => ({ ...a, country: e.target.value }))} placeholder="Country" className="input" />
                   </div>
                 </div>
 
-                <button type="submit" className="w-full px-4 py-2 bg-accent-500 text-white rounded-lg hover:bg-accent-600 text-sm font-medium">Save</button>
+                <button type="submit" className="btn btn-primary w-full px-4 py-2 text-sm">Save</button>
               </form>
             </div>
           ) : (
-            <div className="bg-surface-900 border border-surface-800 rounded-lg p-4 space-y-3">
+            <div className="bg-surface-900 border border-surface-800 rounded-none p-4 space-y-3">
               {customer.email && (
                 <div className="flex items-center gap-2 text-sm text-surface-300">
                   <Mail className="h-4 w-4 text-surface-500" />
@@ -311,14 +311,14 @@ export default function CustomerDetail() {
                   <Link
                     key={quote.id}
                     to={`/quotes/${quote.id}`}
-                    className="block bg-surface-900 border border-surface-800 rounded-lg p-4 hover:bg-surface-800/50 transition-colors"
+                    className="block bg-surface-900 border border-surface-800 rounded-none p-4 hover:bg-surface-800/50 transition-colors"
                   >
                     <div className="flex items-center justify-between">
                       <div>
                         <span className="text-sm font-mono text-surface-500 mr-2">{quote.quote_number}</span>
                         <span className="text-sm font-medium text-surface-100">{quote.title}</span>
                       </div>
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusColors[quote.status] || ''}`}>
+                      <span className={`px-2 py-0.5 rounded-badge text-xs font-medium ${statusColors[quote.status] || ''}`}>
                         {quote.status}
                       </span>
                     </div>
@@ -343,7 +343,7 @@ export default function CustomerDetail() {
                   <Link
                     key={order.id}
                     to={`/orders/${order.id}`}
-                    className="block bg-surface-900 border border-surface-800 rounded-lg p-4 hover:bg-surface-800/50 transition-colors"
+                    className="block bg-surface-900 border border-surface-800 rounded-none p-4 hover:bg-surface-800/50 transition-colors"
                   >
                     <div className="flex items-center justify-between">
                       <span className="text-sm font-medium text-surface-100">{order.customer_name}</span>
@@ -362,21 +362,21 @@ export default function CustomerDetail() {
 
       {/* New Quote Modal */}
       {showNewQuote && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-surface-900 border border-surface-700 rounded-xl p-6 w-full max-w-md">
-            <h2 className="text-lg font-display font-semibold text-surface-100 mb-4">New Quote for {customer.name}</h2>
+        <div className="fixed inset-0 bg-overlay flex items-center justify-center z-50">
+          <div className="card p-6 max-w-md">
+            <h2 className="text-heading-xs font-display font-semibold text-surface-100 mb-4">New Quote for {customer.name}</h2>
             <form onSubmit={handleCreateQuote} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-surface-300 mb-1">Title *</label>
-                <input name="title" required className="w-full px-3 py-2 bg-surface-800 border border-surface-700 rounded-lg text-surface-100 text-sm focus:outline-none focus:ring-1 focus:ring-accent-500" placeholder="e.g. Custom enclosure build" />
+                <label className="block text-label-sm font-normal text-surface-300 mb-1">Title *</label>
+                <input name="title" required className="input" placeholder="e.g. Custom enclosure build" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-surface-300 mb-1">Notes</label>
-                <textarea name="notes" rows={3} className="w-full px-3 py-2 bg-surface-800 border border-surface-700 rounded-lg text-surface-100 text-sm focus:outline-none focus:ring-1 focus:ring-accent-500" />
+                <label className="block text-label-sm font-normal text-surface-300 mb-1">Notes</label>
+                <textarea name="notes" rows={3} className="input" />
               </div>
               <div className="flex justify-end gap-3 pt-2">
                 <button type="button" onClick={() => setShowNewQuote(false)} className="px-4 py-2 text-sm text-surface-400 hover:text-surface-200">Cancel</button>
-                <button type="submit" className="px-4 py-2 bg-accent-500 text-white rounded-lg hover:bg-accent-600 text-sm font-medium">Create Quote</button>
+                <button type="submit" className="btn btn-primary px-4 py-2 text-sm">Create Quote</button>
               </div>
             </form>
           </div>

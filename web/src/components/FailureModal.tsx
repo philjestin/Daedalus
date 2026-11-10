@@ -67,23 +67,23 @@ export function FailureModal({ job, printers, onClose, onRetry, onScrap }: Failu
   }
 
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+    <div className="fixed inset-0 bg-overlay flex items-center justify-center z-50">
       <div className="card w-full max-w-lg p-6 m-4">
         {/* Header */}
         <div className="flex items-center gap-3 mb-4">
-          <div className="w-10 h-10 rounded-full bg-red-500/20 flex items-center justify-center">
-            <svg className="w-5 h-5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="w-10 h-10 rounded-full bg-error/20 flex items-center justify-center">
+            <svg className="w-5 h-5 text-error" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
             </svg>
           </div>
           <div>
-            <h2 className="text-xl font-semibold text-surface-100">Print Failed</h2>
+            <h2 className="text-heading-xs font-display font-semibold text-surface-100">Print Failed</h2>
             <p className="text-sm text-surface-400">What would you like to do?</p>
           </div>
         </div>
 
         {error && (
-          <div className="mb-4 p-3 bg-red-500/20 border border-red-500/50 rounded text-red-300 text-sm">
+          <div className="mb-4 p-3 bg-error/20 border border-error/50 rounded-none text-error text-sm">
             {error}
           </div>
         )}
@@ -93,7 +93,7 @@ export function FailureModal({ job, printers, onClose, onRetry, onScrap }: Failu
           <div className="space-y-3">
             <button
               onClick={() => setAction('retry')}
-              className="w-full p-4 text-left rounded-lg border border-surface-700 hover:border-primary-500 hover:bg-surface-800/50 transition-colors"
+              className="w-full p-4 text-left rounded-none border border-surface-700 hover:border-primary-500 hover:bg-surface-800/50 transition-colors"
             >
               <div className="flex items-center gap-3">
                 <svg className="w-5 h-5 text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -109,10 +109,10 @@ export function FailureModal({ job, printers, onClose, onRetry, onScrap }: Failu
             {otherPrinters.length > 0 && (
               <button
                 onClick={() => setAction('reassign')}
-                className="w-full p-4 text-left rounded-lg border border-surface-700 hover:border-primary-500 hover:bg-surface-800/50 transition-colors"
+                className="w-full p-4 text-left rounded-none border border-surface-700 hover:border-primary-500 hover:bg-surface-800/50 transition-colors"
               >
                 <div className="flex items-center gap-3">
-                  <svg className="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-5 h-5 text-info" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
                   </svg>
                   <div>
@@ -125,10 +125,10 @@ export function FailureModal({ job, printers, onClose, onRetry, onScrap }: Failu
 
             <button
               onClick={() => setAction('scrap')}
-              className="w-full p-4 text-left rounded-lg border border-surface-700 hover:border-red-500/50 hover:bg-surface-800/50 transition-colors"
+              className="w-full p-4 text-left rounded-none border border-surface-700 hover:border-error/50 hover:bg-surface-800/50 transition-colors"
             >
               <div className="flex items-center gap-3">
-                <svg className="w-5 h-5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-5 h-5 text-error" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                 </svg>
                 <div>
@@ -160,7 +160,7 @@ export function FailureModal({ job, printers, onClose, onRetry, onScrap }: Failu
                   <button
                     key={cat.value}
                     onClick={() => setFailureCategory(cat.value)}
-                    className={`p-2 text-left rounded border transition-colors ${
+                    className={`p-2 text-left rounded-none border transition-colors ${
                       failureCategory === cat.value
                         ? 'border-primary-500 bg-primary-500/20 text-surface-100'
                         : 'border-surface-700 hover:border-surface-600 text-surface-300'
@@ -202,7 +202,7 @@ export function FailureModal({ job, printers, onClose, onRetry, onScrap }: Failu
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 placeholder="What happened? Any observations..."
-                className="w-full bg-surface-800 border border-surface-700 rounded px-3 py-2 text-surface-100 placeholder-surface-500 h-20 resize-none"
+                className="input h-20 resize-none"
               />
             </div>
 
@@ -219,7 +219,7 @@ export function FailureModal({ job, printers, onClose, onRetry, onScrap }: Failu
                 <button
                   onClick={handleScrap}
                   disabled={loading}
-                  className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded font-medium transition-colors disabled:opacity-50"
+                  className="btn btn-destructive flex-1 px-4 py-2 disabled:opacity-50"
                 >
                   {loading ? 'Processing...' : 'Mark as Scrap'}
                 </button>
@@ -227,7 +227,7 @@ export function FailureModal({ job, printers, onClose, onRetry, onScrap }: Failu
                 <button
                   onClick={() => handleRetry(action === 'reassign')}
                   disabled={loading || (action === 'reassign' && !selectedPrinterId)}
-                  className="flex-1 px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded font-medium transition-colors disabled:opacity-50"
+                  className="btn btn-primary flex-1 px-4 py-2 disabled:opacity-50"
                 >
                   {loading ? 'Processing...' : action === 'reassign' ? 'Retry on Selected Printer' : 'Retry Job'}
                 </button>
