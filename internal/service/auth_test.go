@@ -205,10 +205,11 @@ func TestAuthService_changePasswordDropsOtherSessions(t *testing.T) {
 func TestAuthService_loginRateLimit(t *testing.T) {
 	svc, _ := newAuthService(t)
 	svc.ConfigureLoginLimit(LimitConfig{
-		MaxAttempts: 2,
-		Window:      time.Minute,
-		BaseBackoff: time.Hour,
-		MaxBackoff:  time.Hour,
+		MaxAttempts:   2,
+		IPMaxAttempts: 2,
+		Window:        time.Minute,
+		BaseBackoff:   time.Hour,
+		MaxBackoff:    time.Hour,
 	})
 	ctx := context.Background()
 	if _, _, err := svc.Setup(ctx, "owner", "password12", "", ""); err != nil {

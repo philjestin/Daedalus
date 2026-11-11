@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
-	"net"
 	"net/http"
 	"strconv"
 	"time"
@@ -17,13 +16,20 @@ import (
 
 // AuthHandler serves local login, setup, and user management.
 type AuthHandler struct {
-	auth    *service.AuthService
-	proxies []*net.IPNet
+	auth   *service.AuthService
+	trust  proxyTrust
+	secure cookieSecureMode
 }
 
 // NewAuthHandler builds the auth HTTP handler.
 func NewAuthHandler(auth *service.AuthService) *AuthHandler {
-	return &AuthHandler{auth: auth, proxies: trustedProxyNets()}
+	trust := proxyTrustFromEnv()
+	logProxyTrust(trust)
+	return &AuthHandler{
+		auth:   auth,
+		trust:  trust,
+		secure: cookieSecureFromEnv(),
+	}
 }
 
 type credentials struct {
@@ -66,8 +72,8 @@ func (h *AuthHandler) Setup(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	ip := clientIP(r, h.proxies)
-	user, token, err := h.auth.Setup(r.Context(), body.Username, body.Password, r.UserAgent(), ip)
+	sessionIP, _ := loginAddresses(r, h.trust)
+	user, token, err := h.auth.Setup(r.Context(), body.Username, body.Password, r.UserAgent(), sessionIP)
 	if err != nil {
 		writeAuthError(w, err)
 		return
@@ -81,17 +87,21 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	if !h.ready(w) {
 		return
 	}
-	ip := clientIP(r, h.proxies)
+	client := h.loginClient(r)
 	var body credentials
 	if err := decodeAuthJSON(w, r, &body); err != nil {
-		if limErr := h.auth.NoteFailedLogin(ip, ""); limErr != nil {
+		limitIP := ""
+		if client.LimitIP {
+			limitIP = client.IP
+		}
+		if limErr := h.auth.NoteFailedLogin(limitIP, ""); limErr != nil {
 			writeAuthError(w, limErr)
 			return
 		}
 		respondError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	user, token, err := h.auth.Login(r.Context(), body.Username, body.Password, r.UserAgent(), ip)
+	user, token, err := h.auth.LoginAs(r.Context(), body.Username, body.Password, r.UserAgent(), client)
 	if err != nil {
 		writeAuthError(w, err)
 		return
@@ -211,6 +221,11 @@ func (h *AuthHandler) requireUser(w http.ResponseWriter, r *http.Request) *model
 	return user
 }
 
+func (h *AuthHandler) loginClient(r *http.Request) service.LoginClient {
+	sessionIP, limitIP := loginAddresses(r, h.trust)
+	return service.LoginClient{IP: sessionIP, LimitIP: limitIP != ""}
+}
+
 func (h *AuthHandler) setSessionCookie(w http.ResponseWriter, r *http.Request, token string) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     SessionCookieName,
@@ -218,7 +233,7 @@ func (h *AuthHandler) setSessionCookie(w http.ResponseWriter, r *http.Request, t
 		Path:     "/",
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
-		Secure:   requestIsHTTPS(r, h.proxies),
+		Secure:   sessionCookieSecure(r, h.trust, h.secure),
 		MaxAge:   int(service.SessionTTL.Seconds()),
 		Expires:  time.Now().Add(service.SessionTTL),
 	})
@@ -231,7 +246,7 @@ func (h *AuthHandler) clearSessionCookie(w http.ResponseWriter, r *http.Request)
 		Path:     "/",
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
-		Secure:   requestIsHTTPS(r, h.proxies),
+		Secure:   sessionCookieSecure(r, h.trust, h.secure),
 		MaxAge:   -1,
 		Expires:  time.Unix(0, 0),
 	})

@@ -165,17 +165,34 @@ func (s *AuthService) Setup(ctx context.Context, username, password, userAgent, 
 	return s.finishLogin(ctx, user, userAgent, ip)
 }
 
+// LoginClient is the caller address for one sign-in.
+// IP is stored on the session. LimitIP is false when that address is the
+// proxy itself and a per-IP lock would block every user behind it.
+type LoginClient struct {
+	IP      string
+	LimitIP bool
+}
+
 // Login checks the password and opens a session.
 func (s *AuthService) Login(ctx context.Context, username, password, userAgent, ip string) (*model.User, string, error) {
+	return s.LoginAs(ctx, username, password, userAgent, LoginClient{IP: ip, LimitIP: ip != ""})
+}
+
+// LoginAs checks the password and opens a session for a resolved client.
+func (s *AuthService) LoginAs(ctx context.Context, username, password, userAgent string, client LoginClient) (*model.User, string, error) {
 	username = strings.TrimSpace(username)
 	key := strings.ToLower(username)
 	now := s.now()
-	if wait, ok := s.limiter.Allow(ip, key, now); !ok {
+	limitIP := ""
+	if client.LimitIP {
+		limitIP = client.IP
+	}
+	if wait, ok := s.limiter.Allow(limitIP, key, now); !ok {
 		return nil, "", &RateLimitError{RetryAfter: wait}
 	}
 
 	reject := func() (*model.User, string, error) {
-		s.limiter.Fail(ip, key, s.now())
+		s.limiter.Fail(limitIP, key, s.now())
 		compareDummy(password)
 		return nil, "", ErrInvalidCredentials
 	}
@@ -194,11 +211,11 @@ func (s *AuthService) Login(ctx context.Context, username, password, userAgent, 
 		return nil, "", err
 	}
 	if !VerifyPassword(user.PasswordHash, password) {
-		s.limiter.Fail(ip, key, s.now())
+		s.limiter.Fail(limitIP, key, s.now())
 		return nil, "", ErrInvalidCredentials
 	}
-	s.limiter.Success(ip, key)
-	return s.finishLogin(ctx, user, userAgent, ip)
+	s.limiter.Success(limitIP, key)
+	return s.finishLogin(ctx, user, userAgent, client.IP)
 }
 
 // NoteFailedLogin counts a login attempt that never reached password checking,

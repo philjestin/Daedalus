@@ -7,10 +7,11 @@ import (
 
 func TestLoginLimiter_backoffPerIPAndUsername(t *testing.T) {
 	limiter := NewLoginLimiter(LimitConfig{
-		MaxAttempts: 3,
-		Window:      time.Minute,
-		BaseBackoff: time.Second,
-		MaxBackoff:  time.Minute,
+		MaxAttempts:   3,
+		IPMaxAttempts: 3,
+		Window:        time.Minute,
+		BaseBackoff:   time.Second,
+		MaxBackoff:    time.Minute,
 	})
 	now := time.Now()
 
@@ -52,6 +53,62 @@ func TestLoginLimiter_backoffPerIPAndUsername(t *testing.T) {
 	limiter.Success("198.51.100.10", "Sam")
 	if _, ok := limiter.Allow("198.51.100.10", "sam", later); !ok {
 		t.Fatal("success should clear the ip and username")
+	}
+}
+
+func TestLoginLimiter_usernameLocksBeforeSharedIP(t *testing.T) {
+	limiter := NewLoginLimiter(DefaultLimitConfig())
+	now := time.Now()
+	for i := 0; i < 5; i++ {
+		if _, ok := limiter.Allow("198.51.100.10", "sam", now); !ok {
+			t.Fatalf("attempt %d should be allowed", i+1)
+		}
+		limiter.Fail("198.51.100.10", "sam", now)
+	}
+	if _, ok := limiter.Allow("198.51.100.10", "sam", now); ok {
+		t.Fatal("username should lock at the default attempt cap")
+	}
+	if _, ok := limiter.Allow("198.51.100.10", "other", now); !ok {
+		t.Fatal("per-IP limit should be higher than the per-username limit")
+	}
+	if _, ok := limiter.Allow("198.51.100.11", "other", now); !ok {
+		t.Fatal("unrelated client should be allowed")
+	}
+}
+
+func TestLoginLimiter_blankIPIsNotSharedBucket(t *testing.T) {
+	limiter := NewLoginLimiter(LimitConfig{
+		MaxAttempts: 2,
+		Window:      time.Minute,
+		BaseBackoff: time.Hour,
+		MaxBackoff:  time.Hour,
+	})
+	now := time.Now()
+	limiter.Fail("", "ann", now)
+	limiter.Fail("", "ann", now)
+	if _, ok := limiter.Allow("", "ann", now); ok {
+		t.Fatal("username should still lock when no client IP is available")
+	}
+	if _, ok := limiter.Allow("", "bob", now); !ok {
+		t.Fatal("blank IP must not lock every username")
+	}
+}
+
+func TestLoginLimiter_unsetIPMaxAttemptsUsesHigherDefault(t *testing.T) {
+	limiter := NewLoginLimiter(LimitConfig{
+		MaxAttempts: 2,
+		Window:      time.Minute,
+		BaseBackoff: time.Hour,
+		MaxBackoff:  time.Hour,
+	})
+	now := time.Now()
+	limiter.Fail("198.51.100.10", "sam", now)
+	limiter.Fail("198.51.100.10", "sam", now)
+	if _, ok := limiter.Allow("198.51.100.10", "sam", now); ok {
+		t.Fatal("username should lock at MaxAttempts")
+	}
+	if _, ok := limiter.Allow("198.51.100.10", "other", now); !ok {
+		t.Fatal("omitted IP cap should stay above the username cap")
 	}
 }
 

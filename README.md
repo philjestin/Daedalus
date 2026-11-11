@@ -318,7 +318,7 @@ RankOS uses a local login. There is no cloud account and no default password.
 
 On first launch, when the database has no users, the app shows **Create admin account**. That page creates the first user (an admin) and then turns itself off. Anyone who can open the app before that account exists can create it, so do this before exposing the port or the tunnel.
 
-Sign in at `/login`. The session cookie is `HttpOnly`, `SameSite=Lax`, and `Secure` when the request is HTTPS (`https` itself, or `X-Forwarded-Proto: https` from a trusted proxy). It lasts 30 days and slides forward while you use the app. Log out from the sidebar. Change your password in Settings. The admin can add and remove other users there.
+Sign in at `/login`. The session cookie is `HttpOnly`, `SameSite=Lax`, and `Secure` on HTTPS (see below). It lasts 30 days and slides forward while you use the app. Log out from the sidebar. Change your password in Settings. The admin can add and remove other users there.
 
 These paths stay open without a session:
 
@@ -330,7 +330,17 @@ These paths stay open without a session:
 
 Everything else under `/api`, including printer controls and future `/api/printers/{id}/camera` routes, requires a session. So does `/ws`. The Etsy OAuth callback is a browser redirect back to this app, so the session cookie is sent and that route stays protected.
 
-Login attempts are limited per client IP and per username. `CF-Connecting-IP` and `X-Forwarded-For` are trusted only when the TCP peer is loopback or listed in `TRUSTED_PROXIES`. Behind a Cloudflare tunnel and Traefik on the same machine, the peer is loopback and the real client IP is taken from those headers.
+Login attempts are limited per username (5 failures in 15 minutes, then backoff). A separate per-IP limit is higher (20 in the same window) so one client cannot spray passwords across accounts. If the only address RankOS can see is a trusted proxy, that shared address is not used for the per-IP lock, so one user cannot lock everyone else out. The username limit still applies.
+
+### Running behind a reverse proxy
+
+With no extra configuration, RankOS trusts forwarded headers from loopback and from these private, CGNAT, and link-local ranges: `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `100.64.0.0/10`, `fc00::/7`, and `fe80::/10`. That matches the peers a typical install actually sees: Traefik, Caddy, nginx, Nginx Proxy Manager, cloudflared, a Docker bridge gateway such as `172.17.0.1`, and a Kubernetes ingress.
+
+When that peer is trusted, the client address comes from `CF-Connecting-IP`, then `X-Forwarded-For` (read from the right, skipping trusted hops), then `X-Real-IP`. The session cookie is marked `Secure` when the app itself is serving TLS, or when a trusted peer sends `X-Forwarded-Proto: https`.
+
+Trusting every private address is the trade-off that makes this work with zero configuration. Any machine that can open a TCP connection to RankOS from those ranges can set the client IP RankOS records. Those ranges are also skipped as proxy hops, so a forged address written to the left of a private client address is the one that wins. If the app port is reachable from more than the proxy, or private clients must stay distinct, set `TRUSTED_PROXIES` to the proxy's IP or CIDR, comma-separated. That list replaces the private defaults. Loopback stays trusted. Set `TRUSTED_PROXIES=none` to ignore forwarded headers from every peer, including loopback.
+
+A proxy that connects from a public address is not trusted until you add it to `TRUSTED_PROXIES`. Until then RankOS ignores its forwarded headers and logs a one-time warning. `COOKIE_SECURE` is `auto` by default (TLS or a trusted `X-Forwarded-Proto`). Set it to `true` or `false` to force the cookie flag.
 
 ## Environment Variables
 
@@ -340,7 +350,8 @@ Login attempts are limited per client IP and per username. `CF-Connecting-IP` an
 | `PORT` | `8080` | Backend server port |
 | `UPLOAD_DIR` | `./uploads` | File storage directory |
 | `STATIC_DIR` | `./web/dist` | Frontend static files |
-| `TRUSTED_PROXIES` | loopback | Extra reverse-proxy CIDRs or IPs, comma-separated. Example: `10.0.0.0/8` |
+| `TRUSTED_PROXIES` | loopback and private ranges | Comma-separated proxy IPs or CIDRs. Replaces the defaults above. `none` trusts no peer. Example: `203.0.113.10, 2001:db8::/32` |
+| `COOKIE_SECURE` | `auto` | `auto`, `true`, or `false`. `auto` marks the session cookie `Secure` on TLS or trusted `X-Forwarded-Proto: https` |
 | `ETSY_CLIENT_ID` | - | Etsy OAuth app ID |
 | `ETSY_REDIRECT_URI` | - | Etsy OAuth callback URL |
 | `SQUARESPACE_API_KEY` | - | Squarespace API key |
