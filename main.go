@@ -26,7 +26,7 @@ func main() {
 		MinHeight: 700,
 		AssetServer: &assetserver.Options{
 			Assets:  assets,
-			Handler: app,
+			Handler: app.assets,
 		},
 		BackgroundColour: &options.RGBA{R: 13, G: 17, B: 23, A: 1}, // Match dark theme
 		OnStartup:        app.startup,

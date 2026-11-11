@@ -31,13 +31,15 @@ type App struct {
 	hub        *realtime.Hub
 	printerMgr *printer.Manager
 	services   *service.Services
-	mu         sync.RWMutex
-	handler    http.Handler
+	// assets serves /api and /ws inside the desktop webview. It is not a Wails
+	// binding target: an exported ServeHTTP on App makes Wails emit TypeScript
+	// enums that fail the frontend build.
+	assets *desktopAssets
 }
 
 // NewApp creates a new App application struct
 func NewApp() *App {
-	return &App{}
+	return &App{assets: &desktopAssets{}}
 }
 
 // startup is called when the app starts
@@ -136,9 +138,7 @@ func (a *App) startup(ctx context.Context) {
 
 	// Initialize HTTP router
 	router := api.NewRouter(a.services, a.hub)
-	a.mu.Lock()
-	a.handler = router
-	a.mu.Unlock()
+	a.assets.set(router)
 
 	// Create HTTP server
 	a.server = &http.Server{
@@ -201,12 +201,24 @@ func (a *App) shutdown(ctx context.Context) {
 	slog.Info("shutdown complete")
 }
 
-// ServeHTTP handles API and websocket requests for the desktop webview so
-// they share an origin with the embedded UI and the session cookie is sent.
-func (a *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	a.mu.RLock()
-	handler := a.handler
-	a.mu.RUnlock()
+// desktopAssets is the Wails asset fallback. Requests that are not embedded
+// files, including /api and /ws, hit the same router as the LAN server so the
+// session cookie is first-party in the webview.
+type desktopAssets struct {
+	mu      sync.RWMutex
+	handler http.Handler
+}
+
+func (d *desktopAssets) set(handler http.Handler) {
+	d.mu.Lock()
+	d.handler = handler
+	d.mu.Unlock()
+}
+
+func (d *desktopAssets) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	d.mu.RLock()
+	handler := d.handler
+	d.mu.RUnlock()
 	if handler == nil {
 		http.Error(w, "starting", http.StatusServiceUnavailable)
 		return
