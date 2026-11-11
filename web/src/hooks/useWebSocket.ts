@@ -1,17 +1,7 @@
 import { useEffect, useRef, useCallback, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import type { PrinterState, DispatchRequest } from '../types'
-
-// Build WebSocket URL - use relative path in production
-function getWsUrl(): string {
-  if (import.meta.env.DEV) {
-    return 'ws://localhost:8080/ws'
-  }
-  // In production, use current host with appropriate protocol
-  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-  return `${protocol}//${window.location.host}/ws`
-}
-const WS_URL = getWsUrl()
+import { authApi, webSocketURL } from '../api/client'
 
 // Reconnection config
 const RECONNECT_INITIAL_DELAY = 1000
@@ -131,9 +121,10 @@ export function useWebSocket() {
     }
 
     setStatus('connecting')
-    console.log('[WebSocket] Connecting to', WS_URL)
+    const wsUrl = webSocketURL()
+    console.log('[WebSocket] Connecting to', wsUrl)
 
-    const ws = new WebSocket(WS_URL)
+    const ws = new WebSocket(wsUrl)
 
     ws.onopen = () => {
       console.log('[WebSocket] Connected')
@@ -159,17 +150,33 @@ export function useWebSocket() {
       setStatus('disconnected')
       wsRef.current = null
 
-      // Schedule reconnection with exponential backoff
+      if (event.code === 1000) {
+        return
+      }
+
       const delay = reconnectDelayRef.current
       console.log(`[WebSocket] Reconnecting in ${delay}ms...`)
 
       reconnectTimeoutRef.current = window.setTimeout(() => {
-        reconnectDelayRef.current = Math.min(
-          reconnectDelayRef.current * RECONNECT_MULTIPLIER,
-          RECONNECT_MAX_DELAY
-        )
-        // Use ref to call connect to avoid stale closure
-        connectRef.current()
+        void (async () => {
+          try {
+            const status = await authApi.status()
+            if (!status.authenticated) {
+              const page = window.location.pathname
+              if (!page.startsWith('/login') && !page.startsWith('/setup') && !page.startsWith('/quote/')) {
+                window.location.assign('/login')
+              }
+              return
+            }
+          } catch {
+            // The API is unreachable. Keep trying.
+          }
+          reconnectDelayRef.current = Math.min(
+            reconnectDelayRef.current * RECONNECT_MULTIPLIER,
+            RECONNECT_MAX_DELAY
+          )
+          connectRef.current()
+        })()
       }, delay)
     }
 

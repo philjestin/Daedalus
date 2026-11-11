@@ -92,6 +92,8 @@ make frontend  # Vite dev server on :5173
 
 Navigate to `http://localhost:5173`
 
+The first visit asks you to create an admin account. There is no default password. See [Authentication](#authentication).
+
 The SQLite database is created automatically at `~/.rankos/rankos.db` with migrations applied on startup. If that file is not already present, startup moves a previous install's data directory to `~/.rankos` and renames the database file. Set `DATABASE_PATH` to keep using an explicit path.
 
 ### Desktop App (Wails)
@@ -310,6 +312,26 @@ Database and uploads use named volumes that already exist on the server. Both ar
 
 The service restarts unless it is stopped. Keep secrets out of this file (the repo is public) and set them in the Dokploy service environment.
 
+## Authentication
+
+RankOS uses a local login. There is no cloud account and no default password.
+
+On first launch, when the database has no users, the app shows **Create admin account**. That page creates the first user (an admin) and then turns itself off. Anyone who can open the app before that account exists can create it, so do this before exposing the port or the tunnel.
+
+Sign in at `/login`. The session cookie is `HttpOnly`, `SameSite=Lax`, and `Secure` when the request is HTTPS (`https` itself, or `X-Forwarded-Proto: https` from a trusted proxy). It lasts 30 days and slides forward while you use the app. Log out from the sidebar. Change your password in Settings. The admin can add and remove other users there.
+
+These paths stay open without a session:
+
+- `/health`
+- `/api/auth/login`, `/api/auth/logout`, `/api/auth/status`, `/api/auth/setup`
+- `/api/public/*` (quote share links; the token in the URL is the access check, and these routes do not control printers)
+- `POST /api/integrations/etsy/webhook` (Etsy signs this request; it is not a browser session)
+- static files
+
+Everything else under `/api`, including printer controls and future `/api/printers/{id}/camera` routes, requires a session. So does `/ws`. The Etsy OAuth callback is a browser redirect back to this app, so the session cookie is sent and that route stays protected.
+
+Login attempts are limited per client IP and per username. `CF-Connecting-IP` and `X-Forwarded-For` are trusted only when the TCP peer is loopback or listed in `TRUSTED_PROXIES`. Behind a Cloudflare tunnel and Traefik on the same machine, the peer is loopback and the real client IP is taken from those headers.
+
 ## Environment Variables
 
 | Variable | Default | Description |
@@ -318,8 +340,7 @@ The service restarts unless it is stopped. Keep secrets out of this file (the re
 | `PORT` | `8080` | Backend server port |
 | `UPLOAD_DIR` | `./uploads` | File storage directory |
 | `STATIC_DIR` | `./web/dist` | Frontend static files |
-| `REQUIRE_AUTH` | `false` | Enable authentication |
-| `JWT_SECRET` | - | Secret for JWT signing (required if auth enabled) |
+| `TRUSTED_PROXIES` | loopback | Extra reverse-proxy CIDRs or IPs, comma-separated. Example: `10.0.0.0/8` |
 | `ETSY_CLIENT_ID` | - | Etsy OAuth app ID |
 | `ETSY_REDIRECT_URI` | - | Etsy OAuth callback URL |
 | `SQUARESPACE_API_KEY` | - | Squarespace API key |

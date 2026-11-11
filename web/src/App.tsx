@@ -1,6 +1,10 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import * as Sentry from '@sentry/react'
 import Layout from './components/Layout'
+import RequireAuth from './components/RequireAuth'
+import AuthProvider from './contexts/AuthProvider'
+import Login from './pages/Login'
+import Setup from './pages/Setup'
 import Dashboard from './pages/Dashboard'
 import Projects from './pages/Projects'
 import ProjectDetail from './pages/ProjectDetail'
@@ -22,22 +26,17 @@ import Customers from './pages/Customers'
 import CustomerDetail from './pages/CustomerDetail'
 import PublicQuote from './pages/PublicQuote'
 import ErrorFallback from './components/ErrorFallback'
-import { useWebSocket } from './hooks/useWebSocket'
 
 function App() {
-  // Establish WebSocket connection for real-time updates
-  const { status } = useWebSocket()
-
-  // Log WebSocket status in development
-  if (import.meta.env.DEV && status !== 'connected') {
-    console.log('[App] WebSocket status:', status)
-  }
-
   return (
     <Sentry.ErrorBoundary fallback={<ErrorFallback />}>
+    <AuthProvider>
     <Routes>
       {/* Public route — outside Layout (no sidebar/nav) */}
       <Route path="/quote/:token" element={<PublicQuote />} />
+      <Route path="/login" element={<Login />} />
+      <Route path="/setup" element={<Setup />} />
+      <Route element={<RequireAuth />}>
       <Route element={<Layout />}>
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
         <Route path="/dashboard" element={<Dashboard />} />
@@ -65,7 +64,9 @@ function App() {
         <Route path="/squarespace/*" element={<Navigate to="/channels" replace />} />
         <Route path="/settings" element={<Settings />} />
       </Route>
+      </Route>
     </Routes>
+    </AuthProvider>
     </Sentry.ErrorBoundary>
   )
 }

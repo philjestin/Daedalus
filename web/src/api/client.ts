@@ -1,4 +1,21 @@
-const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8080'
+// Empty means same-origin (/api on this host). The dev server proxies that to
+// the Go API so the session cookie stays first-party.
+const API_URL = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '')
+
+function redirectIfUnauthorized(path: string, status: number) {
+  if (status !== 401 || path.startsWith('/auth/')) return
+  const page = window.location.pathname
+  if (page.startsWith('/login') || page.startsWith('/setup') || page.startsWith('/quote/')) return
+  window.location.assign('/login')
+}
+
+export function webSocketURL(): string {
+  if (API_URL) {
+    return API_URL.replace(/^http/i, 'ws') + '/ws'
+  }
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+  return `${protocol}//${window.location.host}/ws`
+}
 
 // Generic fetch wrapper with error handling.
 async function fetchApi<T>(
@@ -11,6 +28,7 @@ async function fetchApi<T>(
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
+    'X-Requested-With': 'XMLHttpRequest',
   }
 
   // Merge any existing headers
@@ -22,11 +40,13 @@ async function fetchApi<T>(
   const response = await fetch(url, {
     ...options,
     headers,
+    credentials: 'include',
   })
 
   console.log(`[API] Response status: ${response.status}`)
 
   if (!response.ok) {
+    redirectIfUnauthorized(path, response.status)
     const error = await response.json().catch(() => ({ error: 'Unknown error' }))
     throw new Error(error.error || `HTTP ${response.status}`)
   }
@@ -218,9 +238,12 @@ export const partsApi = {
     const response = await fetch(`${API_URL}/api/projects/${projectId}/parts`, {
       method: 'POST',
       body: formData,
+      credentials: 'include',
+      headers: { 'X-Requested-With': 'XMLHttpRequest' },
     })
 
     if (!response.ok) {
+      redirectIfUnauthorized('/projects', response.status)
       const error = await response.json().catch(() => ({ error: 'Upload failed' }))
       throw new Error(error.error)
     }
@@ -260,9 +283,12 @@ export const designsApi = {
     const response = await fetch(`${API_URL}/api/parts/${partId}/designs`, {
       method: 'POST',
       body: formData,
+      credentials: 'include',
+      headers: { 'X-Requested-With': 'XMLHttpRequest' },
     })
 
     if (!response.ok) {
+      redirectIfUnauthorized('/designs', response.status)
       const error = await response.json().catch(() => ({ error: 'Upload failed' }))
       throw new Error(error.error)
     }
@@ -485,9 +511,12 @@ export const expensesApi = {
     const response = await fetch(`${API_URL}/api/expenses/receipt`, {
       method: 'POST',
       body: formData,
+      credentials: 'include',
+      headers: { 'X-Requested-With': 'XMLHttpRequest' },
     })
 
     if (!response.ok) {
+      redirectIfUnauthorized('/expenses', response.status)
       const error = await response.json().catch(() => ({ error: 'Upload failed' }))
       throw new Error(error.error)
     }
@@ -1192,8 +1221,7 @@ export const timelineApi = {
 
 // WebSocket connection for real-time updates
 export function createWebSocket(onMessage: (event: { type: string; data: unknown }) => void) {
-  const wsUrl = API_URL.replace('http', 'ws') + '/ws'
-  const ws = new WebSocket(wsUrl)
+  const ws = new WebSocket(webSocketURL())
 
   ws.onmessage = (event) => {
     try {
@@ -1324,8 +1352,56 @@ export const quotesApi = {
     fetchApi<void>(`/quotes/${quoteId}/options/${optionId}/items/${itemId}`, { method: 'DELETE' }),
 }
 
+export interface AuthUser {
+  id: string
+  username: string
+  is_admin: boolean
+  created_at: string
+  last_login_at?: string
+}
+
+export interface AuthStatus {
+  authenticated: boolean
+  setup_required: boolean
+  user?: AuthUser
+}
+
+export const authApi = {
+  status: () => fetchApi<AuthStatus>('/auth/status'),
+
+  setup: (username: string, password: string) =>
+    fetchApi<AuthStatus>('/auth/setup', {
+      method: 'POST',
+      body: JSON.stringify({ username, password }),
+    }),
+
+  login: (username: string, password: string) =>
+    fetchApi<AuthStatus>('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ username, password }),
+    }),
+
+  logout: () => fetchApi<void>('/auth/logout', { method: 'POST' }),
+
+  changePassword: (currentPassword: string, newPassword: string) =>
+    fetchApi<void>('/auth/password', {
+      method: 'POST',
+      body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+    }),
+
+  listUsers: () => fetchApi<AuthUser[]>('/auth/users'),
+
+  createUser: (username: string, password: string, isAdmin = false) =>
+    fetchApi<AuthUser>('/auth/users', {
+      method: 'POST',
+      body: JSON.stringify({ username, password, is_admin: isAdmin }),
+    }),
+
+  deleteUser: (id: string) => fetchApi<void>(`/auth/users/${id}`, { method: 'DELETE' }),
+}
+
 // Public API (no auth, for shareable pages)
-const PUBLIC_API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8080'
+const PUBLIC_API_URL = API_URL
 
 async function fetchPublicApi<T>(path: string): Promise<T> {
   const url = `${PUBLIC_API_URL}/api/public${path}`

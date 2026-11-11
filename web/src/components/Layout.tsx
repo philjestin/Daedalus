@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Outlet, NavLink } from 'react-router-dom'
+import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard,
   FolderKanban,
@@ -16,8 +16,11 @@ import {
   PanelLeftOpen,
   FileText,
   Users,
+  LogOut,
 } from 'lucide-react'
 import { cn } from '../lib/utils'
+import { useAuth } from '../contexts/auth'
+import { useWebSocket } from '../hooks/useWebSocket'
 import DispatchNotificationProvider from './DispatchNotificationProvider'
 import FeedbackButton from './FeedbackButton'
 import ThemeToggle from './ThemeToggle'
@@ -38,6 +41,14 @@ const navigation = [
 
 export default function Layout() {
   const [collapsed, setCollapsed] = useState(false)
+  const { logout } = useAuth()
+  const navigate = useNavigate()
+  useWebSocket()
+
+  async function onLogout() {
+    await logout()
+    navigate('/login', { replace: true })
+  }
 
   return (
     <div className="flex h-screen bg-canvas text-ink">
@@ -119,6 +130,18 @@ export default function Layout() {
             <Settings className={cn('h-5 w-5 shrink-0', !collapsed && 'mr-3')} />
             {!collapsed && 'Settings'}
           </NavLink>
+          <button
+            type="button"
+            onClick={() => void onLogout()}
+            title={collapsed ? 'Log out' : undefined}
+            className={cn(
+              'flex items-center w-full rounded-none text-[17px] font-normal transition-colors text-body hover:text-ink hover:bg-surface-raised focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus',
+              collapsed ? 'justify-center px-0 py-2.5' : 'px-3 py-2.5'
+            )}
+          >
+            <LogOut className={cn('h-5 w-5 shrink-0', !collapsed && 'mr-3')} />
+            {!collapsed && 'Log out'}
+          </button>
         </div>
       </aside>
 

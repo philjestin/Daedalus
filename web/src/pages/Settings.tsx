@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Store, ShoppingBag, ExternalLink, RefreshCw, Unplug, AlertCircle, CheckCircle2, Key, Eye, EyeOff, Save, Database, Download, Trash2, RotateCcw, Plus, Zap, Settings as SettingsIcon, Building } from 'lucide-react'
 import { etsyApi, squarespaceApi, settingsApi, backupsApi, dispatchApi } from '../api/client'
+import AccountSettings from '../components/AccountSettings'
 import { cn } from '../lib/utils'
 import type { EtsyIntegration, SquarespaceIntegration, BackupInfo, BackupConfig } from '../types'
 
@@ -321,6 +322,8 @@ export default function Settings() {
         <h1 className="text-heading-sm font-display font-semibold text-surface-100 mb-6">
           Settings
         </h1>
+
+        <AccountSettings />
 
         {/* Success Message */}
         {successMessage && (

@@ -7,9 +7,9 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"sync"
 	"time"
 
-	"github.com/getsentry/sentry-go"
 	"github.com/cadimartech/rankos/internal/api"
 	"github.com/cadimartech/rankos/internal/database"
 	"github.com/cadimartech/rankos/internal/printer"
@@ -18,18 +18,21 @@ import (
 	"github.com/cadimartech/rankos/internal/service"
 	"github.com/cadimartech/rankos/internal/storage"
 	"github.com/cadimartech/rankos/internal/version"
+	"github.com/getsentry/sentry-go"
 	"github.com/joho/godotenv"
 )
 
 // App struct holds the application state
 type App struct {
-	ctx         context.Context
-	server      *http.Server
-	db          *sql.DB
-	dbPath      string
-	hub         *realtime.Hub
-	printerMgr  *printer.Manager
-	services    *service.Services
+	ctx        context.Context
+	server     *http.Server
+	db         *sql.DB
+	dbPath     string
+	hub        *realtime.Hub
+	printerMgr *printer.Manager
+	services   *service.Services
+	mu         sync.RWMutex
+	handler    http.Handler
 }
 
 // NewApp creates a new App application struct
@@ -133,6 +136,9 @@ func (a *App) startup(ctx context.Context) {
 
 	// Initialize HTTP router
 	router := api.NewRouter(a.services, a.hub)
+	a.mu.Lock()
+	a.handler = router
+	a.mu.Unlock()
 
 	// Create HTTP server
 	a.server = &http.Server{
@@ -193,6 +199,19 @@ func (a *App) shutdown(ctx context.Context) {
 	sentry.Flush(2 * time.Second)
 
 	slog.Info("shutdown complete")
+}
+
+// ServeHTTP handles API and websocket requests for the desktop webview so
+// they share an origin with the embedded UI and the session cookie is sent.
+func (a *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	a.mu.RLock()
+	handler := a.handler
+	a.mu.RUnlock()
+	if handler == nil {
+		http.Error(w, "starting", http.StatusServiceUnavailable)
+		return
+	}
+	handler.ServeHTTP(w, r)
 }
 
 // GetVersion returns the application version string for the frontend.

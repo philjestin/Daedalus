@@ -6,13 +6,13 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/cadimartech/rankos/internal/realtime"
+	"github.com/cadimartech/rankos/internal/service"
+	"github.com/cadimartech/rankos/internal/version"
 	sentryhttp "github.com/getsentry/sentry-go/http"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
-	"github.com/cadimartech/rankos/internal/realtime"
-	"github.com/cadimartech/rankos/internal/service"
-	"github.com/cadimartech/rankos/internal/version"
 )
 
 // NewRouter creates the HTTP router with all routes.
@@ -24,17 +24,22 @@ func NewRouter(services *service.Services, hub *realtime.Hub) http.Handler {
 	r.Use(sentryMiddleware.Handle)
 	r.Use(RequestLogger) // Custom structured logging with request IDs and timing
 	r.Use(middleware.Recoverer)
-	r.Use(middleware.RealIP)
-	// Configure CORS - allow all origins for desktop app (local API only)
+	// CORS reflects the request origin only when its hostname matches this
+	// server. Credentials are enabled so the session cookie can be sent from
+	// the dev server on another port of the same host.
 	r.Use(cors.Handler(cors.Options{
 		AllowOriginFunc: func(r *http.Request, origin string) bool {
-			return true // Desktop app - API is local only
+			return originHostnameAllowed(r.Host, origin)
 		},
-		AllowedMethods: []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowedHeaders: []string{"Accept", "Authorization", "Content-Type", "X-Request-ID"},
-		ExposedHeaders: []string{"Link"},
-		MaxAge:         300,
+		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-Request-ID", "X-Requested-With"},
+		AllowCredentials: true,
+		ExposedHeaders:   []string{"Link"},
+		MaxAge:           300,
 	}))
+	// Session check runs for every request, including paths that are not
+	// registered yet (future /api/printers/{id}/camera routes).
+	r.Use(AuthGate(services.Auth))
 
 	// Health check
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
@@ -75,6 +80,18 @@ func NewRouter(services *service.Services, hub *realtime.Hub) http.Handler {
 
 	// API routes
 	r.Route("/api", func(r chi.Router) {
+		authHandler := NewAuthHandler(services.Auth)
+		r.Route("/auth", func(r chi.Router) {
+			r.Get("/status", authHandler.Status)
+			r.Post("/setup", authHandler.Setup)
+			r.Post("/login", authHandler.Login)
+			r.Post("/logout", authHandler.Logout)
+			r.Post("/password", authHandler.ChangePassword)
+			r.Get("/users", authHandler.ListUsers)
+			r.Post("/users", authHandler.CreateUser)
+			r.Delete("/users/{id}", authHandler.DeleteUser)
+		})
+
 		// Projects (Product Catalog)
 		projectHandler := &ProjectHandler{service: services.Projects}
 		r.Route("/projects", func(r chi.Router) {
@@ -127,7 +144,7 @@ func NewRouter(services *service.Services, hub *realtime.Hub) http.Handler {
 					r.Get("/checklist", taskHandler.GetChecklist)
 					r.Post("/checklist/regenerate", taskHandler.RegenerateChecklist)
 					r.Post("/checklist/{itemId}/print", taskHandler.PrintFromChecklist)
-				r.Patch("/checklist/{itemId}", taskHandler.ToggleChecklistItem)
+					r.Patch("/checklist/{itemId}", taskHandler.ToggleChecklistItem)
 				})
 			})
 		}
@@ -159,7 +176,7 @@ func NewRouter(services *service.Services, hub *realtime.Hub) http.Handler {
 			r.Post("/open-external", designHandler.OpenExternal)
 		})
 
-		// Printers
+		// Printers. Camera routes added under /printers/{id} inherit AuthGate.
 		printerHandler := &PrinterHandler{service: services.Printers}
 		dispatchHandler := NewDispatchHandler(services.Dispatcher)
 		r.Route("/printers", func(r chi.Router) {
