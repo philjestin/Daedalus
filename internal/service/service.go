@@ -746,6 +746,7 @@ type printerController interface {
 	Disconnect(id uuid.UUID)
 	GetState(id uuid.UUID) (*model.PrinterState, error)
 	GetAllStates() map[uuid.UUID]*model.PrinterState
+	Send(id uuid.UUID, cmd model.Command) error
 }
 
 // PrinterService handles printer business logic.
@@ -859,6 +860,29 @@ func (s *PrinterService) Delete(ctx context.Context, id uuid.UUID) error {
 // GetState retrieves real-time state for a printer.
 func (s *PrinterService) GetState(ctx context.Context, id uuid.UUID) (*model.PrinterState, error) {
 	return s.manager.GetState(id)
+}
+
+// SendCommand runs a closed printer command.
+// The manager checks the permission table again, so a stale button cannot
+// pause, stop, or change the light in a state that does not allow it.
+func (s *PrinterService) SendCommand(ctx context.Context, id uuid.UUID, cmd model.Command) error {
+	if s.repo != nil {
+		p, err := s.repo.GetByID(ctx, id)
+		if err != nil {
+			return err
+		}
+		if p == nil {
+			return model.ErrPrinterNotFound
+		}
+	}
+	if s.manager == nil {
+		return printer.ErrNotConnected
+	}
+	if err := s.manager.Send(id, cmd); err != nil {
+		return err
+	}
+	slog.Info("printer command sent", "printer_id", id, "kind", model.CommandKindOf(cmd))
+	return nil
 }
 
 // GetAllStates retrieves real-time state for all printers.
@@ -2266,6 +2290,9 @@ func (s *PrintJobService) handlePrinterStatusChange(newState *model.PrinterState
 	wasPrinting := oldState != nil && oldState.Status == model.PrinterStatusPrinting
 	isError := newState.Status == model.PrinterStatusError
 
+	// A pause or a stop that RankOS did not start must not be stored as a failure.
+	// Printing to error is still a failure. Paused to error is not: the operator
+	// already paused the printer, including from Bambu Studio.
 	if wasPrinting && isError {
 		slog.Warn("printer failure detected", "printer_id", newState.PrinterID, "old_status", oldState.Status, "new_status", newState.Status)
 
@@ -2290,7 +2317,85 @@ func (s *PrintJobService) handlePrinterStatusChange(newState *model.PrinterState
 		} else {
 			slog.Info("auto-recorded job failure", "job_id", job.ID, "printer_id", newState.PrinterID)
 		}
+		return
 	}
+
+	switch newState.Status {
+	case model.PrinterStatusPaused:
+		if err := s.NotePrinterCommand(ctx, newState.PrinterID, model.CmdPause, model.ActorPrinter); err != nil {
+			slog.Error("failed to record external pause", "printer_id", newState.PrinterID, "error", err)
+		}
+	case model.PrinterStatusPrinting:
+		if err := s.NotePrinterCommand(ctx, newState.PrinterID, model.CmdResume, model.ActorPrinter); err != nil {
+			slog.Error("failed to record external resume", "printer_id", newState.PrinterID, "error", err)
+		}
+	}
+}
+
+// NotePrinterCommand updates a RankOS job after a printer command.
+// Prints that RankOS did not start have no job, and this is a no-op.
+// actor is "user" for the command API and "printer" for an MQTT report.
+func (s *PrintJobService) NotePrinterCommand(ctx context.Context, printerID uuid.UUID, kind model.CommandKind, actor model.ActorType) error {
+	if s == nil || s.repo == nil {
+		return nil
+	}
+	job, err := s.GetActiveJobForPrinter(ctx, printerID)
+	if err != nil || job == nil {
+		return err
+	}
+	switch kind {
+	case model.CmdPause:
+		if job.Status != model.PrintJobStatusPrinting {
+			return nil
+		}
+		paused := model.PrintJobStatusPaused
+		event := model.NewJobEvent(job.ID, model.JobEventPaused, &paused).
+			WithPrinter(printerID).
+			WithActor(actor, "")
+		if err := s.repo.AppendEvent(ctx, event); err != nil {
+			return fmt.Errorf("record pause: %w", err)
+		}
+		if s.hub != nil {
+			s.hub.Broadcast(realtime.Event{Type: "job_paused", Data: job})
+		}
+	case model.CmdResume:
+		if job.Status != model.PrintJobStatusPaused {
+			return nil
+		}
+		printing := model.PrintJobStatusPrinting
+		event := model.NewJobEvent(job.ID, model.JobEventResumed, &printing).
+			WithPrinter(printerID).
+			WithActor(actor, "")
+		if err := s.repo.AppendEvent(ctx, event); err != nil {
+			return fmt.Errorf("record resume: %w", err)
+		}
+		if s.hub != nil {
+			s.hub.Broadcast(realtime.Event{Type: "job_resumed", Data: job})
+		}
+	case model.CmdStop:
+		if job.Status.IsTerminal() {
+			return nil
+		}
+		cancelled := model.PrintJobStatusCancelled
+		event := model.NewJobEvent(job.ID, model.JobEventCancelled, &cancelled).
+			WithPrinter(printerID).
+			WithActor(actor, "")
+		if err := s.repo.AppendEvent(ctx, event); err != nil {
+			return fmt.Errorf("record stop: %w", err)
+		}
+		now := time.Now()
+		job.Status = model.PrintJobStatusCancelled
+		job.CompletedAt = &now
+		category := model.FailureUserCancelled
+		job.FailureCategory = &category
+		if err := s.repo.Update(ctx, job); err != nil {
+			return fmt.Errorf("update cancelled job: %w", err)
+		}
+		if s.hub != nil {
+			s.hub.Broadcast(realtime.Event{Type: "job_cancelled", Data: job})
+		}
+	}
+	return nil
 }
 
 // GetActiveJobForPrinter finds the currently active (printing/paused) job for a printer.

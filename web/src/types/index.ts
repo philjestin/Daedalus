@@ -257,6 +257,58 @@ export interface PrinterState {
   subtask_id?: string
   task_id?: string
   print_type?: string
+
+  // Permission state. status stays the operational state.
+  gcode_state?: string
+  view: PrinterView
+  stage?: string
+  print_error?: number
+  chamber_light?: string
+  work_light?: string
+  chamber_target_temp?: number
+  finish_at?: string
+  caps: PrinterCapabilities
+  allowed: PrinterCommandKind[]
+  camera: PrinterCamera
+}
+
+export type PrinterView = 'offline' | 'read_only' | 'idle' | 'printing' | 'paused' | 'error' | 'finished'
+
+export type PrinterCommandKind =
+  | 'pause'
+  | 'resume'
+  | 'stop'
+  | 'set_speed'
+  | 'set_light'
+  | 'set_temp'
+  | 'set_fan'
+  | 'jog'
+  | 'home'
+  | 'extrude'
+  | 'ams_load'
+  | 'ams_unload'
+  | 'ams_rfid'
+  | 'skip_objects'
+  | 'calibrate'
+  | 'clear_error'
+  | 'start_print'
+
+export interface PrinterCapabilities {
+  dev_mode: boolean
+  chamber_heater: boolean
+  nozzles: number
+  second_light: boolean
+  aux_fan: boolean
+  chamber_fan: boolean
+  airduct_modes: boolean
+  mqtt_bed_temp: boolean
+  supported?: PrinterCommandKind[]
+}
+
+export type CameraAvailability = 'available' | 'liveview_off' | 'not_supported' | 'unknown'
+
+export interface PrinterCamera {
+  availability: CameraAvailability
 }
 
 // AMS (Automatic Material System) types

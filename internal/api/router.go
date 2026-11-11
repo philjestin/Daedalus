@@ -6,13 +6,13 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/cadimartech/rankos/internal/realtime"
+	"github.com/cadimartech/rankos/internal/service"
+	"github.com/cadimartech/rankos/internal/version"
 	sentryhttp "github.com/getsentry/sentry-go/http"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
-	"github.com/cadimartech/rankos/internal/realtime"
-	"github.com/cadimartech/rankos/internal/service"
-	"github.com/cadimartech/rankos/internal/version"
 )
 
 // NewRouter creates the HTTP router with all routes.
@@ -127,7 +127,7 @@ func NewRouter(services *service.Services, hub *realtime.Hub) http.Handler {
 					r.Get("/checklist", taskHandler.GetChecklist)
 					r.Post("/checklist/regenerate", taskHandler.RegenerateChecklist)
 					r.Post("/checklist/{itemId}/print", taskHandler.PrintFromChecklist)
-				r.Patch("/checklist/{itemId}", taskHandler.ToggleChecklistItem)
+					r.Patch("/checklist/{itemId}", taskHandler.ToggleChecklistItem)
 				})
 			})
 		}
@@ -160,7 +160,7 @@ func NewRouter(services *service.Services, hub *realtime.Hub) http.Handler {
 		})
 
 		// Printers
-		printerHandler := &PrinterHandler{service: services.Printers}
+		printerHandler := &PrinterHandler{service: services.Printers, jobs: services.PrintJobs}
 		dispatchHandler := NewDispatchHandler(services.Dispatcher)
 		r.Route("/printers", func(r chi.Router) {
 			r.Get("/", printerHandler.List)
@@ -172,6 +172,7 @@ func NewRouter(services *service.Services, hub *realtime.Hub) http.Handler {
 				r.Patch("/", printerHandler.Update)
 				r.Delete("/", printerHandler.Delete)
 				r.Get("/state", printerHandler.GetState)
+				r.Post("/commands", printerHandler.Command)
 				r.Get("/jobs", printerHandler.ListJobs)
 				r.Get("/stats", printerHandler.GetJobStats)
 				r.Get("/analytics", printerHandler.GetPrinterAnalytics)

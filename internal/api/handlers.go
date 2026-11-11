@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -552,6 +553,7 @@ func (h *DesignHandler) OpenExternal(w http.ResponseWriter, r *http.Request) {
 // PrinterHandler handles printer endpoints.
 type PrinterHandler struct {
 	service *service.PrinterService
+	jobs    *service.PrintJobService
 }
 
 // List returns all printers.
@@ -705,6 +707,54 @@ func (h *PrinterHandler) GetState(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondJSON(w, http.StatusOK, state)
+}
+
+// Command runs one closed printer command.
+// POST /api/printers/{id}/commands
+// The body is {"kind":"pause"}, {"kind":"set_speed","level":2}, or
+// {"kind":"set_light","node":"chamber_light","on":true}.
+// Raw gcode is rejected. The server checks the permission table again.
+func (h *PrinterHandler) Command(w http.ResponseWriter, r *http.Request) {
+	id, err := parseUUID(r, "id")
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid printer ID")
+		return
+	}
+	body, err := io.ReadAll(io.LimitReader(r.Body, 4096))
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid command")
+		return
+	}
+	cmd, err := model.ParseCommand(body)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := h.service.SendCommand(r.Context(), id, cmd); err != nil {
+		switch {
+		case errors.Is(err, model.ErrPrinterNotFound):
+			respondError(w, http.StatusNotFound, "printer not found")
+		case errors.Is(err, model.ErrCommandNotAllowed):
+			respondError(w, http.StatusConflict, "command is not allowed in the current printer state")
+		case errors.Is(err, printer.ErrNotConnected):
+			respondError(w, http.StatusConflict, "printer is offline")
+		case errors.Is(err, model.ErrUnsupported):
+			respondError(w, http.StatusBadRequest, "command is not supported by this printer")
+		default:
+			slog.Error("printer command failed", "printer_id", id, "kind", model.CommandKindOf(cmd), "error", err)
+			respondError(w, http.StatusInternalServerError, "command failed")
+		}
+		return
+	}
+	if h.jobs != nil {
+		if err := h.jobs.NotePrinterCommand(r.Context(), id, model.CommandKindOf(cmd), model.ActorUser); err != nil {
+			slog.Error("failed to update print job after printer command", "printer_id", id, "kind", model.CommandKindOf(cmd), "error", err)
+		}
+	}
+	respondJSON(w, http.StatusOK, map[string]string{
+		"status": "sent",
+		"kind":   string(model.CommandKindOf(cmd)),
+	})
 }
 
 // GetAllStates returns the real-time state of all printers.

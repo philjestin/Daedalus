@@ -48,6 +48,22 @@ type BambuClient struct {
 	// pushAllInterval and reportTimeout override the defaults in tests.
 	pushAllInterval time.Duration
 	reportTimeout   time.Duration
+	// staleAfter and staleInterval override how soon a silent printer is offline.
+	staleAfter        time.Duration
+	staleInterval     time.Duration
+	staleWatchStarted bool
+	staleNotified     bool
+
+	modelName         string
+	baseCaps          model.Capabilities
+	signatureRequired bool
+	sawAux            bool
+	sawChamberFan     bool
+	secondLight       bool
+	nozzlesFromReport int
+	camera            model.CameraInfo
+	cameraSeen        bool
+	lastCameraNote    string
 	// reportGen increments on each subscribe. reportGenSeen matches it once
 	// any report arrives for that generation.
 	reportGen      uint64
@@ -97,11 +113,7 @@ func NewBambuClient(printerID uuid.UUID, host string, accessCode string, serialN
 		accessCode:   accessCode,
 		serialNumber: serial,
 		stopChan:     make(chan struct{}),
-		lastState: &model.PrinterState{
-			PrinterID: printerID,
-			Status:    model.PrinterStatusOffline,
-			UpdatedAt: time.Now(),
-		},
+		lastState:    initialBambuState(printerID, false),
 	}
 }
 
@@ -117,11 +129,7 @@ func NewBambuCloudClient(printerID uuid.UUID, serial, mqttUsername, authToken st
 		cloudMode:    true,
 		mqttUsername: mqttUsername,
 		stopChan:     make(chan struct{}),
-		lastState: &model.PrinterState{
-			PrinterID: printerID,
-			Status:    model.PrinterStatusOffline,
-			UpdatedAt: time.Now(),
-		},
+		lastState:    initialBambuState(printerID, true),
 	}
 }
 
@@ -317,6 +325,7 @@ func (c *BambuClient) onConnect(client mqtt.Client) {
 	// uses this payload for every model it supports, including P2S and H2D.
 	c.publishInitial(client, serial)
 	c.ensurePushLoop()
+	c.ensureStaleWatch()
 }
 
 // subscribe sends SUBSCRIBE and logs the SUBACK return code.
@@ -393,13 +402,16 @@ func (c *BambuClient) onConnectionLost(client mqtt.Client, err error) {
 
 	c.mu.Lock()
 	c.connected = false
-	c.lastState.Status = model.PrinterStatusOffline
-	c.lastState.UpdatedAt = time.Now()
-	state := *c.lastState
+	if c.lastState != nil {
+		c.lastState.Status = model.PrinterStatusOffline
+		c.lastState.UpdatedAt = time.Now()
+	}
+	state := c.snapshotLocked(time.Now())
+	cb := c.statusCallback
 	c.mu.Unlock()
 
-	if c.statusCallback != nil {
-		c.statusCallback(&state)
+	if cb != nil {
+		cb(state)
 	}
 }
 
@@ -452,6 +464,7 @@ func (c *BambuClient) ingestReport(topic string, payload []byte) {
 	c.mu.Lock()
 	first := !c.receivedReport
 	c.receivedReport = true
+	c.staleNotified = false
 	c.reportGenSeen = c.reportGen
 	var state *model.PrinterState
 	if msg.Print != nil {
@@ -696,7 +709,7 @@ func (c *BambuClient) sendCommand(cmd BambuCommand) error {
 	c.mu.RLock()
 	if !c.connected || c.mqttClient == nil {
 		c.mu.RUnlock()
-		return fmt.Errorf("not connected")
+		return ErrNotConnected
 	}
 	client := c.mqttClient
 	serial := c.serialNumber
@@ -740,20 +753,12 @@ func (c *BambuClient) Disconnect() error {
 }
 
 // GetStatus retrieves current printer status.
+// A report older than ReportStaleAfter is returned as offline without forgetting
+// the last temperatures, so the next delta can still merge.
 func (c *BambuClient) GetStatus() (*model.PrinterState, error) {
-	c.mu.RLock()
-	state := c.lastState
-	c.mu.RUnlock()
-
-	if state == nil {
-		return &model.PrinterState{
-			PrinterID: c.printerID,
-			Status:    model.PrinterStatusOffline,
-			UpdatedAt: time.Now(),
-		}, nil
-	}
-
-	return state, nil
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.snapshotLocked(time.Now()), nil
 }
 
 // StartJob sends a print job to the Bambu printer.
@@ -855,54 +860,19 @@ func (c *BambuClient) uploadFile(localPath string, remoteName string) (string, e
 }
 
 // PauseJob pauses the current print via MQTT command.
+// The command is not tied to a RankOS job. It pauses whatever the printer is running.
 func (c *BambuClient) PauseJob() error {
-	cmd := BambuCommand{
-		Print: &BambuPrintCmd{
-			Sequence: strconv.FormatInt(time.Now().UnixMilli(), 10),
-			Command:  "pause",
-		},
-	}
-
-	if err := c.sendCommand(cmd); err != nil {
-		return fmt.Errorf("failed to pause: %w", err)
-	}
-
-	slog.Info("paused print on Bambu printer", "printer_id", c.printerID)
-	return nil
+	return c.Send(model.Pause{})
 }
 
 // ResumeJob resumes a paused print via MQTT command.
 func (c *BambuClient) ResumeJob() error {
-	cmd := BambuCommand{
-		Print: &BambuPrintCmd{
-			Sequence: strconv.FormatInt(time.Now().UnixMilli(), 10),
-			Command:  "resume",
-		},
-	}
-
-	if err := c.sendCommand(cmd); err != nil {
-		return fmt.Errorf("failed to resume: %w", err)
-	}
-
-	slog.Info("resumed print on Bambu printer", "printer_id", c.printerID)
-	return nil
+	return c.Send(model.Resume{})
 }
 
-// CancelJob cancels the current print via MQTT command.
+// CancelJob stops the current print via MQTT command.
 func (c *BambuClient) CancelJob() error {
-	cmd := BambuCommand{
-		Print: &BambuPrintCmd{
-			Sequence: strconv.FormatInt(time.Now().UnixMilli(), 10),
-			Command:  "stop",
-		},
-	}
-
-	if err := c.sendCommand(cmd); err != nil {
-		return fmt.Errorf("failed to cancel: %w", err)
-	}
-
-	slog.Info("cancelled print on Bambu printer", "printer_id", c.printerID)
-	return nil
+	return c.Send(model.Stop{})
 }
 
 // SetStatusCallback sets the callback for status updates.
@@ -948,6 +918,8 @@ func (c *BambuClient) mergePrintStatus(print *BambuPrintStatus) *model.PrinterSt
 	if state.Status == model.PrinterStatusOffline {
 		state.Status = model.PrinterStatusIdle
 	}
+	c.absorb(state, print)
+	model.RefreshView(state, time.Now())
 	return state
 }
 
@@ -955,46 +927,12 @@ func (c *BambuClient) mergePrintStatus(print *BambuPrintStatus) *model.PrinterSt
 // only the fields it actually carries.
 func (c *BambuClient) cloneState() *model.PrinterState {
 	if c.lastState == nil {
-		return &model.PrinterState{
-			PrinterID: c.printerID,
-			Status:    model.PrinterStatusOffline,
-			UpdatedAt: time.Now(),
-		}
+		return initialBambuState(c.printerID, c.cloudMode)
 	}
-	// Start from a copy of the existing state
-	state := &model.PrinterState{
-		PrinterID:         c.printerID,
-		Status:            c.lastState.Status,
-		Progress:          c.lastState.Progress,
-		CurrentFile:       c.lastState.CurrentFile,
-		TimeLeft:          c.lastState.TimeLeft,
-		BedTemp:           c.lastState.BedTemp,
-		NozzleTemp:        c.lastState.NozzleTemp,
-		AMS:               c.lastState.AMS,
-		UpdatedAt:         time.Now(),
-		BedTargetTemp:     c.lastState.BedTargetTemp,
-		NozzleTargetTemp:  c.lastState.NozzleTargetTemp,
-		ChamberTemp:       c.lastState.ChamberTemp,
-		LayerNum:          c.lastState.LayerNum,
-		TotalLayerNum:     c.lastState.TotalLayerNum,
-		CoolingFanSpeed:   c.lastState.CoolingFanSpeed,
-		AuxFanSpeed:       c.lastState.AuxFanSpeed,
-		ChamberFanSpeed:   c.lastState.ChamberFanSpeed,
-		HeatbreakFanSpeed: c.lastState.HeatbreakFanSpeed,
-		SpeedPercent:      c.lastState.SpeedPercent,
-		SpeedLevel:        c.lastState.SpeedLevel,
-		PrintRealSpeed:    c.lastState.PrintRealSpeed,
-		WiFiSignal:        c.lastState.WiFiSignal,
-		NozzleDiameter:    c.lastState.NozzleDiameter,
-		NozzleType:        c.lastState.NozzleType,
-		HMSErrors:         c.lastState.HMSErrors,
-		Lights:            c.lastState.Lights,
-		GcodeStartTime:    c.lastState.GcodeStartTime,
-		SubtaskID:         c.lastState.SubtaskID,
-		TaskID:            c.lastState.TaskID,
-		PrintType:         c.lastState.PrintType,
-	}
-	return state
+	state := *c.lastState
+	state.PrinterID = c.printerID
+	state.UpdatedAt = time.Now()
+	return &state
 }
 
 // applyLegacyPrintStatus updates state using non-zero heuristics. Used when
@@ -1002,6 +940,7 @@ func (c *BambuClient) cloneState() *model.PrinterState {
 func (c *BambuClient) applyLegacyPrintStatus(state *model.PrinterState, print *BambuPrintStatus) {
 	// Only update status when gcode_state is actually present
 	if print.GcodeState != "" {
+		state.GcodeState = print.GcodeState
 		switch print.GcodeState {
 		case "IDLE":
 			state.Status = model.PrinterStatusIdle
@@ -1151,6 +1090,12 @@ func (c *BambuClient) applyLegacyPrintStatus(state *model.PrinterState, print *B
 		state.TotalLayerNum = 0
 		state.TimeLeft = 0
 	}
+	if print.PrintError != 0 || print.GcodeState != "" {
+		state.PrintError = print.PrintError
+	}
+	if print.StgCur != 0 {
+		state.Stage = stageLabel(print.StgCur)
+	}
 
 	// Parse AMS state
 	if print.AMS != nil {
@@ -1166,6 +1111,7 @@ func (c *BambuClient) applyLegacyPrintStatus(state *model.PrinterState, print *B
 // parsed; unknown keys are ignored and do not clear the fields we do track.
 func (c *BambuClient) applyPresentPrintStatus(state *model.PrinterState, print *BambuPrintStatus) {
 	if print.has("gcode_state") && print.GcodeState != "" {
+		state.GcodeState = print.GcodeState
 		switch print.GcodeState {
 		case "IDLE", "FINISH":
 			state.Status = model.PrinterStatusIdle
@@ -1273,6 +1219,12 @@ func (c *BambuClient) applyPresentPrintStatus(state *model.PrinterState, print *
 	}
 	if print.has("print_type") {
 		state.PrintType = print.PrintType
+	}
+	if print.has("print_error") {
+		state.PrintError = print.PrintError
+	}
+	if print.has("stg_cur") {
+		state.Stage = stageLabel(print.StgCur)
 	}
 	if print.has("ams") && print.AMS != nil {
 		state.AMS = c.parseAMSState(print.AMS, print.VTTray)
@@ -1425,6 +1377,21 @@ type BambuPrintStatus struct {
 	PrintFinishAction string `json:"print_finish_action"`
 	HomeFlag          int    `json:"home_flag"`
 	HWSwitch          int    `json:"hw_switch_state"`
+
+	// Security and camera. fun is a hex bitfield. flag3 is the fallback when
+	// fun is empty. ipcam decides camera availability.
+	Fun    string          `json:"fun"`
+	Flag3  int             `json:"flag3"`
+	IPCam  *BambuIPCam     `json:"ipcam,omitempty"`
+	Device json.RawMessage `json:"device,omitempty"`
+}
+
+// BambuIPCam is the camera block inside a print report.
+type BambuIPCam struct {
+	RTSPURL  string `json:"rtsp_url"`
+	Liveview *struct {
+		Local string `json:"local"`
+	} `json:"liveview"`
 }
 
 // UnmarshalJSON captures which keys the printer actually sent.
@@ -1432,6 +1399,13 @@ func (p *BambuPrintStatus) UnmarshalJSON(data []byte) error {
 	var keys map[string]json.RawMessage
 	if err := json.Unmarshal(data, &keys); err != nil {
 		return err
+	}
+	// A null fun or flag3 must not reject the rest of the report.
+	if raw, ok := keys["fun"]; ok && strings.TrimSpace(string(raw)) == "null" {
+		keys["fun"] = []byte(`""`)
+	}
+	if raw, ok := keys["flag3"]; ok && strings.TrimSpace(string(raw)) == "null" {
+		delete(keys, "flag3")
 	}
 	// Some firmware sends numbers as strings (observed on A1-class reports).
 	// Coerce those so one odd field does not reject the whole report.
@@ -1608,7 +1582,7 @@ type BambuInfoCmd struct {
 type BambuPrintCmd struct {
 	Sequence    string       `json:"sequence_id"`
 	Command     string       `json:"command"`
-	Param       string       `json:"param,omitempty"`
+	Param       *string      `json:"param,omitempty"`
 	ProjectID   string       `json:"project_id,omitempty"`
 	ProfileID   string       `json:"profile_id,omitempty"`
 	TaskID      string       `json:"task_id,omitempty"`
@@ -1633,11 +1607,16 @@ type BambuAMSCmd struct {
 }
 
 // BambuSystemCmd represents a system command.
+// The blink fields are required on every ledctrl, including a steady on or off.
 type BambuSystemCmd struct {
-	Sequence  string `json:"sequence_id"`
-	Command   string `json:"command"`
-	LedMode   string `json:"led_mode,omitempty"`
-	LedOnTime string `json:"led_on_time,omitempty"`
+	Sequence     string `json:"sequence_id"`
+	Command      string `json:"command"`
+	LedNode      string `json:"led_node,omitempty"`
+	LedMode      string `json:"led_mode,omitempty"`
+	LedOnTime    int    `json:"led_on_time,omitempty"`
+	LedOffTime   int    `json:"led_off_time,omitempty"`
+	LoopTimes    int    `json:"loop_times,omitempty"`
+	IntervalTime int    `json:"interval_time,omitempty"`
 }
 
 // BambuPushingCmd represents a push command.
@@ -1648,29 +1627,17 @@ type BambuPushingCmd struct {
 	PushTarget int    `json:"push_target,omitempty"`
 }
 
-// SetLEDMode sets the LED light mode on the printer.
+// SetLEDMode turns the chamber light on or off.
+// mode "off" switches it off. Any other value switches it on.
+// The MQTT payload includes led_node and the blink fields OpenBambuAPI requires.
 func (c *BambuClient) SetLEDMode(mode string) error {
-	cmd := BambuCommand{
-		System: &BambuSystemCmd{
-			Sequence: strconv.FormatInt(time.Now().UnixMilli(), 10),
-			Command:  "ledctrl",
-			LedMode:  mode, // "on", "off", "flashing"
-		},
-	}
-	return c.sendCommand(cmd)
+	return c.Send(model.SetLight{Node: model.LightChamber, On: mode != "off"})
 }
 
 // SetPrintSpeed sets the print speed profile.
 // Levels: 1=silent, 2=standard, 3=sport, 4=ludicrous
 func (c *BambuClient) SetPrintSpeed(level int) error {
-	cmd := BambuCommand{
-		Print: &BambuPrintCmd{
-			Sequence: strconv.FormatInt(time.Now().UnixMilli(), 10),
-			Command:  "print_speed",
-			Param:    strconv.Itoa(level),
-		},
-	}
-	return c.sendCommand(cmd)
+	return c.Send(model.SetSpeed{Level: level})
 }
 
 // GetAMSStatus returns the current AMS filament information.

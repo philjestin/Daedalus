@@ -504,6 +504,29 @@ type PrinterState struct {
 	SubtaskID      string `json:"subtask_id,omitempty"`
 	TaskID         string `json:"task_id,omitempty"`
 	PrintType      string `json:"print_type,omitempty"`
+
+	// GcodeState is the printer's own word (IDLE, RUNNING, PAUSE, FINISH, FAILED).
+	// Status collapses FINISH into idle so existing job and dispatch checks
+	// keep working. View keeps finished separate.
+	GcodeState string `json:"gcode_state,omitempty"`
+
+	// View is what the cards are allowed to do. The browser does not decide.
+	View ViewState `json:"view"`
+	// Stage is the current print stage in English (from stg_cur).
+	Stage string `json:"stage,omitempty"`
+	// PrintError is the printer's print_error code. Zero means none.
+	PrintError int `json:"print_error,omitempty"`
+	// ChamberLight and WorkLight are "on", "off", or "flashing".
+	ChamberLight string `json:"chamber_light,omitempty"`
+	WorkLight    string `json:"work_light,omitempty"`
+	// ChamberTargetTemp is set when the printer reports a chamber heater target.
+	ChamberTargetTemp float64 `json:"chamber_target_temp,omitempty"`
+	// FinishAt is UpdatedAt plus the remaining time, while a print is active.
+	FinishAt *time.Time `json:"finish_at,omitempty"`
+	// Caps describes the printer. Allowed is the command list for View.
+	Caps    Capabilities  `json:"caps"`
+	Allowed []CommandKind `json:"allowed"`
+	Camera  CameraInfo    `json:"camera"`
 }
 
 // HMSError represents a Health Management System error from the printer.
