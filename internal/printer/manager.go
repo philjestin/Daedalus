@@ -76,37 +76,45 @@ func (m *Manager) broadcast(eventType string, data interface{}) {
 }
 
 // Connect establishes connection to a printer.
+// An existing client for the same printer is disconnected first so a settings
+// change replaces the MQTT session instead of leaking it.
+// The manager lock is not held across the network handshake; status callbacks
+// need it as soon as the first report arrives.
 func (m *Manager) Connect(p *model.Printer) error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
+	old, hasOld := m.clients[p.ID]
+	if hasOld {
+		delete(m.clients, p.ID)
+	}
+	m.mu.Unlock()
+	if hasOld {
+		old.Disconnect() //nolint:errcheck // replacing the session
+	}
 
-	// Create appropriate client based on connection type
-	var client Client
-	switch p.ConnectionType {
-	case model.ConnectionTypeOctoPrint:
-		client = NewOctoPrintClient(p.ID, p.ConnectionURI, p.APIKey)
-	case model.ConnectionTypeBambuLAN:
-		client = NewBambuClient(p.ID, p.ConnectionURI, p.APIKey, p.SerialNumber)
-	case model.ConnectionTypeBambuCloud:
-		// For cloud printers: ConnectionURI = MQTT username, APIKey = auth token
-		client = NewBambuCloudClient(p.ID, p.SerialNumber, p.ConnectionURI, p.APIKey)
-	case model.ConnectionTypeMoonraker:
-		client = NewMoonrakerClient(p.ID, p.ConnectionURI)
-	case model.ConnectionTypeManual:
-		// No client for manual printers
+	client, err := newClient(p)
+	if err != nil {
+		return err
+	}
+	if client == nil {
+		m.mu.Lock()
 		m.states[p.ID] = &model.PrinterState{
 			PrinterID: p.ID,
 			Status:    model.PrinterStatusOffline,
 			UpdatedAt: time.Now(),
 		}
+		m.mu.Unlock()
 		return nil
-	default:
-		return fmt.Errorf("unsupported connection type: %s", p.ConnectionType)
 	}
 
-	// Set up status callback
+	// Ignore events from a client that has since been replaced. Disconnect
+	// fires connection-lost asynchronously, and that must not mark the new
+	// session offline.
 	client.SetStatusCallback(func(state *model.PrinterState) {
 		m.mu.Lock()
+		if current, ok := m.clients[p.ID]; !ok || current != client {
+			m.mu.Unlock()
+			return
+		}
 		oldState := m.states[p.ID]
 		m.states[p.ID] = state
 		callbacks := make([]StatusChangeCallback, len(m.statusCallbacks))
@@ -127,20 +135,35 @@ func (m *Manager) Connect(p *model.Printer) error {
 	// Connect
 	if err := client.Connect(); err != nil {
 		slog.Error("failed to connect to printer", "printer_id", p.ID, "error", err)
+		m.mu.Lock()
 		m.states[p.ID] = &model.PrinterState{
 			PrinterID: p.ID,
 			Status:    model.PrinterStatusOffline,
 			UpdatedAt: time.Now(),
 		}
+		m.mu.Unlock()
 		return err
 	}
 
+	// Publish the client before reading status so a report that arrives during
+	// the handshake is applied, and so GetStatus does not run while m.mu is held
+	// (the status callback takes m.mu and must not deadlock with the client lock).
+	m.mu.Lock()
 	m.clients[p.ID] = client
+	m.mu.Unlock()
 
-	// Get initial status
-	if state, err := client.GetStatus(); err == nil {
-		m.states[p.ID] = state
-		// Broadcast initial state
+	state, stateErr := client.GetStatus()
+	m.mu.Lock()
+	if stateErr == nil {
+		if _, exists := m.states[p.ID]; !exists {
+			m.states[p.ID] = state
+		} else {
+			state = m.states[p.ID]
+		}
+	}
+	m.mu.Unlock()
+
+	if stateErr == nil {
 		m.broadcast(model.EventPrinterStateUpdated, state)
 	}
 
@@ -154,16 +177,39 @@ func (m *Manager) Connect(p *model.Printer) error {
 	return nil
 }
 
+// newClient builds the protocol client for a printer.
+// A nil client with a nil error means the printer is manual and has nothing to dial.
+func newClient(p *model.Printer) (Client, error) {
+	switch p.ConnectionType {
+	case model.ConnectionTypeOctoPrint:
+		return NewOctoPrintClient(p.ID, p.ConnectionURI, p.APIKey), nil
+	case model.ConnectionTypeBambuLAN:
+		return NewBambuClient(p.ID, p.ConnectionURI, p.APIKey, p.SerialNumber), nil
+	case model.ConnectionTypeBambuCloud:
+		// For cloud printers: ConnectionURI = MQTT username, APIKey = auth token
+		return NewBambuCloudClient(p.ID, p.SerialNumber, p.ConnectionURI, p.APIKey), nil
+	case model.ConnectionTypeMoonraker:
+		return NewMoonrakerClient(p.ID, p.ConnectionURI), nil
+	case model.ConnectionTypeManual:
+		return nil, nil
+	default:
+		return nil, fmt.Errorf("unsupported connection type: %s", p.ConnectionType)
+	}
+}
+
 // Disconnect closes connection to a printer.
 func (m *Manager) Disconnect(id uuid.UUID) {
 	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	if client, ok := m.clients[id]; ok {
-		client.Disconnect() //nolint:errcheck // best-effort cleanup
+	client, ok := m.clients[id]
+	if ok {
 		delete(m.clients, id)
 	}
 	delete(m.states, id)
+	m.mu.Unlock()
+
+	if ok {
+		client.Disconnect() //nolint:errcheck // best-effort cleanup
+	}
 
 	// Broadcast printer disconnected event
 	m.broadcast(model.EventPrinterDisconnected, map[string]interface{}{

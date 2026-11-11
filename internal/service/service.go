@@ -14,7 +14,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/cadimartech/rankos/internal/bambu"
 	"github.com/cadimartech/rankos/internal/crypto"
 	"github.com/cadimartech/rankos/internal/model"
@@ -24,6 +23,7 @@ import (
 	"github.com/cadimartech/rankos/internal/repository"
 	"github.com/cadimartech/rankos/internal/storage"
 	"github.com/cadimartech/rankos/internal/threemf"
+	"github.com/google/uuid"
 )
 
 // Services holds all service instances.
@@ -740,12 +740,20 @@ func (s *DesignService) OpenInExternalApp(ctx context.Context, id uuid.UUID, app
 	return nil
 }
 
+// printerController is the live connection runtime. *printer.Manager implements it.
+type printerController interface {
+	Connect(p *model.Printer) error
+	Disconnect(id uuid.UUID)
+	GetState(id uuid.UUID) (*model.PrinterState, error)
+	GetAllStates() map[uuid.UUID]*model.PrinterState
+}
+
 // PrinterService handles printer business logic.
 type PrinterService struct {
 	repo           *repository.PrinterRepository
 	printJobRepo   *repository.PrintJobRepository
 	saleRepo       *repository.SaleRepository
-	manager        *printer.Manager
+	manager        printerController
 	hub            *realtime.Hub
 	discovery      *printer.Discovery
 	bambuCloudRepo *repository.BambuCloudRepository
@@ -761,9 +769,10 @@ func (s *PrinterService) Create(ctx context.Context, p *model.Printer) error {
 		return err
 	}
 
-	// Connect printer if not manual
+	// Connect printer if not manual. Copy first so a response redaction of
+	// the caller's struct cannot race the dial.
 	if p.ConnectionType != model.ConnectionTypeManual {
-		go s.manager.Connect(p)
+		s.launchConnect(p)
 	}
 
 	return nil
@@ -780,8 +789,65 @@ func (s *PrinterService) List(ctx context.Context) ([]model.Printer, error) {
 }
 
 // Update updates a printer.
+// A blank or redacted API key keeps the stored access code. When connection
+// settings change, the live MQTT/LAN session is dropped and opened again
+// with the new values so a container restart is not required.
 func (s *PrinterService) Update(ctx context.Context, p *model.Printer) error {
-	return s.repo.Update(ctx, p)
+	existing, err := s.repo.GetByID(ctx, p.ID)
+	if err != nil {
+		return err
+	}
+	if existing == nil {
+		return fmt.Errorf("printer not found")
+	}
+
+	if model.SecretIsBlank(p.APIKey) {
+		p.APIKey = existing.APIKey
+	}
+
+	if err := s.repo.Update(ctx, p); err != nil {
+		return err
+	}
+
+	if printerConnectionChanged(existing, p) {
+		s.reconnect(p)
+	}
+	return nil
+}
+
+// printerConnectionChanged reports whether the dial settings differ.
+func printerConnectionChanged(before, after *model.Printer) bool {
+	return before.ConnectionType != after.ConnectionType ||
+		before.ConnectionURI != after.ConnectionURI ||
+		before.APIKey != after.APIKey ||
+		before.SerialNumber != after.SerialNumber
+}
+
+// reconnect drops the current session and dials again unless the printer is manual.
+func (s *PrinterService) reconnect(p *model.Printer) {
+	if s.manager == nil || p == nil {
+		return
+	}
+	s.manager.Disconnect(p.ID)
+	if p.ConnectionType == model.ConnectionTypeManual {
+		return
+	}
+	s.launchConnect(p)
+}
+
+// launchConnect dials a copy of p so later mutation of the caller's struct
+// (for example redacting the access code in an HTTP response) cannot change
+// the credentials the session uses.
+func (s *PrinterService) launchConnect(p *model.Printer) {
+	if s.manager == nil || p == nil || p.ConnectionType == model.ConnectionTypeManual {
+		return
+	}
+	cp := *p
+	go func() {
+		if err := s.manager.Connect(&cp); err != nil {
+			slog.Error("printer connect failed", "printer_id", cp.ID, "name", cp.Name, "error", err)
+		}
+	}()
 }
 
 // Delete removes a printer.
@@ -1047,7 +1113,7 @@ func (s *PrinterService) ConnectAllPrinters(ctx context.Context) {
 		}
 
 		slog.Info("reconnecting printer", "id", p.ID, "name", p.Name, "type", p.ConnectionType)
-		go s.manager.Connect(p)
+		s.launchConnect(p)
 	}
 }
 
@@ -1276,8 +1342,16 @@ func (s *BambuCloudService) AddDevice(ctx context.Context, devID string) (*model
 		return nil, err
 	}
 
-	// Connect via cloud MQTT
-	go s.printerMgr.Connect(p)
+	// Connect via cloud MQTT. Copy so the HTTP response can redact the token
+	// without racing the dial.
+	if s.printerMgr != nil {
+		cp := *p
+		go func() {
+			if err := s.printerMgr.Connect(&cp); err != nil {
+				slog.Error("cloud printer connect failed", "printer_id", cp.ID, "error", err)
+			}
+		}()
+	}
 
 	return p, nil
 }

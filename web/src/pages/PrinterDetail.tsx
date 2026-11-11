@@ -1,11 +1,11 @@
 import { useState } from 'react'
-import { useParams, Link } from 'react-router-dom'
-import { ArrowLeft, Wifi, Thermometer, Fan, Gauge, Info, AlertTriangle, Lightbulb, Box, History, CheckCircle, XCircle, Printer as PrinterIcon, Clock, DollarSign, Check, X, Activity, TrendingUp, Target, Heart } from 'lucide-react'
-import { usePrinter, usePrinterState, usePrinterJobs, usePrinterStats, useUpdatePrinter, usePrinterAnalytics } from '../hooks/usePrinters'
+import { useParams, Link, useNavigate } from 'react-router-dom'
+import { ArrowLeft, Wifi, Thermometer, Fan, Gauge, Info, AlertTriangle, Lightbulb, Box, History, CheckCircle, XCircle, Printer as PrinterIcon, Clock, DollarSign, Check, X, Activity, TrendingUp, Target, Heart, KeyRound, Trash2 } from 'lucide-react'
+import { usePrinter, usePrinterState, usePrinterJobs, usePrinterStats, useUpdatePrinter, usePrinterAnalytics, useDeletePrinter } from '../hooks/usePrinters'
 import { cn, getStatusBadge, formatDuration, formatRelativeTime } from '../lib/utils'
 import { ExpandableJobEvents } from '../components/JobEventTimeline'
 import AutoDispatchSettings from '../components/AutoDispatchSettings'
-import type { PrintJob, PrinterUtilization, PrinterROI, PrinterHealth } from '../types'
+import type { ConnectionType, PrintJob, Printer, PrinterUtilization, PrinterROI, PrinterHealth } from '../types'
 
 const SPEED_LABELS: Record<number, string> = {
   1: 'Silent',
@@ -72,9 +72,24 @@ function TempRow({ label, current, target }: { label: string; current?: number; 
 
 export default function PrinterDetail() {
   const { id } = useParams<{ id: string }>()
+  const navigate = useNavigate()
   const { data: printer, isLoading: printerLoading } = usePrinter(id!)
   const { data: state } = usePrinterState(id!)
   const { data: analytics } = usePrinterAnalytics(id!)
+  const deletePrinter = useDeletePrinter()
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [deleteError, setDeleteError] = useState('')
+
+  const handleDelete = async () => {
+    if (!id) return
+    setDeleteError('')
+    try {
+      await deletePrinter.mutateAsync(id)
+      navigate('/printers')
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : 'Failed to delete printer')
+    }
+  }
 
   if (printerLoading) {
     return (
@@ -112,7 +127,7 @@ export default function PrinterDetail() {
           <ArrowLeft className="h-4 w-4" />
           Printers
         </Link>
-        <div className="flex items-start justify-between">
+        <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <div className="flex items-center gap-3">
               <h1 className="text-heading-sm font-display font-semibold text-surface-100">
@@ -129,7 +144,40 @@ export default function PrinterDetail() {
               {[printer.model, printer.serial_number].filter(Boolean).join(' / ')}
             </p>
           </div>
+          <div className="flex items-center gap-2">
+            {confirmDelete ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setConfirmDelete(false)}
+                  className="btn btn-ghost btn-sm"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDelete}
+                  disabled={deletePrinter.isPending}
+                  className="btn btn-destructive btn-sm"
+                >
+                  {deletePrinter.isPending ? 'Deleting...' : 'Delete printer'}
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setConfirmDelete(true)}
+                className="btn btn-destructive btn-sm"
+              >
+                <Trash2 className="h-4 w-4 mr-1.5" />
+                Delete printer
+              </button>
+            )}
+          </div>
         </div>
+        {deleteError && (
+          <p className="text-sm text-error mt-2">{deleteError}</p>
+        )}
       </div>
 
       {/* 2-column grid */}
@@ -277,6 +325,9 @@ export default function PrinterDetail() {
             )}
           </div>
         </div>
+
+        {/* CONNECTION */}
+        <PrinterConnectionEditor printer={printer} />
 
         {/* COST SETTINGS */}
         <PrinterCostSetting printerId={printer.id} costPerHourCents={printer.cost_per_hour_cents} printerModel={printer.model} />
@@ -437,6 +488,211 @@ export default function PrinterDetail() {
 
       {/* Print History Section */}
       <PrinterHistory printerId={id!} />
+    </div>
+  )
+}
+
+const CONNECTION_OPTIONS: { value: ConnectionType; label: string }[] = [
+  { value: 'manual', label: 'Manual (No Integration)' },
+  { value: 'octoprint', label: 'OctoPrint' },
+  { value: 'bambu_lan', label: 'Bambu Lab (LAN)' },
+  { value: 'bambu_cloud', label: 'Bambu Lab (Cloud)' },
+  { value: 'moonraker', label: 'Moonraker (Klipper)' },
+]
+
+function PrinterConnectionEditor({ printer }: { printer: Printer }) {
+  const updatePrinter = useUpdatePrinter()
+  const [editing, setEditing] = useState(false)
+  const [error, setError] = useState('')
+  const [name, setName] = useState(printer.name)
+  const [modelName, setModelName] = useState(printer.model || '')
+  const [manufacturer, setManufacturer] = useState(printer.manufacturer || '')
+  const [location, setLocation] = useState(printer.location || '')
+  const [connectionType, setConnectionType] = useState<ConnectionType>(printer.connection_type)
+  const [connectionURI, setConnectionURI] = useState(printer.connection_uri || '')
+  const [serialNumber, setSerialNumber] = useState(printer.serial_number || '')
+  const [accessCode, setAccessCode] = useState('')
+
+  const hasAccessCode = Boolean(printer.api_key)
+
+  const startEdit = () => {
+    setName(printer.name)
+    setModelName(printer.model || '')
+    setManufacturer(printer.manufacturer || '')
+    setLocation(printer.location || '')
+    setConnectionType(printer.connection_type)
+    setConnectionURI(printer.connection_uri || '')
+    setSerialNumber(printer.serial_number || '')
+    setAccessCode('')
+    setError('')
+    setEditing(true)
+  }
+
+  const handleSave = async () => {
+    setError('')
+    const data: Partial<Printer> = {
+      name: name.trim(),
+      model: modelName.trim(),
+      manufacturer: manufacturer.trim(),
+      location: location.trim(),
+      connection_type: connectionType,
+      connection_uri: connectionURI.trim(),
+      serial_number: serialNumber.trim(),
+    }
+    if (accessCode.trim()) {
+      data.api_key = accessCode.trim()
+    }
+    try {
+      await updatePrinter.mutateAsync({ id: printer.id, data })
+      setAccessCode('')
+      setEditing(false)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save printer')
+    }
+  }
+
+  return (
+    <div className="card p-5">
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-sm font-semibold text-surface-400 uppercase tracking-wider flex items-center gap-2">
+          <KeyRound className="h-4 w-4" />
+          Connection
+        </h2>
+        {!editing && (
+          <button
+            type="button"
+            onClick={startEdit}
+            className="text-xs text-accent-400 hover:text-accent-300"
+          >
+            Edit
+          </button>
+        )}
+      </div>
+
+      {editing ? (
+        <div className="space-y-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <label className="block text-sm">
+              <span className="text-surface-400">Name</span>
+              <input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="input mt-1"
+                required
+              />
+            </label>
+            <label className="block text-sm">
+              <span className="text-surface-400">Model</span>
+              <input
+                value={modelName}
+                onChange={(e) => setModelName(e.target.value)}
+                className="input mt-1"
+              />
+            </label>
+            <label className="block text-sm">
+              <span className="text-surface-400">Manufacturer</span>
+              <input
+                value={manufacturer}
+                onChange={(e) => setManufacturer(e.target.value)}
+                className="input mt-1"
+              />
+            </label>
+            <label className="block text-sm">
+              <span className="text-surface-400">Location</span>
+              <input
+                value={location}
+                onChange={(e) => setLocation(e.target.value)}
+                className="input mt-1"
+              />
+            </label>
+          </div>
+          <label className="block text-sm">
+            <span className="text-surface-400">Connection type</span>
+            <select
+              value={connectionType}
+              onChange={(e) => setConnectionType(e.target.value as ConnectionType)}
+              className="input mt-1"
+            >
+              {CONNECTION_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          </label>
+          <label className="block text-sm">
+            <span className="text-surface-400">Host / IP</span>
+            <input
+              value={connectionURI}
+              onChange={(e) => setConnectionURI(e.target.value)}
+              className="input mt-1 font-mono"
+              placeholder="192.168.1.50"
+              autoComplete="off"
+            />
+          </label>
+          <label className="block text-sm">
+            <span className="text-surface-400">Serial number</span>
+            <input
+              value={serialNumber}
+              onChange={(e) => setSerialNumber(e.target.value)}
+              className="input mt-1 font-mono"
+              placeholder="22E8AA000000001"
+              autoComplete="off"
+            />
+          </label>
+          <label className="block text-sm">
+            <span className="text-surface-400">Access code</span>
+            <input
+              type="password"
+              value={accessCode}
+              onChange={(e) => setAccessCode(e.target.value)}
+              className="input mt-1 font-mono"
+              placeholder={hasAccessCode ? 'Leave blank to keep the saved code' : '8-digit access code'}
+              autoComplete="new-password"
+            />
+            <p className="text-xs text-surface-500 mt-1">
+              {hasAccessCode
+                ? 'A code is saved. Leave this blank to keep it.'
+                : 'Used as the Bambu LAN access code or OctoPrint API key.'}
+            </p>
+          </label>
+          {error && <p className="text-sm text-error">{error}</p>}
+          <div className="flex justify-end gap-2 pt-1">
+            <button
+              type="button"
+              onClick={() => { setEditing(false); setError('') }}
+              className="btn btn-ghost btn-sm"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={updatePrinter.isPending || !name.trim()}
+              className="btn btn-primary btn-sm"
+            >
+              {updatePrinter.isPending ? 'Saving...' : 'Save connection'}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-2 text-sm">
+          <div className="flex items-center justify-between gap-4">
+            <span className="text-surface-400">Type</span>
+            <span className="text-surface-200">{printer.connection_type.replace(/_/g, ' ')}</span>
+          </div>
+          <div className="flex items-center justify-between gap-4">
+            <span className="text-surface-400">Host / IP</span>
+            <span className="text-surface-200 font-mono text-xs truncate">{printer.connection_uri || '—'}</span>
+          </div>
+          <div className="flex items-center justify-between gap-4">
+            <span className="text-surface-400">Serial</span>
+            <span className="text-surface-200 font-mono text-xs">{printer.serial_number || '—'}</span>
+          </div>
+          <div className="flex items-center justify-between gap-4">
+            <span className="text-surface-400">Access code</span>
+            <span className="text-surface-200">{hasAccessCode ? 'Saved' : 'Not set'}</span>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -10,12 +10,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-chi/chi/v5"
-	"github.com/google/uuid"
 	"github.com/cadimartech/rankos/internal/model"
 	"github.com/cadimartech/rankos/internal/printer"
 	"github.com/cadimartech/rankos/internal/service"
 	"github.com/cadimartech/rankos/internal/validation"
+	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 )
 
 // respondJSON sends a JSON response.
@@ -565,6 +565,7 @@ func (h *PrinterHandler) List(w http.ResponseWriter, r *http.Request) {
 	if printers == nil {
 		printers = []model.Printer{}
 	}
+	redactPrinters(printers)
 
 	respondJSON(w, http.StatusOK, printers)
 }
@@ -595,6 +596,7 @@ func (h *PrinterHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	redactPrinter(&printer)
 	respondJSON(w, http.StatusCreated, printer)
 }
 
@@ -616,6 +618,7 @@ func (h *PrinterHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	redactPrinter(printer)
 	respondJSON(w, http.StatusOK, printer)
 }
 
@@ -644,11 +647,31 @@ func (h *PrinterHandler) Update(w http.ResponseWriter, r *http.Request) {
 	printer.ID = id
 
 	if err := h.service.Update(r.Context(), printer); err != nil {
+		if err.Error() == "printer not found" {
+			respondError(w, http.StatusNotFound, err.Error())
+			return
+		}
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
+	redactPrinter(printer)
 	respondJSON(w, http.StatusOK, printer)
+}
+
+// redactPrinter replaces a stored access code or API token with a placeholder
+// so responses stay write-only.
+func redactPrinter(p *model.Printer) {
+	if p != nil && p.APIKey != "" {
+		p.APIKey = model.RedactedSecret
+	}
+}
+
+// redactPrinters redacts every printer in a list response.
+func redactPrinters(printers []model.Printer) {
+	for i := range printers {
+		redactPrinter(&printers[i])
+	}
 }
 
 // Delete removes a printer.
@@ -693,7 +716,7 @@ func (h *PrinterHandler) GetAllStates(w http.ResponseWriter, r *http.Request) {
 // Discover scans the network for printers.
 func (h *PrinterHandler) Discover(w http.ResponseWriter, r *http.Request) {
 	slog.Info("starting printer discovery")
-	
+
 	ctx := context.Background()
 	printers, err := h.service.DiscoverPrinters(ctx)
 	if err != nil {
@@ -701,13 +724,13 @@ func (h *PrinterHandler) Discover(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	
+
 	slog.Info("discovery complete", "found", len(printers))
-	
+
 	if printers == nil {
 		printers = []printer.DiscoveredPrinter{}
 	}
-	
+
 	respondJSON(w, http.StatusOK, printers)
 }
 
@@ -2164,6 +2187,7 @@ func (h *TemplateHandler) GetCompatiblePrinters(w http.ResponseWriter, r *http.R
 	if printers == nil {
 		printers = []model.Printer{}
 	}
+	redactPrinters(printers)
 
 	respondJSON(w, http.StatusOK, printers)
 }
@@ -2555,6 +2579,7 @@ func (h *BambuCloudHandler) AddDevice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	redactPrinter(p)
 	respondJSON(w, http.StatusCreated, p)
 }
 
@@ -2711,4 +2736,3 @@ func (h *BackupHandler) UpdateConfig(w http.ResponseWriter, r *http.Request) {
 
 	respondJSON(w, http.StatusOK, config)
 }
-
