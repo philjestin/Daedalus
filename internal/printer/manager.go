@@ -1,13 +1,14 @@
 package printer
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/cadimartech/rankos/internal/model"
+	"github.com/google/uuid"
 )
 
 // Client defines the interface for printer communication.
@@ -26,9 +27,15 @@ type Client interface {
 	ResumeJob() error
 	// CancelJob cancels the current print.
 	CancelJob() error
+	// Send runs one closed command. Pause, resume, and stop apply to any
+	// print on the printer, not only a job RankOS created.
+	Send(model.Command) error
 	// SetStatusCallback sets callback for status updates.
 	SetStatusCallback(func(*model.PrinterState))
 }
+
+// ErrNotConnected means there is no live session for the printer.
+var ErrNotConnected = errors.New("printer not connected")
 
 // StatusChangeCallback is called when a printer's status changes.
 // Receives the new state and the previous state (nil if first update).
@@ -36,11 +43,11 @@ type StatusChangeCallback func(newState *model.PrinterState, oldState *model.Pri
 
 // Manager manages connections to multiple printers.
 type Manager struct {
-	mu               sync.RWMutex
-	clients          map[uuid.UUID]Client
-	states           map[uuid.UUID]*model.PrinterState
-	broadcaster      model.Broadcaster
-	statusCallbacks  []StatusChangeCallback
+	mu              sync.RWMutex
+	clients         map[uuid.UUID]Client
+	states          map[uuid.UUID]*model.PrinterState
+	broadcaster     model.Broadcaster
+	statusCallbacks []StatusChangeCallback
 }
 
 // NewManager creates a new printer manager.
@@ -97,11 +104,7 @@ func (m *Manager) Connect(p *model.Printer) error {
 	}
 	if client == nil {
 		m.mu.Lock()
-		m.states[p.ID] = &model.PrinterState{
-			PrinterID: p.ID,
-			Status:    model.PrinterStatusOffline,
-			UpdatedAt: time.Now(),
-		}
+		m.states[p.ID] = disconnectedState(p)
 		m.mu.Unlock()
 		return nil
 	}
@@ -136,11 +139,7 @@ func (m *Manager) Connect(p *model.Printer) error {
 	if err := client.Connect(); err != nil {
 		slog.Error("failed to connect to printer", "printer_id", p.ID, "error", err)
 		m.mu.Lock()
-		m.states[p.ID] = &model.PrinterState{
-			PrinterID: p.ID,
-			Status:    model.PrinterStatusOffline,
-			UpdatedAt: time.Now(),
-		}
+		m.states[p.ID] = disconnectedState(p)
 		m.mu.Unlock()
 		return err
 	}
@@ -184,10 +183,14 @@ func newClient(p *model.Printer) (Client, error) {
 	case model.ConnectionTypeOctoPrint:
 		return NewOctoPrintClient(p.ID, p.ConnectionURI, p.APIKey), nil
 	case model.ConnectionTypeBambuLAN:
-		return NewBambuClient(p.ID, p.ConnectionURI, p.APIKey, p.SerialNumber), nil
+		client := NewBambuClient(p.ID, p.ConnectionURI, p.APIKey, p.SerialNumber)
+		client.SetModel(p.Model)
+		return client, nil
 	case model.ConnectionTypeBambuCloud:
 		// For cloud printers: ConnectionURI = MQTT username, APIKey = auth token
-		return NewBambuCloudClient(p.ID, p.SerialNumber, p.ConnectionURI, p.APIKey), nil
+		client := NewBambuCloudClient(p.ID, p.SerialNumber, p.ConnectionURI, p.APIKey)
+		client.SetModel(p.Model)
+		return client, nil
 	case model.ConnectionTypeMoonraker:
 		return NewMoonrakerClient(p.ID, p.ConnectionURI), nil
 	case model.ConnectionTypeManual:
@@ -270,42 +273,42 @@ func (m *Manager) StartJob(printerID uuid.UUID, filename string, filepath string
 	return client.StartJob(filename, filepath)
 }
 
-// PauseJob pauses the current print on a printer.
-func (m *Manager) PauseJob(printerID uuid.UUID) error {
+// Send runs a command after checking it against the current view.
+// The check runs on every call, including pause, resume, and stop from the job queue.
+func (m *Manager) Send(printerID uuid.UUID, cmd model.Command) error {
 	m.mu.RLock()
 	client, ok := m.clients[printerID]
+	state := m.states[printerID]
 	m.mu.RUnlock()
-
-	if !ok {
-		return fmt.Errorf("printer not connected")
+	if !ok || client == nil {
+		return ErrNotConnected
 	}
+	if state == nil {
+		return ErrNotConnected
+	}
+	fresh := *state
+	model.RefreshView(&fresh, time.Now())
+	if !model.CommandAllowed(&fresh, cmd) {
+		return model.ErrCommandNotAllowed
+	}
+	slog.Info("printer command",
+		"printer_id", printerID,
+		"kind", model.CommandKindOf(cmd),
+	)
+	return client.Send(cmd)
+}
 
-	return client.PauseJob()
+// PauseJob pauses the current print on a printer.
+func (m *Manager) PauseJob(printerID uuid.UUID) error {
+	return m.Send(printerID, model.Pause{})
 }
 
 // ResumeJob resumes a paused print on a printer.
 func (m *Manager) ResumeJob(printerID uuid.UUID) error {
-	m.mu.RLock()
-	client, ok := m.clients[printerID]
-	m.mu.RUnlock()
-
-	if !ok {
-		return fmt.Errorf("printer not connected")
-	}
-
-	return client.ResumeJob()
+	return m.Send(printerID, model.Resume{})
 }
 
 // CancelJob cancels the current print on a printer.
 func (m *Manager) CancelJob(printerID uuid.UUID) error {
-	m.mu.RLock()
-	client, ok := m.clients[printerID]
-	m.mu.RUnlock()
-
-	if !ok {
-		return fmt.Errorf("printer not connected")
-	}
-
-	return client.CancelJob()
+	return m.Send(printerID, model.Stop{})
 }
-

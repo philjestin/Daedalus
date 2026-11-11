@@ -176,8 +176,9 @@ func NewRouter(services *service.Services, hub *realtime.Hub) http.Handler {
 			r.Post("/open-external", designHandler.OpenExternal)
 		})
 
-		// Printers. Camera routes added under /printers/{id} inherit AuthGate.
-		printerHandler := &PrinterHandler{service: services.Printers}
+		// Printers. State, commands, and future camera routes under /printers/{id}
+		// inherit AuthGate because they are registered inside /api.
+		printerHandler := &PrinterHandler{service: services.Printers, jobs: services.PrintJobs}
 		dispatchHandler := NewDispatchHandler(services.Dispatcher)
 		r.Route("/printers", func(r chi.Router) {
 			r.Get("/", printerHandler.List)
@@ -189,6 +190,7 @@ func NewRouter(services *service.Services, hub *realtime.Hub) http.Handler {
 				r.Patch("/", printerHandler.Update)
 				r.Delete("/", printerHandler.Delete)
 				r.Get("/state", printerHandler.GetState)
+				r.Post("/commands", printerHandler.Command)
 				r.Get("/jobs", printerHandler.ListJobs)
 				r.Get("/stats", printerHandler.GetJobStats)
 				r.Get("/analytics", printerHandler.GetPrinterAnalytics)

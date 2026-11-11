@@ -351,6 +351,19 @@ export const printersApi = {
   getAllStates: () =>
     fetchApi<Record<string, import('../types').PrinterState>>('/printers/states'),
 
+  // Closed printer command. fetchApi sends the session cookie and
+  // X-Requested-With; the browser adds Origin, which the CSRF check requires.
+  command: (id: string, body: {
+    kind: import('../types').PrinterCommandKind
+    level?: number
+    node?: string
+    on?: boolean
+  }) =>
+    fetchApi<{ status: string; kind: string }>(`/printers/${id}/commands`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
   getJobs: (id: string) =>
     fetchApi<import('../types').PrintJob[]>(`/printers/${id}/jobs`),
 

@@ -11,8 +11,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/cadimartech/rankos/internal/model"
+	"github.com/google/uuid"
 )
 
 // OctoPrintClient implements Client for OctoPrint API.
@@ -65,6 +65,7 @@ func (c *OctoPrintClient) GetStatus() (*model.PrinterState, error) {
 	if err != nil {
 		// Connection failure means the printer is offline, not an application error
 		offlineState := &model.PrinterState{PrinterID: c.printerID, Status: model.PrinterStatusOffline, UpdatedAt: time.Now()}
+		annotateOtherProtocol(offlineState)
 		return offlineState, nil //nolint:nilerr
 	}
 
@@ -272,8 +273,8 @@ func (c *OctoPrintClient) parseState(printerResp []byte, jobResp []byte) *model.
 			} `json:"file"`
 		} `json:"job"`
 		Progress struct {
-			Completion   float64 `json:"completion"`
-			PrintTimeLeft int    `json:"printTimeLeft"`
+			Completion    float64 `json:"completion"`
+			PrintTimeLeft int     `json:"printTimeLeft"`
 		} `json:"progress"`
 	}
 
@@ -283,6 +284,20 @@ func (c *OctoPrintClient) parseState(printerResp []byte, jobResp []byte) *model.
 		state.TimeLeft = jobData.Progress.PrintTimeLeft
 	}
 
+	annotateOtherProtocol(state)
 	return state
 }
 
+// Send runs pause, resume, or stop. Other commands are not supported.
+func (c *OctoPrintClient) Send(cmd model.Command) error {
+	switch cmd.(type) {
+	case model.Pause:
+		return c.PauseJob()
+	case model.Resume:
+		return c.ResumeJob()
+	case model.Stop:
+		return c.CancelJob()
+	default:
+		return model.ErrUnsupported
+	}
+}

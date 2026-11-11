@@ -71,6 +71,40 @@ func TestAuthMiddleware_allowAndDeny(t *testing.T) {
 	}
 }
 
+func TestPrinterCommands_requireSessionAndSameOrigin(t *testing.T) {
+	auth, handler, _ := newAuthAPI(t)
+	_, token, err := auth.Setup(context.Background(), "owner", "password12", "", "127.0.0.1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := "/api/printers/00000000-0000-0000-0000-000000000001/commands"
+	body := []byte(`{"kind":"pause"}`)
+
+	if code := do(t, handler, http.MethodPost, path, "", body).Code; code != http.StatusUnauthorized {
+		t.Fatalf("commands without session = %d", code)
+	}
+	if code := do(t, handler, http.MethodGet, "/api/printers/states", "", nil).Code; code != http.StatusUnauthorized {
+		t.Fatalf("states without session = %d", code)
+	}
+	evil := doFrom(t, handler, http.MethodPost, path, token, body, "198.51.100.9:9", map[string]string{
+		"Origin": "https://evil.example",
+	})
+	if evil.Code != http.StatusForbidden {
+		t.Fatalf("commands foreign origin = %d", evil.Code)
+	}
+
+	same := httptest.NewRequest(http.MethodPost, path, bytes.NewReader(body))
+	same.Header.Set("Content-Type", "application/json")
+	same.Header.Set("X-Requested-With", "XMLHttpRequest")
+	same.Header.Set("Origin", "http://"+same.Host)
+	same.AddCookie(&http.Cookie{Name: SessionCookieName, Value: token})
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, same)
+	if rr.Code == http.StatusUnauthorized || rr.Code == http.StatusForbidden {
+		t.Fatalf("commands same-origin = %d body %s", rr.Code, rr.Body.String())
+	}
+}
+
 func TestAuthWebSocket_requiresSession(t *testing.T) {
 	auth, handler, _ := newAuthAPI(t)
 	_, token, err := auth.Setup(context.Background(), "owner", "password12", "", "")

@@ -129,6 +129,7 @@ func TestRouterRegistersAllExpectedRoutes(t *testing.T) {
 		{"PATCH", "/api/printers/{id}/"},
 		{"DELETE", "/api/printers/{id}/"},
 		{"GET", "/api/printers/{id}/state"},
+		{"POST", "/api/printers/{id}/commands"},
 		{"GET", "/api/printers/{id}/jobs"},
 		{"GET", "/api/printers/{id}/stats"},
 
