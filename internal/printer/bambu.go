@@ -57,12 +57,13 @@ type BambuClient struct {
 
 const (
 	// bambuReportTimeout is how long to wait after subscribe before warning
-	// that the printer never sent a report (often a serial mismatch, or a
-	// P1-series printer that only speaks when asked).
+	// that no report arrived. Causes seen in the field are a serial that does
+	// not match the printer, or LAN Only / Developer Mode left off on current
+	// firmware (H2, P2, and the same control on X, P, and A series).
 	bambuReportTimeout = 30 * time.Second
 	// bambuPushAllInterval is how often to re-request a full status dump.
-	// P1-series printers emit deltas only, so a periodic pushall refreshes
-	// fields they never repeat.
+	// Every current family sends partial reports, so a periodic pushall
+	// refreshes fields the printer does not repeat.
 	bambuPushAllInterval = 5 * time.Minute
 )
 
@@ -260,8 +261,8 @@ func (c *BambuClient) Connect() error {
 
 // onConnect is called when MQTT connection is established (including paho
 // auto-reconnect). It subscribes, immediately requests a full status dump,
-// and arms the silence warning. P1-series printers do not volunteer state;
-// without pushall the connection stays up and status stays offline.
+// and arms the silence warning. Current Bambu firmware does not volunteer a
+// full snapshot; without pushall the connection stays up and status stays offline.
 func (c *BambuClient) onConnect(client mqtt.Client) {
 	c.mu.Lock()
 	c.mqttClient = client
@@ -312,8 +313,8 @@ func (c *BambuClient) onConnect(client mqtt.Client) {
 	c.armNoReportWatch()
 
 	// ha-bambulab asks for the version, then a full dump. The dump must be
-	// exactly {"pushing":{"sequence_id":"0","command":"pushall"}} — extra
-	// fields are not in that client and P1 firmware ignores them.
+	// exactly {"pushing":{"sequence_id":"0","command":"pushall"}}. That client
+	// uses this payload for every model it supports, including P2S and H2D.
 	c.publishInitial(client, serial)
 	c.ensurePushLoop()
 }
@@ -474,7 +475,8 @@ func (c *BambuClient) ingestReport(topic string, payload []byte) {
 }
 
 // pushAllCommand matches ha-bambulab PUSH_ALL exactly. version and push_target
-// are not in that payload; P1 firmware ignores the request when they are.
+// are not in that payload; the same request is what current LAN clients send
+// for P1, P2, A1, H2, and X1.
 func pushAllCommand() BambuCommand {
 	return pushingCommand("pushall")
 }
@@ -628,8 +630,8 @@ func (c *BambuClient) ensurePushLoop() {
 }
 
 // armNoReportWatch logs a warning when the printer accepts the subscription
-// but never sends a report. That is the usual signature of a wrong serial,
-// or of a P1 that ignored pushall.
+// but never sends a report. That is a wrong serial, or LAN Only / Developer
+// Mode left off so current firmware does not open the MQTT report channel.
 func (c *BambuClient) armNoReportWatch() {
 	c.mu.Lock()
 	// onConnect advances reportGen before subscribing. Tests call this
@@ -661,14 +663,14 @@ func (c *BambuClient) armNoReportWatch() {
 		if current != gen || got {
 			return
 		}
-		slog.Warn("no reports received; check that the serial matches the printer",
+		slog.Warn("no reports received; check that the serial matches the printer and that LAN Only and Developer Mode are enabled",
 			"printer_id", c.printerID,
 			"serial", serial,
 			"client_id", c.clientID,
 			"topic", fmt.Sprintf("device/%s/report", serial),
 		)
-		// ha-bambulab's watchdog sends pushing.command "start" when a printer
-		// stays silent. P1 firmware sometimes waits for that before streaming.
+		// ha-bambulab's watchdog sends pushing.command "start" when any model
+		// stays silent. Some firmware waits for that before streaming.
 		c.mu.RLock()
 		client := c.mqttClient
 		curSerial := c.serialNumber
@@ -941,8 +943,8 @@ func (c *BambuClient) mergePrintStatus(print *BambuPrintStatus) *model.PrinterSt
 	} else if print != nil {
 		c.applyLegacyPrintStatus(state, print)
 	}
-	// Any report means the printer is on the wire. P1 deltas often omit
-	// gcode_state, which used to leave status stuck at offline.
+	// Any report means the printer is on the wire. Deltas on every current
+	// family often omit gcode_state, which used to leave status stuck at offline.
 	if state.Status == model.PrinterStatusOffline {
 		state.Status = model.PrinterStatusIdle
 	}
@@ -1157,9 +1159,11 @@ func (c *BambuClient) applyLegacyPrintStatus(state *model.PrinterState, print *B
 }
 
 // applyPresentPrintStatus merges a JSON report using only keys that were
-// actually present. P1-series printers send deltas; missing keys must not
-// wipe the last known temperatures, progress, or file name, and explicit
-// zeros (heater off, fan off, progress reset) must still apply.
+// actually present. Bambu printers send deltas; missing keys must not wipe
+// the last known temperatures, progress, or file name, and explicit zeros
+// (heater off, fan off, progress reset) must still apply. The same merge is
+// used for every family. H2 dual-nozzle detail beyond nozzle_temper is not
+// parsed; unknown keys are ignored and do not clear the fields we do track.
 func (c *BambuClient) applyPresentPrintStatus(state *model.PrinterState, print *BambuPrintStatus) {
 	if print.has("gcode_state") && print.GcodeState != "" {
 		switch print.GcodeState {
@@ -1361,8 +1365,8 @@ type BambuMessage struct {
 
 // BambuPrintStatus contains print job status information.
 type BambuPrintStatus struct {
-	// present records JSON keys from the wire so partial P1 deltas do not
-	// look like explicit zeros. Nil when the struct was built in code.
+	// present records JSON keys from the wire so partial deltas do not look
+	// like explicit zeros. Nil when the struct was built in code.
 	present map[string]json.RawMessage `json:"-"`
 
 	// Print state
@@ -1425,18 +1429,45 @@ type BambuPrintStatus struct {
 
 // UnmarshalJSON captures which keys the printer actually sent.
 func (p *BambuPrintStatus) UnmarshalJSON(data []byte) error {
-	type plain BambuPrintStatus
-	var decoded plain
-	if err := json.Unmarshal(data, &decoded); err != nil {
-		return err
-	}
 	var keys map[string]json.RawMessage
 	if err := json.Unmarshal(data, &keys); err != nil {
+		return err
+	}
+	// Some firmware sends numbers as strings (observed on A1-class reports).
+	// Coerce those so one odd field does not reject the whole report.
+	encoded, err := json.Marshal(relaxNumericStrings(keys))
+	if err != nil {
+		return err
+	}
+	type plain BambuPrintStatus
+	var decoded plain
+	if err := json.Unmarshal(encoded, &decoded); err != nil {
 		return err
 	}
 	*p = BambuPrintStatus(decoded)
 	p.present = keys
 	return nil
+}
+
+// relaxNumericStrings copies keys, turning JSON strings that are plain numbers
+// into JSON numbers. Nested objects are left alone.
+func relaxNumericStrings(keys map[string]json.RawMessage) map[string]json.RawMessage {
+	out := make(map[string]json.RawMessage, len(keys))
+	for k, raw := range keys {
+		out[k] = raw
+		if len(raw) < 2 || raw[0] != '"' {
+			continue
+		}
+		s, err := strconv.Unquote(string(raw))
+		if err != nil || s == "" {
+			continue
+		}
+		if _, err := strconv.ParseFloat(s, 64); err != nil {
+			continue
+		}
+		out[k] = json.RawMessage(s)
+	}
+	return out
 }
 
 // has reports whether key was present in the JSON payload.

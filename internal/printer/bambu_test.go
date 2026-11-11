@@ -1062,7 +1062,33 @@ func TestReport_SuppressesWarningAndLeavesOffline(t *testing.T) {
 	}
 }
 
-func TestIngestReport_MergesP1Delta(t *testing.T) {
+func TestIngestReport_AcceptsNumericStrings(t *testing.T) {
+	client := NewBambuClient(uuid.New(), "192.168.1.50", "12345678", "00M00A000000001")
+	client.ingestReport("device/00M00A000000001/report", []byte(`{
+		"print": {
+			"gcode_state": "IDLE",
+			"cooling_fan_speed": "15",
+			"bed_temper": "25.5"
+		}
+	}`))
+	state, _ := client.GetStatus()
+	if state.Status != model.PrinterStatusIdle {
+		t.Fatalf("status = %s", state.Status)
+	}
+	if state.BedTemp != 25.5 {
+		t.Fatalf("bed = %v", state.BedTemp)
+	}
+	if state.CoolingFanSpeed != 100 {
+		t.Fatalf("fan = %d, want 100 from raw 15", state.CoolingFanSpeed)
+	}
+	client.ingestReport("device/00M00A000000001/report", []byte(`{"print":{"nozzle_temper":"200"}}`))
+	state, _ = client.GetStatus()
+	if state.BedTemp != 25.5 || state.NozzleTemp != 200 || state.CoolingFanSpeed != 100 {
+		t.Fatalf("delta wiped state: bed=%v nozzle=%v fan=%d", state.BedTemp, state.NozzleTemp, state.CoolingFanSpeed)
+	}
+}
+
+func TestIngestReport_MergesDelta(t *testing.T) {
 	client := NewBambuClient(uuid.New(), "192.168.1.50", "12345678", "22E8AA000000001")
 	client.ingestReport("device/22E8AA000000001/report", []byte(`{
 		"print": {

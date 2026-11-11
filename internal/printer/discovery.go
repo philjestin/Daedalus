@@ -587,19 +587,25 @@ func (d *Discovery) sendSSDPSearch(_ context.Context, searchTarget string) ([]Di
 		response := string(buffer[:n])
 		responseLower := strings.ToLower(response)
 		
-		// Check for Bambu-specific identifiers
+		// Identify by the SSDP text, never by serial prefix. Unknown families
+		// still match on "bambu" or "bbl" and keep a generic name.
 		isBambu := strings.Contains(responseLower, "bambu") ||
 			strings.Contains(responseLower, "bbl") ||
-			strings.Contains(responseLower, "x1c") ||
+			strings.Contains(responseLower, "x1") ||
 			strings.Contains(responseLower, "p1p") ||
 			strings.Contains(responseLower, "p1s") ||
+			strings.Contains(responseLower, "p2s") ||
+			strings.Contains(responseLower, "h2d") ||
+			strings.Contains(responseLower, "h2s") ||
+			strings.Contains(responseLower, "h2c") ||
 			strings.Contains(responseLower, "a1 mini") ||
-			strings.Contains(responseLower, "a1mini")
+			strings.Contains(responseLower, "a1mini") ||
+			strings.Contains(responseLower, "a1")
 
 		if isBambu {
 			printer := DiscoveredPrinter{
 				ID:           uuid.New().String(),
-				Name:         fmt.Sprintf("Bambu Printer @ %s", remoteAddr.IP.String()),
+				Name:         bambuDisplayName("", remoteAddr.IP.String()),
 				Host:         remoteAddr.IP.String(),
 				Port:         8883,
 				Type:         model.ConnectionTypeBambuLAN,
@@ -613,16 +619,7 @@ func (d *Discovery) sendSSDPSearch(_ context.Context, searchTarget string) ([]Di
 				if strings.HasPrefix(lineLower, "usn:") {
 					usn := strings.TrimSpace(line[4:])
 					printer.Model = usn
-					// Try to extract model name
-					if strings.Contains(usn, "X1") {
-						printer.Name = fmt.Sprintf("Bambu X1 @ %s", remoteAddr.IP.String())
-					} else if strings.Contains(usn, "P1P") {
-						printer.Name = fmt.Sprintf("Bambu P1P @ %s", remoteAddr.IP.String())
-					} else if strings.Contains(usn, "P1S") {
-						printer.Name = fmt.Sprintf("Bambu P1S @ %s", remoteAddr.IP.String())
-					} else if strings.Contains(usn, "A1") {
-						printer.Name = fmt.Sprintf("Bambu A1 @ %s", remoteAddr.IP.String())
-					}
+					printer.Name = bambuDisplayName(usn, remoteAddr.IP.String())
 				}
 				if strings.HasPrefix(lineLower, "server:") {
 					printer.Version = strings.TrimSpace(line[7:])
@@ -639,6 +636,43 @@ func (d *Discovery) sendSSDPSearch(_ context.Context, searchTarget string) ([]Di
 	}
 
 	return printers, nil
+}
+
+// bambuDisplayName labels a discovered printer from its SSDP USN.
+// Matching is on the model text the printer sends. A USN we do not recognize
+// stays "Bambu Printer" so a newer family is still added.
+func bambuDisplayName(usn, ip string) string {
+	u := strings.ToUpper(usn)
+	switch {
+	case strings.Contains(u, "H2D"):
+		return fmt.Sprintf("Bambu H2D @ %s", ip)
+	case strings.Contains(u, "H2S"):
+		return fmt.Sprintf("Bambu H2S @ %s", ip)
+	case strings.Contains(u, "H2C"):
+		return fmt.Sprintf("Bambu H2C @ %s", ip)
+	case strings.Contains(u, "H3"):
+		return fmt.Sprintf("Bambu H3 @ %s", ip)
+	case strings.Contains(u, "H2"):
+		return fmt.Sprintf("Bambu H2 @ %s", ip)
+	case strings.Contains(u, "P2S"):
+		return fmt.Sprintf("Bambu P2S @ %s", ip)
+	case strings.Contains(u, "P2"):
+		return fmt.Sprintf("Bambu P2 @ %s", ip)
+	case strings.Contains(u, "P1P"):
+		return fmt.Sprintf("Bambu P1P @ %s", ip)
+	case strings.Contains(u, "P1S"):
+		return fmt.Sprintf("Bambu P1S @ %s", ip)
+	case strings.Contains(u, "A1 MINI"), strings.Contains(u, "A1MINI"):
+		return fmt.Sprintf("Bambu A1 mini @ %s", ip)
+	case strings.Contains(u, "A2"):
+		return fmt.Sprintf("Bambu A2 @ %s", ip)
+	case strings.Contains(u, "A1"):
+		return fmt.Sprintf("Bambu A1 @ %s", ip)
+	case strings.Contains(u, "X1"):
+		return fmt.Sprintf("Bambu X1 @ %s", ip)
+	default:
+		return fmt.Sprintf("Bambu Printer @ %s", ip)
+	}
 }
 
 // getLocalNetwork returns the local IP and network CIDR.
