@@ -342,6 +342,25 @@ func TestMaterialInsertAndExpenseItemLink(t *testing.T) {
 	}
 }
 
+// TestSchemaHasAuthTables verifies the local login tables.
+func TestSchemaHasAuthTables(t *testing.T) {
+	db := openTestDB(t)
+
+	userCols := tableColumns(t, db, "users")
+	for _, want := range []string{"id", "username", "password_hash", "is_admin", "created_at", "last_login_at"} {
+		if !userCols[want] {
+			t.Errorf("users table missing column %q", want)
+		}
+	}
+
+	sessionCols := tableColumns(t, db, "sessions")
+	for _, want := range []string{"id", "user_id", "token_hash", "expires_at", "created_at", "last_seen_at", "user_agent", "ip"} {
+		if !sessionCols[want] {
+			t.Errorf("sessions table missing column %q", want)
+		}
+	}
+}
+
 // --- helpers ---
 
 func openTestDB(t *testing.T) *sql.DB {

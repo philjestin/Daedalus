@@ -7,9 +7,9 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"sync"
 	"time"
 
-	"github.com/getsentry/sentry-go"
 	"github.com/cadimartech/rankos/internal/api"
 	"github.com/cadimartech/rankos/internal/database"
 	"github.com/cadimartech/rankos/internal/printer"
@@ -18,23 +18,28 @@ import (
 	"github.com/cadimartech/rankos/internal/service"
 	"github.com/cadimartech/rankos/internal/storage"
 	"github.com/cadimartech/rankos/internal/version"
+	"github.com/getsentry/sentry-go"
 	"github.com/joho/godotenv"
 )
 
 // App struct holds the application state
 type App struct {
-	ctx         context.Context
-	server      *http.Server
-	db          *sql.DB
-	dbPath      string
-	hub         *realtime.Hub
-	printerMgr  *printer.Manager
-	services    *service.Services
+	ctx        context.Context
+	server     *http.Server
+	db         *sql.DB
+	dbPath     string
+	hub        *realtime.Hub
+	printerMgr *printer.Manager
+	services   *service.Services
+	// assets serves /api and /ws inside the desktop webview. It is not a Wails
+	// binding target: an exported ServeHTTP on App makes Wails emit TypeScript
+	// enums that fail the frontend build.
+	assets *desktopAssets
 }
 
 // NewApp creates a new App application struct
 func NewApp() *App {
-	return &App{}
+	return &App{assets: &desktopAssets{}}
 }
 
 // startup is called when the app starts
@@ -133,6 +138,7 @@ func (a *App) startup(ctx context.Context) {
 
 	// Initialize HTTP router
 	router := api.NewRouter(a.services, a.hub)
+	a.assets.set(router)
 
 	// Create HTTP server
 	a.server = &http.Server{
@@ -193,6 +199,31 @@ func (a *App) shutdown(ctx context.Context) {
 	sentry.Flush(2 * time.Second)
 
 	slog.Info("shutdown complete")
+}
+
+// desktopAssets is the Wails asset fallback. Requests that are not embedded
+// files, including /api and /ws, hit the same router as the LAN server so the
+// session cookie is first-party in the webview.
+type desktopAssets struct {
+	mu      sync.RWMutex
+	handler http.Handler
+}
+
+func (d *desktopAssets) set(handler http.Handler) {
+	d.mu.Lock()
+	d.handler = handler
+	d.mu.Unlock()
+}
+
+func (d *desktopAssets) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	d.mu.RLock()
+	handler := d.handler
+	d.mu.RUnlock()
+	if handler == nil {
+		http.Error(w, "starting", http.StatusServiceUnavailable)
+		return
+	}
+	handler.ServeHTTP(w, r)
 }
 
 // GetVersion returns the application version string for the frontend.

@@ -80,6 +80,16 @@ func TestRouterRegistersAllExpectedRoutes(t *testing.T) {
 		// Health
 		{"GET", "/health"},
 
+		// Local auth
+		{"GET", "/api/auth/status"},
+		{"POST", "/api/auth/setup"},
+		{"POST", "/api/auth/login"},
+		{"POST", "/api/auth/logout"},
+		{"POST", "/api/auth/password"},
+		{"GET", "/api/auth/users"},
+		{"POST", "/api/auth/users"},
+		{"DELETE", "/api/auth/users/{id}"},
+
 		// Projects
 		{"GET", "/api/projects/"},
 		{"POST", "/api/projects/"},

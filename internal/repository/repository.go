@@ -7,9 +7,9 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/cadimartech/rankos/internal/crypto"
 	"github.com/cadimartech/rankos/internal/model"
+	"github.com/google/uuid"
 )
 
 // DBTX is an interface for database operations that works with both *sql.DB and *sql.Tx.
@@ -50,6 +50,7 @@ type Repositories struct {
 	Feedback        *FeedbackRepository
 	Customers       *CustomerRepository
 	Quotes          *QuoteRepository
+	Users           *UserRepository
 }
 
 // WithTransaction executes a function within a database transaction.
@@ -104,6 +105,7 @@ func NewRepositories(db *sql.DB) *Repositories {
 		Feedback:        &FeedbackRepository{db: db},
 		Customers:       &CustomerRepository{db: db},
 		Quotes:          &QuoteRepository{db: db},
+		Users:           &UserRepository{db: db},
 	}
 }
 

@@ -57,6 +57,7 @@ type Services struct {
 	Feedback  *FeedbackService
 	Customers *CustomerService
 	Quotes    *QuoteService
+	Auth      *AuthService
 }
 
 // EtsyConfig holds Etsy OAuth configuration.
@@ -123,6 +124,7 @@ func NewServices(repos *repository.Repositories, store storage.Storage, printerM
 	services.Feedback = &FeedbackService{repo: repos.Feedback}
 	services.Customers = NewCustomerService(repos.Customers, hub)
 	services.Quotes = NewQuoteService(repos.Quotes, repos.Customers, repos.Orders, repos, hub)
+	services.Auth = NewAuthService(repos.Users)
 
 	// Wire job completion callback to auto-complete checklist items
 	services.PrintJobs.SetOnJobCompleted(services.Tasks.HandleJobCompleted)
