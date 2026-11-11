@@ -21,6 +21,20 @@ Runs as a **desktop app** (macOS/Windows via [Wails](https://wails.io)) or as a 
 - **Real-Time Status**: Live printer status and job progress via WebSocket.
 - **Timeline View**: Gantt-style visualization of orders, tasks, and print jobs.
 
+## Bambu Lab LAN
+
+One MQTT client covers every current family. It does not guess the model from the serial number. Topics, login, and the `pushall` request are the same for all of them.
+
+Supported: P1P, P1S, P2S, A1, A1 mini, A2, H2D, H2S, H3, and X1 / X1C / X1E. A2 and H3 use this client, but public docs checked for this release do not describe their report payloads separately.
+
+On the printer, for a third-party app to read status and send commands:
+
+1. Turn on **LAN Only**.
+2. Turn on **Developer Mode** (Bambu’s current instructions for H2, P2S, X, P, and A series). Developer Mode stays off the cloud.
+3. Copy the access code and the serial into the printer’s connection settings in RankOS. The access code is the MQTT password; the username is fixed by the printer.
+
+Details, including what is and is not verified per family: [docs/bambu-lan.md](docs/bambu-lan.md).
+
 ## Data Model
 
 ```
