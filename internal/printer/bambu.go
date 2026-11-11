@@ -1,7 +1,9 @@
 package printer
 
 import (
+	"crypto/rand"
 	"crypto/tls"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -14,9 +16,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cadimartech/rankos/internal/model"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/google/uuid"
-	"github.com/cadimartech/rankos/internal/model"
 	"github.com/jlaffaye/ftp"
 )
 
@@ -33,6 +35,7 @@ type BambuClient struct {
 	// Cloud MQTT mode fields
 	cloudMode    bool
 	mqttUsername string // "u_{uid}" for cloud, "bblp" for LAN
+	clientID     string // random per session; a stable id gets kicked by another client
 
 	mu         sync.RWMutex
 	mqttClient mqtt.Client
@@ -111,7 +114,7 @@ func NewBambuCloudClient(printerID uuid.UUID, serial, mqttUsername, authToken st
 		accessCode:   authToken,
 		serialNumber: serial,
 		cloudMode:    true,
-		mqttUsername:  mqttUsername,
+		mqttUsername: mqttUsername,
 		stopChan:     make(chan struct{}),
 		lastState: &model.PrinterState{
 			PrinterID: printerID,
@@ -126,6 +129,43 @@ func (c *BambuClient) SetSerialNumber(serial string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.serialNumber = serial
+}
+
+// newBambuClientID returns a fresh MQTT client id.
+// A stable id is disconnected when another client (a second RankOS process,
+// Bambu Studio, or another farm controller) connects with the same id.
+// 23 bytes is the MQTT 3.1 maximum, which some printer firmware still enforces.
+func newBambuClientID() string {
+	var b [8]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return fmt.Sprintf("rankos%x", time.Now().UnixNano()%0xffffffff)
+	}
+	return "rankos-" + hex.EncodeToString(b[:])
+}
+
+// bambuMQTTDebug is set by BAMBU_MQTT_DEBUG=1. It subscribes to every printer
+// report topic and logs the topic plus the first 300 bytes of each message.
+func bambuMQTTDebug() bool {
+	return os.Getenv("BAMBU_MQTT_DEBUG") == "1"
+}
+
+// mqttOptions builds the client options used for both LAN and cloud.
+// Protocol is MQTT 3.1.1, clean session, QoS delivery not ordered. Those match
+// ha-bambulab (paho mqtt.Client() defaults) and the OpenBambuAPI LAN notes.
+func (c *BambuClient) mqttOptions(broker, clientID, username, password string, tlsConfig *tls.Config) *mqtt.ClientOptions {
+	return mqtt.NewClientOptions().
+		AddBroker(broker).
+		SetClientID(clientID).
+		SetUsername(username).
+		SetPassword(password).
+		SetTLSConfig(tlsConfig).
+		SetProtocolVersion(4). // MQTT 3.1.1
+		SetCleanSession(true).
+		SetOrderMatters(false).
+		SetAutoReconnect(true).
+		SetConnectTimeout(10 * time.Second).
+		SetWriteTimeout(10 * time.Second).
+		SetKeepAlive(30 * time.Second)
 }
 
 // Connect establishes MQTT connection to Bambu printer.
@@ -162,21 +202,23 @@ func (c *BambuClient) Connect() error {
 			MinVersion: tls.VersionTLS12,
 		}
 	} else {
-		// Local printer uses self-signed cert
-		tlsConfig = &tls.Config{InsecureSkipVerify: true}
+		// Local printer uses a self-signed cert whose CN is the serial, not the IP.
+		// ha-bambulab does the same: CERT_NONE and no hostname check.
+		tlsConfig = &tls.Config{
+			InsecureSkipVerify: true,
+			MinVersion:         tls.VersionTLS12,
+		}
 	}
 
-	opts := mqtt.NewClientOptions().
-		AddBroker(broker).
-		SetClientID(fmt.Sprintf("printfarm_%s", printerID.String()[:8])).
-		SetUsername(username).
-		SetPassword(accessCode).
-		SetTLSConfig(tlsConfig).
-		SetAutoReconnect(true).
-		SetConnectTimeout(10 * time.Second).
-		SetWriteTimeout(10 * time.Second).
-		SetKeepAlive(30 * time.Second).
-		SetOrderMatters(false)
+	// A fixed client id (printer UUID prefix) collides with another RankOS
+	// process or another farm tool and the printer kicks one of them.
+	// MQTT 3.1 allows at most 23 bytes; "rankos-" + 16 hex is exactly 23.
+	clientID := newBambuClientID()
+	c.mu.Lock()
+	c.clientID = clientID
+	c.mu.Unlock()
+
+	opts := c.mqttOptions(broker, clientID, username, accessCode, tlsConfig)
 
 	// Use DefaultPublishHandler for all incoming messages (matches community SDK pattern)
 	opts.SetDefaultPublishHandler(c.handleMessage)
@@ -197,6 +239,10 @@ func (c *BambuClient) Connect() error {
 		"serial", serial,
 		"broker", broker,
 		"username", username,
+		"client_id", clientID,
+		"mqtt_protocol", "3.1.1",
+		"clean_session", true,
+		"order_matters", false,
 	)
 	token := client.Connect()
 	if token.Wait() && token.Error() != nil {
@@ -207,7 +253,7 @@ func (c *BambuClient) Connect() error {
 	c.mqttClient = client
 	c.connected = true
 	c.mu.Unlock()
-	slog.Info("connected to Bambu printer", "mode", mode, "host", host, "printer_id", printerID)
+	slog.Info("connected to Bambu printer", "mode", mode, "host", host, "printer_id", printerID, "client_id", clientID, "serial", serial)
 
 	return nil
 }
@@ -232,43 +278,117 @@ func (c *BambuClient) onConnect(client mqtt.Client) {
 		"printer_id", c.printerID,
 		"host", host,
 		"serial", serial,
+		"client_id", c.clientID,
 		"has_access_code", hasAccess,
 		"access_code_len", accessLen,
 	)
 
-	// Subscribe to report topic — matches community SDK pattern:
-	// QoS 0, nil handler (messages go through DefaultPublishHandler)
+	// Pass the handler to Subscribe. A nil callback relies on
+	// DefaultPublishHandler; paho will not call that default for a topic that
+	// has its own route, so the handler has to be attached here.
 	topic := fmt.Sprintf("device/%s/report", serial)
-	token := client.Subscribe(topic, 0, nil)
-	if token.Wait() && token.Error() != nil {
+	if err := c.subscribe(client, topic, c.handleMessage); err != nil {
 		slog.Error("failed to subscribe to Bambu report topic",
-			"error", token.Error(),
+			"error", err,
 			"topic", topic,
 			"serial", serial,
+			"client_id", c.clientID,
 		)
-		return
 	}
-	slog.Info("subscribed to Bambu report topic", "topic", topic)
+
+	if bambuMQTTDebug() {
+		// Diagnostic: the printer may be publishing on a different serial than
+		// the one we stored. The wildcard shows the real topic.
+		if err := c.subscribe(client, "device/+/report", c.debugReport); err != nil {
+			slog.Error("failed to subscribe to Bambu debug wildcard",
+				"error", err,
+				"topic", "device/+/report",
+				"client_id", c.clientID,
+			)
+		}
+	}
 
 	// Arm before pushall so a fast report is attributed to this generation.
 	c.armNoReportWatch()
 
-	// Request initial status right after subscribe. QoS 0: the printer does
-	// not PUBACK, and waiting on QoS 1 stalls the client before any report.
-	if err := c.publishPushAll(client, serial); err != nil {
-		slog.Error("failed to publish Bambu pushall",
-			"error", err,
+	// ha-bambulab asks for the version, then a full dump. The dump must be
+	// exactly {"pushing":{"sequence_id":"0","command":"pushall"}} — extra
+	// fields are not in that client and P1 firmware ignores them.
+	c.publishInitial(client, serial)
+	c.ensurePushLoop()
+}
+
+// subscribe sends SUBSCRIBE and logs the SUBACK return code.
+// 0x80 means the printer refused the subscription; token.Error() stays nil
+// in that case, so the code has to be read off the token result.
+func (c *BambuClient) subscribe(client mqtt.Client, topic string, handler mqtt.MessageHandler) error {
+	if handler == nil {
+		return fmt.Errorf("refusing to subscribe to %s without a message handler", topic)
+	}
+	token := client.Subscribe(topic, 0, handler)
+	if token == nil {
+		return fmt.Errorf("subscribe returned a nil token")
+	}
+	if !token.WaitTimeout(10 * time.Second) {
+		return fmt.Errorf("subscribe timeout")
+	}
+	if err := token.Error(); err != nil {
+		return fmt.Errorf("subscribe token error: %w", err)
+	}
+	codes := subscribeReturnCodes(token)
+	if len(codes) == 0 {
+		slog.Warn("Bambu SUBACK missing return code", "topic", topic, "printer_id", c.printerID, "client_id", c.clientID)
+		return nil
+	}
+	for t, code := range codes {
+		if code == 0x80 {
+			slog.Error("Bambu subscription refused",
+				"topic", t,
+				"return_code", "0x80",
+				"printer_id", c.printerID,
+				"serial", c.serialNumber,
+				"client_id", c.clientID,
+			)
+			return fmt.Errorf("subscription refused for %s (SUBACK 0x80)", t)
+		}
+		slog.Info("Bambu SUBACK",
+			"topic", t,
+			"return_code", fmt.Sprintf("0x%02x", code),
+			"granted_qos", code,
 			"printer_id", c.printerID,
-			"serial", serial,
-			"topic", fmt.Sprintf("device/%s/request", serial),
+			"client_id", c.clientID,
 		)
 	}
-	c.ensurePushLoop()
+	return nil
+}
+
+// subscribeReturnCodes reads SUBACK codes when the token exposes them.
+// paho's *SubscribeToken does; a refused subscription is 0x80 per topic.
+func subscribeReturnCodes(token mqtt.Token) map[string]byte {
+	type resultToken interface {
+		Result() map[string]byte
+	}
+	rt, ok := token.(resultToken)
+	if !ok || rt.Result() == nil {
+		return nil
+	}
+	return rt.Result()
 }
 
 // onConnectionLost is called when MQTT connection is lost.
 func (c *BambuClient) onConnectionLost(client mqtt.Client, err error) {
-	slog.Warn("Bambu MQTT connection lost", "printer_id", c.printerID, "error", err)
+	reason := "unknown"
+	if err != nil {
+		reason = err.Error()
+	}
+	slog.Warn("Bambu MQTT connection lost",
+		"printer_id", c.printerID,
+		"client_id", c.clientID,
+		"serial", c.serialNumber,
+		"host", c.host,
+		"reason", reason,
+		"error", err,
+	)
 
 	c.mu.Lock()
 	c.connected = false
@@ -295,7 +415,27 @@ func (c *BambuClient) onReconnecting(client mqtt.Client, opts *mqtt.ClientOption
 
 // handleMessage processes incoming MQTT messages from the printer.
 func (c *BambuClient) handleMessage(client mqtt.Client, msg mqtt.Message) {
+	if bambuMQTTDebug() {
+		logBambuDebugMessage(msg.Topic(), msg.Payload())
+	}
 	c.ingestReport(msg.Topic(), msg.Payload())
+}
+
+// debugReport logs wildcard traffic. Messages for our own serial are also
+// delivered to handleMessage via the specific subscription, so this does not
+// ingest them again.
+func (c *BambuClient) debugReport(_ mqtt.Client, msg mqtt.Message) {
+	logBambuDebugMessage(msg.Topic(), msg.Payload())
+}
+
+// logBambuDebugMessage logs the topic and the first 300 bytes of a report.
+func logBambuDebugMessage(topic string, payload []byte) {
+	n := len(payload)
+	shown := payload
+	if n > 300 {
+		shown = payload[:300]
+	}
+	slog.Info("Bambu MQTT debug message", "topic", topic, "bytes", n, "payload", string(shown))
 }
 
 // ingestReport records that the printer spoke, merges a print payload into
@@ -333,42 +473,101 @@ func (c *BambuClient) ingestReport(topic string, payload []byte) {
 	}
 }
 
-// pushAllCommand is the full-status request P1-series printers require.
-// sequence_id "0" plus version and push_target is what those firmwares answer;
-// a timestamp-only payload is ignored and the printer stays silent.
+// pushAllCommand matches ha-bambulab PUSH_ALL exactly. version and push_target
+// are not in that payload; P1 firmware ignores the request when they are.
 func pushAllCommand() BambuCommand {
+	return pushingCommand("pushall")
+}
+
+// versionCommand matches ha-bambulab GET_VERSION, sent just before pushall.
+func versionCommand() BambuCommand {
 	return BambuCommand{
-		Pushing: &BambuPushingCmd{
-			Sequence:   "0",
-			Command:    "pushall",
-			Version:    1,
-			PushTarget: 1,
+		Info: &BambuInfoCmd{
+			Sequence: "0",
+			Command:  "get_version",
 		},
 	}
 }
 
-// publishPushAll sends a pushall command to device/<serial>/request.
+// pushingCommand builds a pushing request such as pushall or start.
+func pushingCommand(command string) BambuCommand {
+	return BambuCommand{
+		Pushing: &BambuPushingCmd{
+			Sequence: "0",
+			Command:  command,
+		},
+	}
+}
+
+// publishInitial asks for the firmware version and a full status dump.
+func (c *BambuClient) publishInitial(client mqtt.Client, serial string) {
+	if err := c.publishCommand(client, serial, versionCommand()); err != nil {
+		slog.Error("failed to publish Bambu get_version",
+			"error", err,
+			"token_error", err.Error(),
+			"printer_id", c.printerID,
+			"serial", serial,
+			"client_id", c.clientID,
+			"topic", fmt.Sprintf("device/%s/request", serial),
+		)
+	}
+	if err := c.publishPushAll(client, serial); err != nil {
+		slog.Error("failed to publish Bambu pushall",
+			"error", err,
+			"token_error", err.Error(),
+			"printer_id", c.printerID,
+			"serial", serial,
+			"client_id", c.clientID,
+			"topic", fmt.Sprintf("device/%s/request", serial),
+		)
+	}
+}
+
+// publishPushAll sends pushall to device/<serial>/request.
 // QoS 0 because the printer does not PUBACK.
 func (c *BambuClient) publishPushAll(client mqtt.Client, serial string) error {
+	if err := c.publishCommand(client, serial, pushAllCommand()); err != nil {
+		return err
+	}
+	return nil
+}
+
+// publishCommand publishes a request and surfaces the token error.
+func (c *BambuClient) publishCommand(client mqtt.Client, serial string, cmd BambuCommand) error {
 	if client == nil {
 		return fmt.Errorf("not connected")
 	}
 	if serial == "" {
 		serial = "unknown"
 	}
-	data, err := json.Marshal(pushAllCommand())
+	data, err := json.Marshal(cmd)
 	if err != nil {
-		return fmt.Errorf("failed to marshal pushall: %w", err)
+		return fmt.Errorf("failed to marshal command: %w", err)
 	}
 	topic := fmt.Sprintf("device/%s/request", serial)
 	token := client.Publish(topic, 0, false, data)
+	if token == nil {
+		return fmt.Errorf("publish token error: nil token")
+	}
 	if !token.WaitTimeout(5 * time.Second) {
-		return fmt.Errorf("pushall publish timeout")
+		if err := token.Error(); err != nil {
+			return fmt.Errorf("publish token error: %w", err)
+		}
+		return fmt.Errorf("publish token error: timeout on %s", topic)
 	}
 	if err := token.Error(); err != nil {
-		return fmt.Errorf("pushall publish failed: %w", err)
+		return fmt.Errorf("publish token error: %w", err)
 	}
-	slog.Info("published Bambu pushall", "topic", topic, "printer_id", c.printerID, "serial", serial)
+	slog.Info("published Bambu command",
+		"topic", topic,
+		"payload", string(data),
+		"printer_id", c.printerID,
+		"serial", serial,
+		"client_id", c.clientID,
+	)
+	if cmd.Pushing != nil && cmd.Pushing.Command == "pushall" {
+		slog.Info("published Bambu pushall", "topic", topic, "printer_id", c.printerID, "serial", serial, "client_id", c.clientID)
+	}
 	return nil
 }
 
@@ -465,8 +664,28 @@ func (c *BambuClient) armNoReportWatch() {
 		slog.Warn("no reports received; check that the serial matches the printer",
 			"printer_id", c.printerID,
 			"serial", serial,
+			"client_id", c.clientID,
 			"topic", fmt.Sprintf("device/%s/report", serial),
 		)
+		// ha-bambulab's watchdog sends pushing.command "start" when a printer
+		// stays silent. P1 firmware sometimes waits for that before streaming.
+		c.mu.RLock()
+		client := c.mqttClient
+		curSerial := c.serialNumber
+		connected := c.connected && client != nil
+		c.mu.RUnlock()
+		if !connected {
+			return
+		}
+		if err := c.publishCommand(client, curSerial, pushingCommand("start")); err != nil {
+			slog.Error("failed to publish Bambu start",
+				"error", err,
+				"token_error", err.Error(),
+				"printer_id", c.printerID,
+				"serial", curSerial,
+				"client_id", c.clientID,
+			)
+		}
 	}()
 }
 
@@ -561,10 +780,10 @@ func (c *BambuClient) StartJob(filename string, filepath string) error {
 			FlowCali:    false,
 			Vibration:   false,
 			AMS: &BambuAMSCmd{
-				UseAMS:        true,
-				PrintSpeed:    "standard",
-				LayerInspect:  false,
-				LabelVersion:  "",
+				UseAMS:         true,
+				PrintSpeed:     "standard",
+				LayerInspect:   false,
+				LabelVersion:   "",
 				AMSMappingInfo: []int{},
 			},
 		},
@@ -1147,14 +1366,14 @@ type BambuPrintStatus struct {
 	present map[string]json.RawMessage `json:"-"`
 
 	// Print state
-	GcodeState    string `json:"gcode_state"`
-	StgCur        int    `json:"stg_cur"`
-	PrintError    int    `json:"print_error"`
-	PrintType     string `json:"print_type"`
-	SubtaskName   string `json:"subtask_name"`
-	GcodeFile     string `json:"gcode_file"`
-	SubtaskID     string `json:"subtask_id"`
-	TaskID        string `json:"task_id"`
+	GcodeState  string `json:"gcode_state"`
+	StgCur      int    `json:"stg_cur"`
+	PrintError  int    `json:"print_error"`
+	PrintType   string `json:"print_type"`
+	SubtaskName string `json:"subtask_name"`
+	GcodeFile   string `json:"gcode_file"`
+	SubtaskID   string `json:"subtask_id"`
+	TaskID      string `json:"task_id"`
 
 	// Progress
 	MCPercent       int `json:"mc_percent"`
@@ -1163,30 +1382,30 @@ type BambuPrintStatus struct {
 	TotalLayerNum   int `json:"total_layer_num"`
 
 	// Temperatures
-	BedTemper         float64 `json:"bed_temper"`
-	BedTargetTemper   float64 `json:"bed_target_temper"`
-	NozzleTemper      float64 `json:"nozzle_temper"`
+	BedTemper          float64 `json:"bed_temper"`
+	BedTargetTemper    float64 `json:"bed_target_temper"`
+	NozzleTemper       float64 `json:"nozzle_temper"`
 	NozzleTargetTemper float64 `json:"nozzle_target_temper"`
-	ChamberTemper     float64 `json:"chamber_temper"`
-	NozzleDiameter    string  `json:"nozzle_diameter"`
-	NozzleType        string  `json:"nozzle_type"`
+	ChamberTemper      float64 `json:"chamber_temper"`
+	NozzleDiameter     string  `json:"nozzle_diameter"`
+	NozzleType         string  `json:"nozzle_type"`
 
 	// Fan speeds (0-15 scale typically)
-	CoolingFanSpeed    int `json:"cooling_fan_speed"`
-	BigFan1Speed       int `json:"big_fan1_speed"`
-	BigFan2Speed       int `json:"big_fan2_speed"`
-	HeatbreakFanSpeed  int `json:"heatbreak_fan_speed"`
+	CoolingFanSpeed   int `json:"cooling_fan_speed"`
+	BigFan1Speed      int `json:"big_fan1_speed"`
+	BigFan2Speed      int `json:"big_fan2_speed"`
+	HeatbreakFanSpeed int `json:"heatbreak_fan_speed"`
 
 	// Speeds and flow
-	SpeedMag       int     `json:"spd_mag"`
-	SpeedLevel     int     `json:"spd_lvl"`
-	PrintRealSpeed int     `json:"print_real_speed"`
-	FeedRateMag    int     `json:"feed_rate_mag"`
+	SpeedMag       int `json:"spd_mag"`
+	SpeedLevel     int `json:"spd_lvl"`
+	PrintRealSpeed int `json:"print_real_speed"`
+	FeedRateMag    int `json:"feed_rate_mag"`
 
 	// AMS (Automatic Material System)
-	AMSStatus int            `json:"ams_status"`
-	AMS       *BambuAMS      `json:"ams,omitempty"`
-	VTTray    *BambuVTTray   `json:"vt_tray,omitempty"`
+	AMSStatus int          `json:"ams_status"`
+	AMS       *BambuAMS    `json:"ams,omitempty"`
+	VTTray    *BambuVTTray `json:"vt_tray,omitempty"`
 
 	// Lights and misc
 	LightsReport []BambuLight `json:"lights_report,omitempty"`
@@ -1197,11 +1416,11 @@ type BambuPrintStatus struct {
 	HMS []BambuHMS `json:"hms,omitempty"`
 
 	// Lifecycle
-	LifecycleRelayID    string `json:"lifecycle"`
-	PrintStartTime      string `json:"gcode_start_time"`
-	PrintFinishAction   string `json:"print_finish_action"`
-	HomeFlag            int    `json:"home_flag"`
-	HWSwitch            int    `json:"hw_switch_state"`
+	LifecycleRelayID  string `json:"lifecycle"`
+	PrintStartTime    string `json:"gcode_start_time"`
+	PrintFinishAction string `json:"print_finish_action"`
+	HomeFlag          int    `json:"home_flag"`
+	HWSwitch          int    `json:"hw_switch_state"`
 }
 
 // UnmarshalJSON captures which keys the printer actually sent.
@@ -1242,31 +1461,31 @@ type BambuAMS struct {
 
 // BambuUnit represents a single AMS unit.
 type BambuUnit struct {
-	ID       string       `json:"id"`
-	Humidity string       `json:"humidity"`
-	Temp     string       `json:"temp"`
-	Trays    []BambuTray  `json:"tray"`
+	ID       string      `json:"id"`
+	Humidity string      `json:"humidity"`
+	Temp     string      `json:"temp"`
+	Trays    []BambuTray `json:"tray"`
 }
 
 // BambuTray represents a tray/slot in an AMS unit.
 type BambuTray struct {
-	ID            string  `json:"id"`
-	TrayIDName    string  `json:"tray_id_name"`
-	TrayType      string  `json:"tray_type"`
-	TraySubBrands string  `json:"tray_sub_brands"`
-	TrayColor     string  `json:"tray_color"`
-	TrayWeight    string  `json:"tray_weight"`
-	TrayDiameter  string  `json:"tray_diameter"`
-	TrayTemp      string  `json:"tray_temp"`
-	TrayTime      string  `json:"tray_time"`
-	BedTempType   string  `json:"bed_temp_type"`
-	BedTemp       string  `json:"bed_temp"`
-	NozzleTempMax string  `json:"nozzle_temp_max"`
-	NozzleTempMin string  `json:"nozzle_temp_min"`
-	Remain        int     `json:"remain"`
-	TagUID        string  `json:"tag_uid"`
-	TrayUUID      string  `json:"tray_uuid"`
-	TrayInfoIdx   string  `json:"tray_info_idx"`
+	ID            string   `json:"id"`
+	TrayIDName    string   `json:"tray_id_name"`
+	TrayType      string   `json:"tray_type"`
+	TraySubBrands string   `json:"tray_sub_brands"`
+	TrayColor     string   `json:"tray_color"`
+	TrayWeight    string   `json:"tray_weight"`
+	TrayDiameter  string   `json:"tray_diameter"`
+	TrayTemp      string   `json:"tray_temp"`
+	TrayTime      string   `json:"tray_time"`
+	BedTempType   string   `json:"bed_temp_type"`
+	BedTemp       string   `json:"bed_temp"`
+	NozzleTempMax string   `json:"nozzle_temp_max"`
+	NozzleTempMin string   `json:"nozzle_temp_min"`
+	Remain        int      `json:"remain"`
+	TagUID        string   `json:"tag_uid"`
+	TrayUUID      string   `json:"tray_uuid"`
+	TrayInfoIdx   string   `json:"tray_info_idx"`
 	Cols          []string `json:"cols,omitempty"`
 }
 
@@ -1296,17 +1515,17 @@ type BambuLight struct {
 
 // BambuOnline represents online status information.
 type BambuOnline struct {
-	Ahb       bool `json:"ahb"`
-	Rfid      bool `json:"rfid"`
-	Version   int  `json:"version"`
+	Ahb     bool `json:"ahb"`
+	Rfid    bool `json:"rfid"`
+	Version int  `json:"version"`
 }
 
 // BambuHMS represents a Health Management System error.
 type BambuHMS struct {
-	Attr     int    `json:"attr"`
-	Code     int    `json:"code"`
-	Module   int    `json:"module"`
-	Severity int    `json:"severity"`
+	Attr     int `json:"attr"`
+	Code     int `json:"code"`
+	Module   int `json:"module"`
+	Severity int `json:"severity"`
 }
 
 // BambuInfo contains printer information.
@@ -1345,6 +1564,13 @@ type BambuCommand struct {
 	Print   *BambuPrintCmd   `json:"print,omitempty"`
 	System  *BambuSystemCmd  `json:"system,omitempty"`
 	Pushing *BambuPushingCmd `json:"pushing,omitempty"`
+	Info    *BambuInfoCmd    `json:"info,omitempty"`
+}
+
+// BambuInfoCmd is an outgoing info request such as get_version.
+type BambuInfoCmd struct {
+	Sequence string `json:"sequence_id"`
+	Command  string `json:"command"`
 }
 
 // BambuPrintCmd represents a print control command.
