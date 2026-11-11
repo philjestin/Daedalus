@@ -11,8 +11,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/cadimartech/rankos/internal/model"
+	"github.com/google/uuid"
 )
 
 // MoonrakerClient implements Client for Moonraker API (Klipper).
@@ -61,6 +61,7 @@ func (c *MoonrakerClient) GetStatus() (*model.PrinterState, error) {
 	if err != nil {
 		// Connection failure means the printer is offline, not an application error
 		offlineState := &model.PrinterState{PrinterID: c.printerID, Status: model.PrinterStatusOffline, UpdatedAt: time.Now()}
+		annotateOtherProtocol(offlineState)
 		return offlineState, nil //nolint:nilerr
 	}
 
@@ -208,8 +209,8 @@ func (c *MoonrakerClient) parseState(resp []byte) *model.PrinterState {
 		Result struct {
 			Status struct {
 				PrintStats struct {
-					State      string  `json:"state"`
-					Filename   string  `json:"filename"`
+					State         string  `json:"state"`
+					Filename      string  `json:"filename"`
 					TotalDuration float64 `json:"total_duration"`
 					PrintDuration float64 `json:"print_duration"`
 				} `json:"print_stats"`
@@ -240,6 +241,20 @@ func (c *MoonrakerClient) parseState(resp []byte) *model.PrinterState {
 		}
 	}
 
+	annotateOtherProtocol(state)
 	return state
 }
 
+// Send runs pause, resume, or stop. Other commands are not supported.
+func (c *MoonrakerClient) Send(cmd model.Command) error {
+	switch cmd.(type) {
+	case model.Pause:
+		return c.PauseJob()
+	case model.Resume:
+		return c.ResumeJob()
+	case model.Stop:
+		return c.CancelJob()
+	default:
+		return model.ErrUnsupported
+	}
+}

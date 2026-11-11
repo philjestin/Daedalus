@@ -16,6 +16,8 @@ import (
 	"github.com/google/uuid"
 )
 
+func strPtr(s string) *string { return &s }
+
 func TestNewBambuClient(t *testing.T) {
 	printerID := uuid.New()
 	host := "192.168.1.100"
@@ -426,7 +428,7 @@ func TestBambuCommandSerialization_PrintSpeed(t *testing.T) {
 		Print: &BambuPrintCmd{
 			Sequence: "1234567890",
 			Command:  "print_speed",
-			Param:    "3", // Sport mode
+			Param:    strPtr("3"), // Sport mode
 		},
 	}
 

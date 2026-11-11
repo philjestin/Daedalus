@@ -50,6 +50,8 @@ func (f *fakePrinterCtl) GetAllStates() map[uuid.UUID]*model.PrinterState {
 	return map[uuid.UUID]*model.PrinterState{}
 }
 
+func (f *fakePrinterCtl) Send(uuid.UUID, model.Command) error { return nil }
+
 func (f *fakePrinterCtl) counts() (disconnects int, connects int) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/cadimartech/rankos/internal/realtime"
 	"github.com/cadimartech/rankos/internal/service"
+	"github.com/go-chi/chi/v5"
 )
 
 // createTestServices builds a minimal Services struct with zero-valued service
@@ -119,6 +119,7 @@ func TestRouterRegistersAllExpectedRoutes(t *testing.T) {
 		{"PATCH", "/api/printers/{id}/"},
 		{"DELETE", "/api/printers/{id}/"},
 		{"GET", "/api/printers/{id}/state"},
+		{"POST", "/api/printers/{id}/commands"},
 		{"GET", "/api/printers/{id}/jobs"},
 		{"GET", "/api/printers/{id}/stats"},
 
